@@ -1,0 +1,9 @@
+[package]
+name = "rkasm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
+color-print = "0.3.6"
+rk16 = { path="../rk16" }
