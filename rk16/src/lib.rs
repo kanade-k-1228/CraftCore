@@ -71,45 +71,45 @@ impl Reg {
     }
 }
 
-enum Field {
-    Calc(Reg, Reg, Reg, u8),
-    CalcI(Reg, Reg, u16, u8),
-    Load(),
-    Store(),
-    Ctrl(),
-}
+// enum Field {
+//     Calc(Reg, Reg, Reg, u8),
+//     CalcI(Reg, Reg, u16, u8),
+//     Load(),
+//     Store(),
+//     Ctrl(),
+// }
 
-enum Arg {
-    Reg,
-    Imm,
-}
+// enum Arg {
+//     Reg,
+//     Imm,
+// }
 
-struct Asm<const ARG_LEN: usize> {
-    name: &'static str,
-    args: [Arg; ARG_LEN],
-    bit: Field,
-}
+// struct Asm<const ARG_LEN: usize> {
+//     name: &'static str,
+//     args: [Arg; ARG_LEN],
+//     bit: Field,
+// }
 
-macro_rules! asm {
-    () => {
-        Asm {
-            name: "addi",
-            args: [Arg::Reg, Arg::Reg, Arg::Reg],
-            bit: Field::Calc(Reg::T0, Reg::T0, Reg::T0, 0),
-        }
-    };
-}
+// macro_rules! asm {
+//     () => {
+//         Asm {
+//             name: "addi",
+//             args: [Arg::Reg, Arg::Reg, Arg::Reg],
+//             bit: Field::Calc(Reg::T0, Reg::T0, Reg::T0, 0),
+//         }
+//     };
+// }
 
-const ASMS: (Asm<3>, Asm<3>, Asm<3>) = (
-    Asm {
-        name: "add",
-        args: [Arg::Reg, Arg::Reg, Arg::Reg],
-        bit: Field::Calc(Reg::T0, Reg::T0, Reg::T0, 0),
-    },
-    Asm {
-        name: "sub",
-        args: [Arg::Reg, Arg::Reg, Arg::Reg],
-        bit: Field::Calc(Reg::T0, Reg::T0, Reg::T0, 0),
-    },
-    asm!(),
-);
+// const ASMS: (Asm<3>, Asm<3>, Asm<3>) = (
+//     Asm {
+//         name: "add",
+//         args: [Arg::Reg, Arg::Reg, Arg::Reg],
+//         bit: Field::Calc(Reg::T0, Reg::T0, Reg::T0, 0),
+//     },
+//     Asm {
+//         name: "sub",
+//         args: [Arg::Reg, Arg::Reg, Arg::Reg],
+//         bit: Field::Calc(Reg::T0, Reg::T0, Reg::T0, 0),
+//     },
+//     asm!(),
+// );

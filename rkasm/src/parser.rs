@@ -32,7 +32,7 @@ impl<'a> Line<'a> {
 #[derive(Debug)]
 pub struct Code<'a> {
     pub line: &'a Line<'a>,
-    code: &'a str,
+    pub code: &'a str,
     comment: Option<&'a str>,
     pub stmt: Option<Stmt>,
 }
@@ -156,7 +156,7 @@ impl Stmt {
     fn cformat(&self) -> String {
         match self {
             Stmt::Err => cformat!("<red,bold>! ERROR</>"),
-            Stmt::Op { pc, bin, op } => op.cformat(),
+            Stmt::Op { pc: _, bin: _, op } => op.cformat(),
             Stmt::Label(label) => label.cformat(),
         }
     }
@@ -251,73 +251,16 @@ impl Label {
 // ----------------------------------------------------------------------------
 // Operation
 
-#[derive(Debug)]
-pub enum Op {
-    // kind:OpKind,
-    // rs1:Option<Reg>,
-    // rs2:Option<Reg>,
-    // rd:Option<Reg>,
-    // imm:Option<Imm>,
-    // Calculation Operations
-    Add { rd: Reg, rs1: Reg, rs2: Reg },
-    Sub { rd: Reg, rs1: Reg, rs2: Reg },
-    And { rd: Reg, rs1: Reg, rs2: Reg },
-    Or { rd: Reg, rs1: Reg, rs2: Reg },
-    Xor { rd: Reg, rs1: Reg, rs2: Reg },
-
-    Eq { rd: Reg, rs1: Reg, rs2: Reg },
-    Neq { rd: Reg, rs1: Reg, rs2: Reg },
-    Lt { rd: Reg, rs1: Reg, rs2: Reg },
-    Lts { rd: Reg, rs1: Reg, rs2: Reg },
-
-    Sr { rd: Reg, rs1: Reg },
-    Srs { rd: Reg, rs1: Reg },
-    Srr { rd: Reg, rs1: Reg },
-    Sl { rd: Reg, rs1: Reg },
-    Slr { rd: Reg, rs1: Reg },
-
-    Nop,
-    Mov { rd: Reg, rs1: Reg },
-
-    Addi { rd: Reg, rs1: Reg, imm: Imm },
-    Subi { rd: Reg, rs1: Reg, imm: Imm },
-    Andi { rd: Reg, rs1: Reg, imm: Imm },
-    Ori { rd: Reg, rs1: Reg, imm: Imm },
-    Xori { rd: Reg, rs1: Reg, imm: Imm },
-
-    Eqi { rd: Reg, rs1: Reg, imm: Imm },
-    Neqi { rd: Reg, rs1: Reg, imm: Imm },
-    Lti { rd: Reg, rs1: Reg, imm: Imm },
-    Ltsi { rd: Reg, rs1: Reg, imm: Imm },
-
-    Not { rd: Reg, rs1: Reg },
-    Loadi { rd: Reg, imm: Imm },
-
-    // Memory Operations
-    Load { rd: Reg, rs1: Reg, imm: Imm },
-    Store { rs2: Reg, rs1: Reg, imm: Imm },
-
-    // Controll Operations
-    If { rs2: Reg, imm: Imm },
-    Ifr { rs2: Reg, imm: Imm },
-    Jump { imm: Imm },
-    Jumpr { imm: Imm },
-    Call { imm: Imm },
-    Ret,
-    Iret,
+#[derive(Debug, Default)]
+pub struct Op {
+    kind: OpKind,
+    rs1: Option<Reg>,
+    rs2: Option<Reg>,
+    rd: Option<Reg>,
+    imm: Option<Imm>,
 }
 
-// #[derive(Debug)]
-
-// pub struct Op {
-//     kind: OpKind,
-//     rs1: Option<Reg>,
-//     rs2: Option<Reg>,
-//     rd: Option<Reg>,
-//     imm: Option<Imm>,
-// }
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum OpKind {
     // Calculation Operations
     Add,
@@ -337,6 +280,7 @@ pub enum OpKind {
     Sl,
     Slr,
 
+    #[default]
     Nop,
     Mov,
 
@@ -369,30 +313,41 @@ pub enum OpKind {
 }
 
 impl Op {
-    fn parse(code: &str, line: &Line) -> Result<Op, String> {
+    fn parse(code: &str, _line: &Line) -> Result<Op, String> {
         if let Some((op, args)) = code.split_whitespace().collect::<Vec<_>>().split_first() {
             let op: &str = op.to_owned();
             match op {
                 // Calculation Operations
 
                 // []
-                "nop" => return Ok(Op::Nop),
+                "nop" => {
+                    return Ok(Op {
+                        kind: OpKind::Nop,
+                        ..Default::default()
+                    })
+                }
 
                 // [rd, rs1]
                 "sr" | "srs" | "srr" | "sl" | "slr" | "mov" | "not" => {
                     if let Some([ref rd, ref rs1]) = args.get(0..2) {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
-                        return match op {
-                            "sr" => Ok(Op::Sr { rd, rs1 }),
-                            "srs" => Ok(Op::Srs { rd, rs1 }),
-                            "srr" => Ok(Op::Srr { rd, rs1 }),
-                            "sl" => Ok(Op::Sl { rd, rs1 }),
-                            "slr" => Ok(Op::Slr { rd, rs1 }),
-                            "mov" => Ok(Op::Mov { rd, rs1 }),
-                            "not" => Ok(Op::Not { rd, rs1 }),
+                        let kind = match op {
+                            "sr" => OpKind::Sr,
+                            "srs" => OpKind::Srs,
+                            "srr" => OpKind::Srr,
+                            "sl" => OpKind::Sl,
+                            "slr" => OpKind::Slr,
+                            "mov" => OpKind::Mov,
+                            "not" => OpKind::Not,
                             _ => unreachable!(),
                         };
+                        return Ok(Op {
+                            kind: kind,
+                            rd: Some(rd),
+                            rs1: Some(rs1),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rd rs1]"));
                     }
@@ -404,18 +359,25 @@ impl Op {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         let rs2 = Reg::parse(rs2)?;
-                        return match op {
-                            "add" => Ok(Op::Add { rd, rs1, rs2 }),
-                            "sub" => Ok(Op::Sub { rd, rs1, rs2 }),
-                            "and" => Ok(Op::And { rd, rs1, rs2 }),
-                            "or" => Ok(Op::Or { rd, rs1, rs2 }),
-                            "xor" => Ok(Op::Xor { rd, rs1, rs2 }),
-                            "eq" => Ok(Op::Eq { rd, rs1, rs2 }),
-                            "neq" => Ok(Op::Neq { rd, rs1, rs2 }),
-                            "lt" => Ok(Op::Lt { rd, rs1, rs2 }),
-                            "lts" => Ok(Op::Lts { rd, rs1, rs2 }),
+                        let kind = match op {
+                            "add" => OpKind::Add,
+                            "sub" => OpKind::Sub,
+                            "and" => OpKind::And,
+                            "or" => OpKind::Or,
+                            "xor" => OpKind::Xor,
+                            "eq" => OpKind::Eq,
+                            "neq" => OpKind::Neq,
+                            "lt" => OpKind::Lt,
+                            "lts" => OpKind::Lts,
                             _ => unreachable!(),
                         };
+                        return Ok(Op {
+                            kind: kind,
+                            rd: Some(rd),
+                            rs1: Some(rs1),
+                            rs2: Some(rs2),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rd rs1 rs2]"));
                     }
@@ -426,7 +388,12 @@ impl Op {
                     if let Some([ref rd, ref imm]) = args.get(0..2) {
                         let rd = Reg::parse(rd)?;
                         let imm = Imm::parse(imm)?;
-                        return Ok(Op::Loadi { rd, imm });
+                        return Ok(Op {
+                            kind: OpKind::Loadi,
+                            rd: Some(rd),
+                            imm: Some(imm),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rd imm]"));
                     }
@@ -438,18 +405,25 @@ impl Op {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         let imm = Imm::parse(imm)?;
-                        return match op {
-                            "addi" => Ok(Op::Addi { rd, rs1, imm }),
-                            "subi" => Ok(Op::Subi { rd, rs1, imm }),
-                            "andi" => Ok(Op::Andi { rd, rs1, imm }),
-                            "ori" => Ok(Op::Ori { rd, rs1, imm }),
-                            "xori" => Ok(Op::Xori { rd, rs1, imm }),
-                            "eqi" => Ok(Op::Eqi { rd, rs1, imm }),
-                            "neqi" => Ok(Op::Neqi { rd, rs1, imm }),
-                            "lti" => Ok(Op::Lti { rd, rs1, imm }),
-                            "ltsi" => Ok(Op::Ltsi { rd, rs1, imm }),
+                        let kind = match op {
+                            "addi" => OpKind::Addi,
+                            "subi" => OpKind::Subi,
+                            "andi" => OpKind::Andi,
+                            "ori" => OpKind::Ori,
+                            "xori" => OpKind::Xori,
+                            "eqi" => OpKind::Eqi,
+                            "neqi" => OpKind::Neqi,
+                            "lti" => OpKind::Lti,
+                            "ltsi" => OpKind::Ltsi,
                             _ => unreachable!(),
                         };
+                        return Ok(Op {
+                            kind: kind,
+                            rd: Some(rd),
+                            rs1: Some(rs1),
+                            imm: Some(imm),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rd rs1 imm]"));
                     }
@@ -462,7 +436,13 @@ impl Op {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         let imm = Imm::parse(imm)?;
-                        return Ok(Op::Load { rd, rs1, imm });
+                        return Ok(Op {
+                            kind: OpKind::Load,
+                            rd: Some(rd),
+                            rs1: Some(rs1),
+                            imm: Some(imm),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rd rs1 imm]"));
                     }
@@ -472,7 +452,13 @@ impl Op {
                         let rs2 = Reg::parse(rs2)?;
                         let rs1 = Reg::parse(rs1)?;
                         let imm = Imm::parse(imm)?;
-                        return Ok(Op::Store { rs2, rs1, imm });
+                        return Ok(Op {
+                            kind: OpKind::Store,
+                            rs2: Some(rs2),
+                            rs1: Some(rs1),
+                            imm: Some(imm),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rs2 rs1 imm]"));
                     }
@@ -484,11 +470,17 @@ impl Op {
                     if let Some([ref rs2, ref imm]) = args.get(0..2) {
                         let rs2 = Reg::parse(rs2)?;
                         let imm = Imm::parse(imm)?;
-                        match op {
-                            "if" => return Ok(Op::If { rs2, imm }),
-                            "ifr" => return Ok(Op::Ifr { rs2, imm }),
+                        let kind = match op {
+                            "if" => OpKind::If,
+                            "ifr" => OpKind::Ifr,
                             _ => unreachable!(),
-                        }
+                        };
+                        return Ok(Op {
+                            kind: kind,
+                            rs2: Some(rs2),
+                            imm: Some(imm),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [rs2 imm]"));
                     }
@@ -496,18 +488,33 @@ impl Op {
                 "jump" | "jumpr" | "call" => {
                     if let Some([ref imm]) = args.get(0..1) {
                         let imm = Imm::parse(imm)?;
-                        match op {
-                            "jump" => return Ok(Op::Jump { imm }),
-                            "jumpr" => return Ok(Op::Jumpr { imm }),
-                            "call" => return Ok(Op::Call { imm }),
+                        let kind = match op {
+                            "jump" => OpKind::Jump,
+                            "jumpr" => OpKind::Jumpr,
+                            "call" => OpKind::Call,
                             _ => unreachable!(),
-                        }
+                        };
+                        return Ok(Op {
+                            kind: kind,
+                            imm: Some(imm),
+                            ..Default::default()
+                        });
                     } else {
                         return Err(format!("Invalid operands: expected [imm]"));
                     }
                 }
-                "ret" => return Ok(Op::Ret),
-                "iret" => return Ok(Op::Iret),
+                "ret" => {
+                    return Ok(Op {
+                        kind: OpKind::Ret,
+                        ..Default::default()
+                    })
+                }
+                "iret" => {
+                    return Ok(Op {
+                        kind: OpKind::Iret,
+                        ..Default::default()
+                    })
+                }
 
                 _ => return Err(format!("Unknown operation: `{}`", op)),
             };
@@ -518,11 +525,11 @@ impl Op {
 
 impl Op {
     fn cformat(&self) -> String {
-        let format_opt_reg = |r: Option<&Reg>| match r {
+        let format_opt_reg = |r: &Option<Reg>| match r {
             Some(a) => a.format(),
             None => "".to_string(),
         };
-        let cformat_rrr = |op: &str, r1: Option<&Reg>, r2: Option<&Reg>, r3: Option<&Reg>| {
+        let cformat_rrr = |op: &str, r1: &Option<Reg>, r2: &Option<Reg>, r3: &Option<Reg>| {
             cformat!(
                 "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
                 op,
@@ -531,58 +538,62 @@ impl Op {
                 format_opt_reg(r3)
             )
         };
-        let cformat_rri = |op: &str, r1: Option<&Reg>, r2: Option<&Reg>, imm: &Imm| {
+        let cformat_rri = |op: &str, r1: &Option<Reg>, r2: &Option<Reg>, imm: &Option<Imm>| {
             cformat!(
                 "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
                 op,
                 format_opt_reg(r1),
                 format_opt_reg(r2),
-                imm.cformat()
+                if let Some(imm) = imm {
+                    imm.cformat()
+                } else {
+                    "".to_string()
+                }
             )
         };
-        match self {
-            Op::Add { rd, rs1, rs2 } => cformat_rrr("add", Some(rd), Some(rs1), Some(rs2)),
-            Op::Sub { rd, rs1, rs2 } => cformat_rrr("sub", Some(rd), Some(rs1), Some(rs2)),
-            Op::And { rd, rs1, rs2 } => cformat_rrr("and", Some(rd), Some(rs1), Some(rs2)),
-            Op::Or { rd, rs1, rs2 } => cformat_rrr("or", Some(rd), Some(rs1), Some(rs2)),
-            Op::Xor { rd, rs1, rs2 } => cformat_rrr("xor", Some(rd), Some(rs1), Some(rs2)),
-            Op::Eq { rd, rs1, rs2 } => cformat_rrr("eq", Some(rd), Some(rs1), Some(rs2)),
-            Op::Neq { rd, rs1, rs2 } => cformat_rrr("neq", Some(rd), Some(rs1), Some(rs2)),
-            Op::Lt { rd, rs1, rs2 } => cformat_rrr("lt", Some(rd), Some(rs1), Some(rs2)),
-            Op::Lts { rd, rs1, rs2 } => cformat_rrr("lts", Some(rd), Some(rs1), Some(rs2)),
+        match self.kind {
+            OpKind::Add => cformat_rrr("add", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Sub => cformat_rrr("sub", &self.rd, &self.rs1, &self.rs2),
+            OpKind::And => cformat_rrr("and", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Or => cformat_rrr("or", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Xor => cformat_rrr("xor", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Eq => cformat_rrr("eq", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Neq => cformat_rrr("neq", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Lt => cformat_rrr("lt", &self.rd, &self.rs1, &self.rs2),
+            OpKind::Lts => cformat_rrr("lts", &self.rd, &self.rs1, &self.rs2),
 
-            Op::Sr { rd, rs1: rs } => cformat_rrr("sr", Some(rd), Some(rs), None),
-            Op::Srs { rd, rs1: rs } => cformat_rrr("srs", Some(rd), Some(rs), None),
-            Op::Srr { rd, rs1: rs } => cformat_rrr("srr", Some(rd), Some(rs), None),
-            Op::Sl { rd, rs1: rs } => cformat_rrr("sl", Some(rd), Some(rs), None),
-            Op::Slr { rd, rs1: rs } => cformat_rrr("slr", Some(rd), Some(rs), None),
+            OpKind::Sr => cformat_rrr("sr", &self.rd, &self.rs1, &None),
+            OpKind::Srs => cformat_rrr("srs", &self.rd, &self.rs1, &None),
+            OpKind::Srr => cformat_rrr("srr", &self.rd, &self.rs1, &None),
+            OpKind::Sl => cformat_rrr("sl", &self.rd, &self.rs1, &None),
+            OpKind::Slr => cformat_rrr("slr", &self.rd, &self.rs1, &None),
 
-            Op::Nop => cformat_rrr("nop", None, None, None),
-            Op::Mov { rd, rs1: rs } => cformat_rrr("mov", Some(rd), Some(rs), None),
+            OpKind::Nop => cformat_rrr("nop", &None, &None, &None),
+            OpKind::Mov => cformat_rrr("mov", &self.rd, &self.rs1, &None),
 
-            Op::Addi { rd, rs1, imm } => cformat_rri("addi", Some(rd), Some(rs1), imm),
-            Op::Subi { rd, rs1, imm } => cformat_rri("subi", Some(rd), Some(rs1), imm),
-            Op::Andi { rd, rs1, imm } => cformat_rri("andi", Some(rd), Some(rs1), imm),
-            Op::Ori { rd, rs1, imm } => cformat_rri("ori", Some(rd), Some(rs1), imm),
-            Op::Xori { rd, rs1, imm } => cformat_rri("xori", Some(rd), Some(rs1), imm),
-            Op::Eqi { rd, rs1, imm } => cformat_rri("eqi", Some(rd), Some(rs1), imm),
-            Op::Neqi { rd, rs1, imm } => cformat_rri("neqi", Some(rd), Some(rs1), imm),
-            Op::Lti { rd, rs1, imm } => cformat_rri("lti", Some(rd), Some(rs1), imm),
-            Op::Ltsi { rd, rs1, imm } => cformat_rri("ltsi", Some(rd), Some(rs1), imm),
+            OpKind::Addi => cformat_rri("addi", &self.rd, &self.rs1, &self.imm),
+            OpKind::Subi => cformat_rri("subi", &self.rd, &self.rs1, &self.imm),
+            OpKind::Andi => cformat_rri("andi", &self.rd, &self.rs1, &self.imm),
+            OpKind::Ori => cformat_rri("ori", &self.rd, &self.rs1, &self.imm),
+            OpKind::Xori => cformat_rri("xori", &self.rd, &self.rs1, &self.imm),
+            OpKind::Eqi => cformat_rri("eqi", &self.rd, &self.rs1, &self.imm),
+            OpKind::Neqi => cformat_rri("neqi", &self.rd, &self.rs1, &self.imm),
+            OpKind::Lti => cformat_rri("lti", &self.rd, &self.rs1, &self.imm),
+            OpKind::Ltsi => cformat_rri("ltsi", &self.rd, &self.rs1, &self.imm),
 
-            Op::Not { rd, rs1 } => cformat_rrr("not", Some(rd), Some(rs1), None),
-            Op::Loadi { rd, imm } => cformat_rri("loadi", Some(rd), None, imm),
+            OpKind::Not => cformat_rrr("not", &self.rd, &self.rs1, &None),
+            OpKind::Loadi => cformat_rri("loadi", &self.rd, &None, &self.imm),
 
-            Op::Load { rd, rs1, imm } => cformat_rri("load", Some(rd), Some(rs1), imm),
-            Op::Store { rs2, rs1, imm } => cformat_rri("store", Some(rs2), Some(rs1), imm),
+            OpKind::Load => cformat_rri("load", &self.rd, &self.rs1, &self.imm),
+            OpKind::Store => cformat_rri("store", &self.rs2, &self.rs1, &self.imm),
 
-            Op::Jump { imm } => cformat_rri("jump", None, None, imm),
-            Op::Jumpr { imm } => cformat_rri("jumpr", None, None, imm),
-            Op::If { rs2, imm } => cformat_rri("if", Some(rs2), None, imm),
-            Op::Ifr { rs2, imm } => cformat_rri("ifr", Some(rs2), None, imm),
-            Op::Call { imm } => cformat_rri("call", None, None, imm),
-            Op::Ret => cformat_rrr("ret", None, None, None),
-            Op::Iret => cformat_rrr("iret", None, None, None),
+            OpKind::If => cformat_rri("if", &self.rs2, &None, &self.imm),
+            OpKind::Ifr => cformat_rri("ifr", &self.rs2, &None, &self.imm),
+            OpKind::Jump => cformat_rri("jump", &None, &None, &self.imm),
+            OpKind::Jumpr => cformat_rri("jumpr", &None, &None, &self.imm),
+            OpKind::Call => cformat_rri("call", &None, &None, &self.imm),
+            OpKind::Ret => cformat_rrr("ret", &None, &None, &None),
+            OpKind::Iret => cformat_rrr("iret", &None, &None, &None),
         }
     }
 }
@@ -651,36 +662,40 @@ fn parse_with_prefix(s: &str) -> Result<u16, ParseIntError> {
 // Resolve Label
 
 impl Code<'_> {
-    pub fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) {
+    pub fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) -> Vec<Msg> {
         if let Some(stmt) = &self.stmt {
-            if let Stmt::Op { pc, bin, op } = stmt {
-                match op {
-                    Op::Addi { imm, .. }
-                    | Op::Subi { imm, .. }
-                    | Op::Andi { imm, .. }
-                    | Op::Ori { imm, .. } => imm.resolve(labels),
-                    _ => {}
-                };
+            if let Stmt::Op { op, .. } = stmt {
+                if let Some(imm) = &op.imm {
+                    let err = imm.resolve(labels);
+                    return err
+                        .iter()
+                        .map(|e| Msg::error(e.to_string(), self.line))
+                        .collect();
+                }
             }
         }
+        vec![]
     }
 }
 
 impl Imm {
-    fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) {
+    fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) -> Vec<String> {
         match self.kind.get() {
             ImmKind::Unknown => {
-                if let Some((line, lab, val)) = labels.get(&self.label) {
+                if let Some((_line, lab, val)) = labels.get(&self.label) {
                     match lab.kind {
                         LabelKind::Code => self.kind.set(ImmKind::OprLab),
                         LabelKind::Addr => self.kind.set(ImmKind::AddrLab),
                         LabelKind::Const => self.kind.set(ImmKind::ConstLab),
                     }
                     self.value.set(*val);
+                } else {
+                    return vec![format!("Undefined Label `{}`", self.label)];
                 }
             }
             _ => {}
-        }
+        };
+        vec![]
     }
 }
 
@@ -690,7 +705,7 @@ impl Imm {
 impl Code<'_> {
     pub fn generate_bin(&self) {
         if let Some(stmt) = &self.stmt {
-            if let Stmt::Op { pc, bin, op } = stmt {
+            if let Stmt::Op { pc, bin, op: _ } = stmt {
                 bin.set(Some(*pc as u32));
             }
         }

@@ -73,14 +73,22 @@ fn main() {
     dump(&msgs);
     msgs.clear();
 
-    println!("4. Generate Binary");
+    println!("4. Resolve Label");
     codes.iter().for_each(|code| {
-        code.resolve(&labels);
+        msgs.extend(code.resolve(&labels));
+    });
+
+    dump(&msgs);
+    msgs.clear();
+
+    println!("5. Generate Binary");
+    codes.iter().for_each(|code| {
         code.generate_bin();
     });
 
     dump(&msgs);
     msgs.clear();
+
     if args.dump {
         for line in &codes {
             println!("{}", line.cformat());
