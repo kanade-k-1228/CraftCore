@@ -67,10 +67,10 @@ impl Code<'_> {
                 if let Some(bin) = bin.get() {
                     format!(
                         "{:02X} {:02X} {:02X} {:02X}",
-                        (bin >> 12) & 0xF,
-                        (bin >> 8) & 0xF,
-                        (bin >> 4) & 0xF,
-                        bin & 0xF
+                        (bin >> 24) & 0xFF,
+                        (bin >> 16) & 0xFF,
+                        (bin >> 8) & 0xFF,
+                        bin & 0xFF
                     )
                 } else {
                     " ".repeat(11).to_string()
@@ -106,16 +106,6 @@ impl Code<'_> {
             "{}| {:>4}| {} | {} | {}{}",
             file, line, pc, binary, stmt, comment
         )
-    }
-}
-
-impl Code<'_> {
-    pub fn gen_binary(&self, labels: &HashMap<String, (&Line, &Label, u16)>) {
-        if let Some(stmt) = &self.stmt {
-            if let Stmt::Op { pc, bin, op } = stmt {
-                bin.set(Some(*pc as u32));
-            }
-        }
     }
 }
 
@@ -176,10 +166,18 @@ impl Stmt {
 // Label
 
 #[derive(Debug, Clone)]
-pub enum Label {
-    Code { key: String, val: u16 },
-    Addr { key: String, val: u16 },
-    Const { key: String, val: u16 },
+pub struct Label {
+    kind: LabelKind,
+    pub key: String,
+    pub val: u16,
+}
+
+#[derive(Debug, Clone)]
+
+pub enum LabelKind {
+    Code,
+    Addr,
+    Const,
 }
 
 impl Label {
@@ -193,7 +191,11 @@ impl Label {
                         if let Some(value) = key.get(1..) {
                             let key = label.to_string();
                             let val = parse_with_prefix(value).unwrap();
-                            return Some(Label::Addr { key, val });
+                            return Some(Label {
+                                kind: LabelKind::Addr,
+                                key,
+                                val,
+                            });
                         }
                     } else {
                     }
@@ -204,7 +206,11 @@ impl Label {
                         if let Some(value) = key.get(1..) {
                             let key = label.to_string();
                             let val = parse_with_prefix(value).unwrap();
-                            return Some(Label::Const { key, val });
+                            return Some(Label {
+                                kind: LabelKind::Const,
+                                key,
+                                val,
+                            });
                         }
                     }
                 }
@@ -217,7 +223,11 @@ impl Label {
                         let label = label.to_string();
                         if let Some(label) = label.get(0..label.len() - 1) {
                             let key = label.to_string();
-                            return Some(Label::Code { key, val: pc });
+                            return Some(Label {
+                                kind: LabelKind::Code,
+                                key,
+                                val: pc,
+                            });
                         }
                     }
                 }
@@ -230,16 +240,10 @@ impl Label {
 
 impl Label {
     fn cformat(&self) -> String {
-        match self {
-            Label::Code { key: label, val } => cformat!("<green>{}:{:04X}</>", label, val),
-            Label::Addr {
-                key: label,
-                val: value,
-            } => cformat!("<blue>{:04X} = {}</>", value, label),
-            Label::Const {
-                key: label,
-                val: value,
-            } => cformat!("<yellow>{:04X} = {}</>", value, label),
+        match self.kind {
+            LabelKind::Code => cformat!("<green>{}:{:04X}</>", self.key, self.val),
+            LabelKind::Addr => cformat!("<blue>{:04X} = {}</>", self.val, self.key),
+            LabelKind::Const => cformat!("<yellow>{:04X} = {}</>", self.val, self.key),
         }
     }
 }
@@ -249,6 +253,11 @@ impl Label {
 
 #[derive(Debug)]
 pub enum Op {
+    // kind:OpKind,
+    // rs1:Option<Reg>,
+    // rs2:Option<Reg>,
+    // rd:Option<Reg>,
+    // imm:Option<Imm>,
     // Calculation Operations
     Add { rd: Reg, rs1: Reg, rs2: Reg },
     Sub { rd: Reg, rs1: Reg, rs2: Reg },
@@ -294,6 +303,67 @@ pub enum Op {
     Jump { imm: Imm },
     Jumpr { imm: Imm },
     Call { imm: Imm },
+    Ret,
+    Iret,
+}
+
+// #[derive(Debug)]
+
+// pub struct Op {
+//     kind: OpKind,
+//     rs1: Option<Reg>,
+//     rs2: Option<Reg>,
+//     rd: Option<Reg>,
+//     imm: Option<Imm>,
+// }
+
+#[derive(Debug)]
+pub enum OpKind {
+    // Calculation Operations
+    Add,
+    Sub,
+    And,
+    Or,
+    Xor,
+
+    Eq,
+    Neq,
+    Lt,
+    Lts,
+
+    Sr,
+    Srs,
+    Srr,
+    Sl,
+    Slr,
+
+    Nop,
+    Mov,
+
+    Addi,
+    Subi,
+    Andi,
+    Ori,
+    Xori,
+
+    Eqi,
+    Neqi,
+    Lti,
+    Ltsi,
+
+    Not,
+    Loadi,
+
+    // Memory Operations
+    Load,
+    Store,
+
+    // Controll Operations
+    If,
+    Ifr,
+    Jump,
+    Jumpr,
+    Call,
     Ret,
     Iret,
 }
@@ -521,41 +591,43 @@ impl Op {
 // Immidiate
 
 #[derive(Debug)]
-pub enum Imm {
-    Literal(u16),
-    UnknownLabel(String),
-    OprLabel(String, u16),
-    ConstLabel(String, u16),
-    AddrLabel(String, u16),
+pub struct Imm {
+    kind: Cell<ImmKind>,
+    label: String,
+    value: Cell<u16>,
 }
 
-// pub struct Imm {
-//     kind: ImmKind,
-//     label: String,
-//     value: u16,
-// }
-// enum ImmKind {
-//     Literal,
-//     Unknown,
-//     OprLab,
-//     ConstLab,
-//     AddrLab,
-// }
+#[derive(Debug, Clone, Copy)]
+enum ImmKind {
+    Literal,
+    Unknown,
+    OprLab,
+    ConstLab,
+    AddrLab,
+}
 
 impl Imm {
     fn parse(s: &str) -> Result<Imm, String> {
-        if let Ok(lit) = parse_with_prefix(s) {
-            return Ok(Imm::Literal(lit));
+        if let Ok(value) = parse_with_prefix(s) {
+            return Ok(Imm {
+                kind: Cell::new(ImmKind::Literal),
+                label: s.to_string(),
+                value: Cell::new(value),
+            });
         };
-        Ok(Imm::UnknownLabel(s.to_string()))
+        Ok(Imm {
+            kind: Cell::new(ImmKind::Unknown),
+            label: s.to_string(),
+            value: Cell::new(0),
+        })
     }
     fn cformat(&self) -> String {
-        match self {
-            Imm::Literal(val) => cformat!("<yellow>0x{:0>4X}</>", *val),
-            Imm::UnknownLabel(lab) => cformat!("<yellow>{}</>", lab),
-            Imm::OprLabel(lab, val) => cformat!(""),
-            Imm::ConstLabel(lab, val) => cformat!(""),
-            Imm::AddrLabel(lab, val) => cformat!(""),
+        match self.kind.get() {
+            ImmKind::Literal => cformat!("<yellow>0x{:0>4X}</>", self.value.get()),
+            ImmKind::Unknown => cformat!("<underline>{}</>", self.label),
+            ImmKind::OprLab => cformat!("<green>0x{:0>4X} = {}</>", self.value.get(), self.label),
+            ImmKind::ConstLab => cformat!("<blue>0x{:0>4X} = {}</>", self.value.get(), self.label),
+            ImmKind::AddrLab => cformat!("<blue>0x{:0>4X} = {}</>", self.value.get(), self.label),
         }
     }
 }
@@ -572,5 +644,55 @@ fn parse_with_prefix(s: &str) -> Result<u16, ParseIntError> {
             _ => 10,
         };
         u16::from_str_radix(num, radix)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Resolve Label
+
+impl Code<'_> {
+    pub fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) {
+        if let Some(stmt) = &self.stmt {
+            if let Stmt::Op { pc, bin, op } = stmt {
+                match op {
+                    Op::Addi { imm, .. }
+                    | Op::Subi { imm, .. }
+                    | Op::Andi { imm, .. }
+                    | Op::Ori { imm, .. } => imm.resolve(labels),
+                    _ => {}
+                };
+            }
+        }
+    }
+}
+
+impl Imm {
+    fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) {
+        match self.kind.get() {
+            ImmKind::Unknown => {
+                if let Some((line, lab, val)) = labels.get(&self.label) {
+                    match lab.kind {
+                        LabelKind::Code => self.kind.set(ImmKind::OprLab),
+                        LabelKind::Addr => self.kind.set(ImmKind::AddrLab),
+                        LabelKind::Const => self.kind.set(ImmKind::ConstLab),
+                    }
+                    self.value.set(*val);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Generate Binary
+
+impl Code<'_> {
+    pub fn generate_bin(&self) {
+        if let Some(stmt) = &self.stmt {
+            if let Stmt::Op { pc, bin, op } = stmt {
+                bin.set(Some(*pc as u32));
+            }
+        }
     }
 }

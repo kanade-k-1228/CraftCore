@@ -57,19 +57,13 @@ fn main() {
         let mut labels = HashMap::<String, (&Line, &Label, u16)>::new();
         codes.iter().for_each(|code| {
             if let Some(Stmt::Label(ref lab)) = code.stmt {
-                match lab {
-                    Label::Code { key, val }
-                    | Label::Addr { key, val }
-                    | Label::Const { key, val } => {
-                        if let Some((prev, _, _)) =
-                            labels.insert(key.clone(), (code.line, lab, *val))
-                        {
-                            msgs.extend(vec![
-                                Msg::error(format!("Re-defined label `{}`", key), &code.line),
-                                Msg::note(format!("Already defined here"), &prev),
-                            ])
-                        }
-                    }
+                if let Some((prev, _, _)) =
+                    labels.insert(lab.key.clone(), (code.line, lab, lab.val))
+                {
+                    msgs.extend(vec![
+                        Msg::error(format!("Re-defined label `{}`", lab.key), &code.line),
+                        Msg::note(format!("Already defined here"), &prev),
+                    ])
                 }
             }
         });
@@ -80,7 +74,10 @@ fn main() {
     msgs.clear();
 
     println!("4. Generate Binary");
-    codes.iter().for_each(|code| code.gen_binary(&labels));
+    codes.iter().for_each(|code| {
+        code.resolve(&labels);
+        code.generate_bin();
+    });
 
     dump(&msgs);
     msgs.clear();
