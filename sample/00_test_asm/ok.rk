@@ -17,40 +17,52 @@
 #0x0034 '4'
 #0x0035 '5'
 
-calc_test:
-    nop           ; no operation
-    mov  ss0 s1    ; s0 = s1
+calc:
     add  t2 t0 t1 ; t2 = t0 + t1
     sub  t2 t0 t1 ; t2 = t0 - t1
     and  t2 t0 t1 ; t2 = t0 & t1
     or   t2 t0 t1 ; t2 = t0 | t1
     xor  t2 t0 t1 ; t2 = t0 ^ t1
-    not  t2 t0    ; t2 = ~ t0
-    srs  t2 t0    ; t2 = s>> t0
-    sru  t2 t0    ; t2 = 0>> t0
-    sl   t2 t0    ; t2 = t0 <<0
+
     eq   t2 t0 t1 ; t2 = t0 == t1
-    ltu  t2 t0 t1 ; t2 = t0 < t1
+    neq  t2 t0 t1 ; t2 = t0 != t1
+    lt   t2 t0 t1 ; t2 = t0 < t1
     lts  t2 t0 t1 ; t2 = t0 < t1
-calci_test:
-    loadi t0    0x0123 ; t0 = 0x0123
+
+    sr   t2 t0    ; t2 = 0   >> t0
+    srs  t2 t0    ; t2 = sig >> t0
+    srr  t2 t0    ; t2 = lsb >> t0
+    sl   t2 t0    ; t2 = t0 << 0
+    slr  t2 t0    ; t2 = t0 << msb
+
+    nop           ; no operation
+    mov  s0 s1    ; s0 = s1
+
+calci:
     addi  t2 t0 const  ; t2 = t0 + const
     subi  t2 t0 hoge   ; t2 = t0 + hoge
     andi  t2 t0 fuga   ; t2 = t0 + fuga
     ori   t2 t0 0x0000
     xori  t2 t0 0x0110
+
     eqi   t2 t0 0x1100
+    neqi  t2 t0 0x1100
+    lti   t2 t0 0xf000
     ltsi  t2 t0 0xf000
-    ltui  t2 t0 0xf000
-memory_test:
+
+    not   t2 t0        ; t2 = ~ t0
+    loadi t0    0x0123 ; t0 = 0x0123
+
+memory:
     load  t2 t0 hoge ; t2 <= [t0 + hoge]
     store t2 t0 fuga ; t2 => [t0 + fuga]
+
 ctrl_test:
 a:
+    if    zero b  ; if zero = 0 ? pc = b
+    ifr   zero b  ; if zero = 0 ? pc = pc + b
     jump   e    ; pc = e
     jumpr  0x1  ; pc = pc + 0x1
-    if  zero b  ; if zero = 0 ? pc = b
-    ifr zero b  ; if zero = 0 ? pc = pc + b
 b:
     call c ; pc = c, ra = pc + 1
 c:
