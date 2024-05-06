@@ -1,51 +1,120 @@
 use color_print::cformat;
 use rk16::Reg;
-use std::num::ParseIntError;
+use std::{cell::Cell, collections::HashMap, num::ParseIntError};
 
-// ----------------------------------------------------------------------------
-// Line
+use crate::message::Msg;
 
-#[derive(Debug)]
-pub struct Line {
-    file: String,
+#[derive(Debug, Clone)]
+pub struct Line<'a> {
+    file: &'a String,
     idx: usize,
     raw: String,
-    code: String,
-    comment: String,
+}
+
+impl<'a> Line<'a> {
+    pub fn new(file: &'a String, idx: usize, raw: String) -> Self {
+        Self { file, idx, raw }
+    }
+    pub fn pos(&self) -> String {
+        format!("{}:{:0>4}", self.file, self.idx + 1)
+    }
+    pub fn line_no(&self) -> usize {
+        self.idx + 1
+    }
+    pub fn raw(&'a self) -> &'a String {
+        &self.raw
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Code
+
+#[derive(Debug)]
+pub struct Code<'a> {
+    pub line: &'a Line<'a>,
+    code: &'a str,
+    comment: Option<&'a str>,
     pub stmt: Option<Stmt>,
 }
 
-impl Line {
-    pub fn print_pos(&self) -> String {
-        format!("{}:{}", self.file, self.idx + 1)
+impl<'a> Code<'a> {
+    pub fn parse(line: &'a Line, pc: u16) -> (Code<'a>, Vec<Msg<'a>>) {
+        let (code, comment) = line.raw.split_once(";").unwrap_or((&line.raw, ""));
+        let (stmt, msgs) = Stmt::parse(&code, line, pc);
+        return (
+            Code {
+                line,
+                code,
+                comment: if comment == "" { None } else { Some(comment) },
+                stmt,
+            },
+            msgs,
+        );
     }
 }
 
-impl Line {
-    pub fn parse(file: &str, idx: usize, line: &str) -> Line {
-        let (code, comment) = line.split_once(";").unwrap_or((&line, ""));
-        return Line {
-            file: file.to_string(),
-            idx: idx,
-            raw: line.to_string(),
-            code: code.to_string(),
-            comment: comment.to_string(),
-            stmt: Stmt::parse(&code),
+impl Code<'_> {
+    pub fn cformat(&self) -> String {
+        let comment = match self.comment {
+            Some(s) => format!(" ;{}", s),
+            None => format!(""),
         };
-    }
-}
 
-impl Line {
-    pub fn cprint(&self) -> String {
-        let place = format!("{}:{:0>4}", self.file, self.idx + 1);
-        let comment = if self.comment != "" {
-            format!(";{}", self.comment)
+        let line = self.line.line_no();
+
+        let binary = {
+            if let Some(Stmt::Op { pc: _, bin, op: _ }) = &self.stmt {
+                if let Some(bin) = bin.get() {
+                    format!(
+                        "{:02X} {:02X} {:02X} {:02X}",
+                        (bin >> 12) & 0xF,
+                        (bin >> 8) & 0xF,
+                        (bin >> 4) & 0xF,
+                        bin & 0xF
+                    )
+                } else {
+                    " ".repeat(11).to_string()
+                }
+            } else {
+                " ".repeat(11).to_string()
+            }
+        };
+
+        let pc = {
+            if let Some(Stmt::Op { pc, .. }) = &self.stmt {
+                cformat!("<green>{:>4X}</>", pc)
+            } else {
+                " ".repeat(4).to_string()
+            }
+        };
+
+        let stmt = {
+            match &self.stmt {
+                Some(stmt) => stmt.cformat(),
+                None => "".to_string(),
+            }
+        };
+
+        let file = if line == 1 {
+            let line = "+-----+------+-------------+-----------------------------+";
+            format!("{}\n| {:<54} |\n{}\n", line, self.line.file, line)
         } else {
             "".to_string()
         };
-        match &self.stmt {
-            Some(stmt) => format!("{} | {:<35} {}", place, stmt.cprint(), comment),
-            None => format!("{} | {}", place, comment),
+
+        format!(
+            "{}| {:>4}| {} | {} | {}{}",
+            file, line, pc, binary, stmt, comment
+        )
+    }
+}
+
+impl Code<'_> {
+    pub fn gen_binary(&self, labels: &HashMap<String, (&Line, &Label, u16)>) {
+        if let Some(stmt) = &self.stmt {
+            if let Stmt::Op { pc, bin, op } = stmt {
+                bin.set(Some(*pc as u32));
+            }
         }
     }
 }
@@ -55,37 +124,50 @@ impl Line {
 
 #[derive(Debug)]
 pub enum Stmt {
-    Err(String),
-    Op(Op),
+    Err,
+    Op {
+        pc: u16,
+        bin: Cell<Option<u32>>,
+        op: Op,
+    },
     Label(Label),
 }
 
 impl Stmt {
-    fn parse(code: &str) -> Option<Stmt> {
+    fn parse<'a>(code: &str, line: &'a Line, pc: u16) -> (Option<Stmt>, Vec<Msg<'a>>) {
         let words: Vec<&str> = code.split_whitespace().collect();
         if words.len() == 0 {
-            return None;
+            return (None, vec![]);
         }
 
-        match Label::parse(code) {
-            Some(lab) => return Some(Stmt::Label(lab)),
+        match Label::parse(code, pc) {
+            Some(lab) => return (Some(Stmt::Label(lab)), vec![]),
             None => {}
         };
 
         // Operation
-        match Op::parse(code) {
-            Ok(op) => return Some(Stmt::Op(op)),
-            Err(e) => return Some(Stmt::Err(e)),
+        match Op::parse(code, line) {
+            Ok(op) => {
+                return (
+                    Some(Stmt::Op {
+                        pc,
+                        bin: Cell::new(None),
+                        op,
+                    }),
+                    vec![],
+                )
+            }
+            Err(msg) => return (Some(Stmt::Err), vec![Msg::error(msg, line)]),
         };
     }
 }
 
 impl Stmt {
-    fn cprint(&self) -> String {
+    fn cformat(&self) -> String {
         match self {
-            Stmt::Err(e) => cformat!("<red>! {:}</>", e),
-            Stmt::Op(op) => op.cprint(),
-            Stmt::Label(label) => label.cprint(),
+            Stmt::Err => cformat!("<red,bold>! ERROR</>"),
+            Stmt::Op { pc, bin, op } => op.cformat(),
+            Stmt::Label(label) => label.cformat(),
         }
     }
 }
@@ -93,17 +175,15 @@ impl Stmt {
 // ----------------------------------------------------------------------------
 // Label
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Label {
-    Code { label: String },
-    Addr { label: String, value: u16 },
-    Const { label: String, value: u16 },
+    Code { key: String, val: u16 },
+    Addr { key: String, val: u16 },
+    Const { key: String, val: u16 },
 }
 
 impl Label {
-    fn parse(code: &str) -> Option<Label> {
-        if let Some((op, args)) = code.split_whitespace().collect::<Vec<_>>().split_first() {}
-
+    fn parse(code: &str, pc: u16) -> Option<Label> {
         let words: Vec<&str> = code.split_whitespace().collect();
         if let Some(key) = words.get(0) {
             if let Some(head) = key.chars().nth(0) {
@@ -111,19 +191,20 @@ impl Label {
                 if head == '@' {
                     if let Some(label) = words.get(1) {
                         if let Some(value) = key.get(1..) {
-                            let label = label.to_string();
-                            let value = parse_with_prefix(value).unwrap();
-                            return Some(Label::Addr { label, value });
+                            let key = label.to_string();
+                            let val = parse_with_prefix(value).unwrap();
+                            return Some(Label::Addr { key, val });
                         }
+                    } else {
                     }
                 }
                 // #0x0123 const
                 if head == '#' {
                     if let Some(label) = words.get(1) {
                         if let Some(value) = key.get(1..) {
-                            let label = label.to_string();
-                            let value = parse_with_prefix(value).unwrap();
-                            return Some(Label::Const { label, value });
+                            let key = label.to_string();
+                            let val = parse_with_prefix(value).unwrap();
+                            return Some(Label::Const { key, val });
                         }
                     }
                 }
@@ -135,8 +216,8 @@ impl Label {
                     if let Some(label) = words.get(0) {
                         let label = label.to_string();
                         if let Some(label) = label.get(0..label.len() - 1) {
-                            let label = label.to_string();
-                            return Some(Label::Code { label });
+                            let key = label.to_string();
+                            return Some(Label::Code { key, val: pc });
                         }
                     }
                 }
@@ -148,11 +229,17 @@ impl Label {
 }
 
 impl Label {
-    fn cprint(&self) -> String {
+    fn cformat(&self) -> String {
         match self {
-            Label::Code { label } => cformat!("<green>{}:</>", label),
-            Label::Addr { label, value } => cformat!("<blue>{:04X} = {}</>", value, label),
-            Label::Const { label, value } => cformat!("<yellow>{:04X} = {}</>", value, label),
+            Label::Code { key: label, val } => cformat!("<green>{}:{:04X}</>", label, val),
+            Label::Addr {
+                key: label,
+                val: value,
+            } => cformat!("<blue>{:04X} = {}</>", value, label),
+            Label::Const {
+                key: label,
+                val: value,
+            } => cformat!("<yellow>{:04X} = {}</>", value, label),
         }
     }
 }
@@ -212,7 +299,7 @@ pub enum Op {
 }
 
 impl Op {
-    fn parse(code: &str) -> Result<Op, String> {
+    fn parse(code: &str, line: &Line) -> Result<Op, String> {
         if let Some((op, args)) = code.split_whitespace().collect::<Vec<_>>().split_first() {
             let op: &str = op.to_owned();
             match op {
@@ -223,7 +310,7 @@ impl Op {
 
                 // [rd, rs1]
                 "sr" | "srs" | "srr" | "sl" | "slr" | "mov" | "not" => {
-                    if let [ref rd, ref rs1] = args[0..2] {
+                    if let Some([ref rd, ref rs1]) = args.get(0..2) {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         return match op {
@@ -237,13 +324,13 @@ impl Op {
                             _ => unreachable!(),
                         };
                     } else {
-                        return Err("Argument Error".to_string());
+                        return Err(format!("Invalid operands: expected [rd rs1]"));
                     }
                 }
 
                 // [rd, rs1, rs2]
                 "add" | "sub" | "and" | "or" | "xor" | "eq" | "neq" | "lt" | "lts" => {
-                    if let [ref rd, ref rs1, ref rs2] = args[0..3] {
+                    if let Some([ref rd, ref rs1, ref rs2]) = args.get(0..3) {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         let rs2 = Reg::parse(rs2)?;
@@ -260,24 +347,24 @@ impl Op {
                             _ => unreachable!(),
                         };
                     } else {
-                        return Err("Argument Error".to_string());
+                        return Err(format!("Invalid operands: expected [rd rs1 rs2]"));
                     }
                 }
 
                 // [rd, imm]
                 "loadi" => {
-                    if let [ref rd, ref imm] = args[0..2] {
+                    if let Some([ref rd, ref imm]) = args.get(0..2) {
                         let rd = Reg::parse(rd)?;
                         let imm = Imm::parse(imm)?;
                         return Ok(Op::Loadi { rd, imm });
                     } else {
-                        return Err("Argument Error".to_string());
+                        return Err(format!("Invalid operands: expected [rd imm]"));
                     }
                 }
 
                 // [rd, rs1, imm]
                 "addi" | "subi" | "andi" | "ori" | "xori" | "eqi" | "neqi" | "lti" | "ltsi" => {
-                    if let [ref rd, ref rs1, ref imm] = args[0..3] {
+                    if let Some([ref rd, ref rs1, ref imm]) = args.get(0..3) {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         let imm = Imm::parse(imm)?;
@@ -294,33 +381,37 @@ impl Op {
                             _ => unreachable!(),
                         };
                     } else {
-                        return Err("Argument Error".to_string());
+                        return Err(format!("Invalid operands: expected [rd rs1 imm]"));
                     }
                 }
 
                 //--------------------------------------
                 // Memory Operations
                 "load" => {
-                    if let [ref rd, ref rs1, ref imm] = args[0..3] {
+                    if let Some([ref rd, ref rs1, ref imm]) = args.get(0..3) {
                         let rd = Reg::parse(rd)?;
                         let rs1 = Reg::parse(rs1)?;
                         let imm = Imm::parse(imm)?;
                         return Ok(Op::Load { rd, rs1, imm });
+                    } else {
+                        return Err(format!("Invalid operands: expected [rd rs1 imm]"));
                     }
                 }
                 "store" => {
-                    if let [ref rs2, ref rs1, ref imm] = args[0..3] {
+                    if let Some([ref rs2, ref rs1, ref imm]) = args.get(0..3) {
                         let rs2 = Reg::parse(rs2)?;
                         let rs1 = Reg::parse(rs1)?;
                         let imm = Imm::parse(imm)?;
                         return Ok(Op::Store { rs2, rs1, imm });
+                    } else {
+                        return Err(format!("Invalid operands: expected [rs2 rs1 imm]"));
                     }
                 }
 
                 //--------------------------------------
                 // Controll Operations
                 "if" | "ifr" => {
-                    if let [ref rs2, ref imm] = args[0..2] {
+                    if let Some([ref rs2, ref imm]) = args.get(0..2) {
                         let rs2 = Reg::parse(rs2)?;
                         let imm = Imm::parse(imm)?;
                         match op {
@@ -328,10 +419,12 @@ impl Op {
                             "ifr" => return Ok(Op::Ifr { rs2, imm }),
                             _ => unreachable!(),
                         }
+                    } else {
+                        return Err(format!("Invalid operands: expected [rs2 imm]"));
                     }
                 }
                 "jump" | "jumpr" | "call" => {
-                    if let [ref imm] = args[0..1] {
+                    if let Some([ref imm]) = args.get(0..1) {
                         let imm = Imm::parse(imm)?;
                         match op {
                             "jump" => return Ok(Op::Jump { imm }),
@@ -339,89 +432,87 @@ impl Op {
                             "call" => return Ok(Op::Call { imm }),
                             _ => unreachable!(),
                         }
+                    } else {
+                        return Err(format!("Invalid operands: expected [imm]"));
                     }
                 }
                 "ret" => return Ok(Op::Ret),
                 "iret" => return Ok(Op::Iret),
 
-                _ => return Err(format!("Unknown Operation: {}", op)),
+                _ => return Err(format!("Unknown operation: `{}`", op)),
             };
         }
-        return Err(format!("Unknown Error"));
+        return Err(format!("Unknown Error: Cannot parse as Op"));
     }
 }
 
 impl Op {
-    fn cprint(&self) -> String {
-        let cprint_op_reg = |op: &str, r1: Option<&Reg>, r2: Option<&Reg>, r3: Option<&Reg>| {
-            let print = |r: Option<&Reg>| match r {
-                Some(a) => a.print(),
-                None => "".to_string(),
-            };
+    fn cformat(&self) -> String {
+        let format_opt_reg = |r: Option<&Reg>| match r {
+            Some(a) => a.format(),
+            None => "".to_string(),
+        };
+        let cformat_rrr = |op: &str, r1: Option<&Reg>, r2: Option<&Reg>, r3: Option<&Reg>| {
             cformat!(
-                "  <red>{:<6}</><blue>{:<4}{:<4}{:<4}</>",
+                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
                 op,
-                print(r1),
-                print(r2),
-                print(r3)
+                format_opt_reg(r1),
+                format_opt_reg(r2),
+                format_opt_reg(r3)
             )
         };
-        let cprint_op_imm = |op: &str, r1: Option<&Reg>, r2: Option<&Reg>, imm: &Imm| {
-            let print = |r: Option<&Reg>| match r {
-                Some(a) => a.print(),
-                None => "".to_string(),
-            };
+        let cformat_rri = |op: &str, r1: Option<&Reg>, r2: Option<&Reg>, imm: &Imm| {
             cformat!(
-                "  <red>{:<6}</><blue>{:<4}{:<4}{:<4}</>",
+                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
                 op,
-                print(r1),
-                print(r2),
-                "imm"
+                format_opt_reg(r1),
+                format_opt_reg(r2),
+                imm.cformat()
             )
         };
         match self {
-            Op::Add { rd, rs1, rs2 } => cprint_op_reg("add", Some(rd), Some(rs1), Some(rs2)),
-            Op::Sub { rd, rs1, rs2 } => cprint_op_reg("sub", Some(rd), Some(rs1), Some(rs2)),
-            Op::And { rd, rs1, rs2 } => cprint_op_reg("and", Some(rd), Some(rs1), Some(rs2)),
-            Op::Or { rd, rs1, rs2 } => cprint_op_reg("or", Some(rd), Some(rs1), Some(rs2)),
-            Op::Xor { rd, rs1, rs2 } => cprint_op_reg("xor", Some(rd), Some(rs1), Some(rs2)),
-            Op::Eq { rd, rs1, rs2 } => cprint_op_reg("eq", Some(rd), Some(rs1), Some(rs2)),
-            Op::Neq { rd, rs1, rs2 } => cprint_op_reg("neq", Some(rd), Some(rs1), Some(rs2)),
-            Op::Lt { rd, rs1, rs2 } => cprint_op_reg("lt", Some(rd), Some(rs1), Some(rs2)),
-            Op::Lts { rd, rs1, rs2 } => cprint_op_reg("lts", Some(rd), Some(rs1), Some(rs2)),
+            Op::Add { rd, rs1, rs2 } => cformat_rrr("add", Some(rd), Some(rs1), Some(rs2)),
+            Op::Sub { rd, rs1, rs2 } => cformat_rrr("sub", Some(rd), Some(rs1), Some(rs2)),
+            Op::And { rd, rs1, rs2 } => cformat_rrr("and", Some(rd), Some(rs1), Some(rs2)),
+            Op::Or { rd, rs1, rs2 } => cformat_rrr("or", Some(rd), Some(rs1), Some(rs2)),
+            Op::Xor { rd, rs1, rs2 } => cformat_rrr("xor", Some(rd), Some(rs1), Some(rs2)),
+            Op::Eq { rd, rs1, rs2 } => cformat_rrr("eq", Some(rd), Some(rs1), Some(rs2)),
+            Op::Neq { rd, rs1, rs2 } => cformat_rrr("neq", Some(rd), Some(rs1), Some(rs2)),
+            Op::Lt { rd, rs1, rs2 } => cformat_rrr("lt", Some(rd), Some(rs1), Some(rs2)),
+            Op::Lts { rd, rs1, rs2 } => cformat_rrr("lts", Some(rd), Some(rs1), Some(rs2)),
 
-            Op::Sr { rd, rs1: rs } => cprint_op_reg("sr", Some(rd), Some(rs), None),
-            Op::Srs { rd, rs1: rs } => cprint_op_reg("srs", Some(rd), Some(rs), None),
-            Op::Srr { rd, rs1: rs } => cprint_op_reg("srr", Some(rd), Some(rs), None),
-            Op::Sl { rd, rs1: rs } => cprint_op_reg("sl", Some(rd), Some(rs), None),
-            Op::Slr { rd, rs1: rs } => cprint_op_reg("slr", Some(rd), Some(rs), None),
+            Op::Sr { rd, rs1: rs } => cformat_rrr("sr", Some(rd), Some(rs), None),
+            Op::Srs { rd, rs1: rs } => cformat_rrr("srs", Some(rd), Some(rs), None),
+            Op::Srr { rd, rs1: rs } => cformat_rrr("srr", Some(rd), Some(rs), None),
+            Op::Sl { rd, rs1: rs } => cformat_rrr("sl", Some(rd), Some(rs), None),
+            Op::Slr { rd, rs1: rs } => cformat_rrr("slr", Some(rd), Some(rs), None),
 
-            Op::Nop => cprint_op_reg("nop", None, None, None),
-            Op::Mov { rd, rs1: rs } => cprint_op_reg("mov", Some(rd), Some(rs), None),
+            Op::Nop => cformat_rrr("nop", None, None, None),
+            Op::Mov { rd, rs1: rs } => cformat_rrr("mov", Some(rd), Some(rs), None),
 
-            Op::Addi { rd, rs1, imm } => cprint_op_imm("addi", Some(rd), Some(rs1), imm),
-            Op::Subi { rd, rs1, imm } => cprint_op_imm("subi", Some(rd), Some(rs1), imm),
-            Op::Andi { rd, rs1, imm } => cprint_op_imm("andi", Some(rd), Some(rs1), imm),
-            Op::Ori { rd, rs1, imm } => cprint_op_imm("ori", Some(rd), Some(rs1), imm),
-            Op::Xori { rd, rs1, imm } => cprint_op_imm("xori", Some(rd), Some(rs1), imm),
-            Op::Eqi { rd, rs1, imm } => cprint_op_imm("eqi", Some(rd), Some(rs1), imm),
-            Op::Neqi { rd, rs1, imm } => cprint_op_imm("neqi", Some(rd), Some(rs1), imm),
-            Op::Lti { rd, rs1, imm } => cprint_op_imm("lti", Some(rd), Some(rs1), imm),
-            Op::Ltsi { rd, rs1, imm } => cprint_op_imm("ltsi", Some(rd), Some(rs1), imm),
+            Op::Addi { rd, rs1, imm } => cformat_rri("addi", Some(rd), Some(rs1), imm),
+            Op::Subi { rd, rs1, imm } => cformat_rri("subi", Some(rd), Some(rs1), imm),
+            Op::Andi { rd, rs1, imm } => cformat_rri("andi", Some(rd), Some(rs1), imm),
+            Op::Ori { rd, rs1, imm } => cformat_rri("ori", Some(rd), Some(rs1), imm),
+            Op::Xori { rd, rs1, imm } => cformat_rri("xori", Some(rd), Some(rs1), imm),
+            Op::Eqi { rd, rs1, imm } => cformat_rri("eqi", Some(rd), Some(rs1), imm),
+            Op::Neqi { rd, rs1, imm } => cformat_rri("neqi", Some(rd), Some(rs1), imm),
+            Op::Lti { rd, rs1, imm } => cformat_rri("lti", Some(rd), Some(rs1), imm),
+            Op::Ltsi { rd, rs1, imm } => cformat_rri("ltsi", Some(rd), Some(rs1), imm),
 
-            Op::Not { rd, rs1 } => cprint_op_reg("not", Some(rd), Some(rs1), None),
-            Op::Loadi { rd, imm } => cprint_op_imm("loadi", Some(rd), None, imm),
+            Op::Not { rd, rs1 } => cformat_rrr("not", Some(rd), Some(rs1), None),
+            Op::Loadi { rd, imm } => cformat_rri("loadi", Some(rd), None, imm),
 
-            Op::Load { rd, rs1, imm } => cprint_op_imm("load", Some(rd), Some(rs1), imm),
-            Op::Store { rs2, rs1, imm } => cprint_op_imm("store", Some(rs2), Some(rs1), imm),
+            Op::Load { rd, rs1, imm } => cformat_rri("load", Some(rd), Some(rs1), imm),
+            Op::Store { rs2, rs1, imm } => cformat_rri("store", Some(rs2), Some(rs1), imm),
 
-            Op::Jump { imm } => cprint_op_imm("jump", None, None, imm),
-            Op::Jumpr { imm } => cprint_op_imm("jumpr", None, None, imm),
-            Op::If { rs2, imm } => cprint_op_imm("if", Some(rs2), None, imm),
-            Op::Ifr { rs2, imm } => cprint_op_imm("ifr", Some(rs2), None, imm),
-            Op::Call { imm } => cprint_op_imm("call", None, None, imm),
-            Op::Ret => cprint_op_reg("ret", None, None, None),
-            Op::Iret => cprint_op_reg("iret", None, None, None),
+            Op::Jump { imm } => cformat_rri("jump", None, None, imm),
+            Op::Jumpr { imm } => cformat_rri("jumpr", None, None, imm),
+            Op::If { rs2, imm } => cformat_rri("if", Some(rs2), None, imm),
+            Op::Ifr { rs2, imm } => cformat_rri("ifr", Some(rs2), None, imm),
+            Op::Call { imm } => cformat_rri("call", None, None, imm),
+            Op::Ret => cformat_rrr("ret", None, None, None),
+            Op::Iret => cformat_rrr("iret", None, None, None),
         }
     }
 }
@@ -430,7 +521,7 @@ impl Op {
 // Immidiate
 
 #[derive(Debug)]
-enum Imm {
+pub enum Imm {
     Literal(u16),
     UnknownLabel(String),
     OprLabel(String, u16),
@@ -438,12 +529,34 @@ enum Imm {
     AddrLabel(String, u16),
 }
 
+// pub struct Imm {
+//     kind: ImmKind,
+//     label: String,
+//     value: u16,
+// }
+// enum ImmKind {
+//     Literal,
+//     Unknown,
+//     OprLab,
+//     ConstLab,
+//     AddrLab,
+// }
+
 impl Imm {
     fn parse(s: &str) -> Result<Imm, String> {
         if let Ok(lit) = parse_with_prefix(s) {
             return Ok(Imm::Literal(lit));
         };
         Ok(Imm::UnknownLabel(s.to_string()))
+    }
+    fn cformat(&self) -> String {
+        match self {
+            Imm::Literal(val) => cformat!("<yellow>0x{:0>4X}</>", *val),
+            Imm::UnknownLabel(lab) => cformat!("<yellow>{}</>", lab),
+            Imm::OprLabel(lab, val) => cformat!(""),
+            Imm::ConstLabel(lab, val) => cformat!(""),
+            Imm::AddrLabel(lab, val) => cformat!(""),
+        }
     }
 }
 

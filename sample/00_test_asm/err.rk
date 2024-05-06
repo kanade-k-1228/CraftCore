@@ -1,8 +1,8 @@
-    hoge fuga fuga ; Undefined mnemonic
+    hoge fuga fuga ; Undefined operation `hoge`
     add zero zero ; Operand required
     add a0 a1 hoge ; Invalid register name
     call hoge ; Undefined label
 a:
     nop
-a: ; Re-define
+a: ; Re-define error
     nop

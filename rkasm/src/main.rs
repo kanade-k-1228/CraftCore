@@ -1,50 +1,95 @@
-mod labels;
+mod message;
 mod parser;
 use clap::Parser;
-use color_print::{cformat, cprintln};
+use color_print::cformat;
 use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader},
 };
 
-use crate::labels::collect_label;
+use crate::{
+    message::{dump, Msg},
+    parser::{Code, Label, Line, Stmt},
+};
 
 fn main() {
     let args: AppArgs = AppArgs::parse();
     println!("RK16 Assembler by kanade-k-1228");
 
-    println!("----------------------------------------------------");
-    println!("1. Parse Files: ");
-    let lines: Vec<parser::Line> = args
+    let mut msgs: Vec<Msg> = vec![];
+
+    println!("1. Read Files ");
+    let lines = args
         .input
         .iter()
         .flat_map(|fpath| {
             println!("  - {}", fpath);
             let file =
-                File::open(fpath).expect(&cformat!("<red,bold>Cannot Open File</>: {}", fpath));
-            let buf = BufReader::new(file);
-            buf.lines()
+                File::open(fpath).expect(&cformat!("<red,bold>Failed to open File</>: {}", fpath));
+            let lines = BufReader::new(file)
+                .lines()
                 .enumerate()
-                .map(|(idx, line)| parser::Line::parse(fpath, idx, &line.unwrap()))
-                .collect::<Vec<parser::Line>>()
+                .map(|(idx, line)| Line::new(fpath, idx, line.unwrap()))
+                .collect::<Vec<_>>();
+            lines
         })
-        .collect();
-    for line in &lines {
-        println!("{}", line.cprint());
-    }
+        .collect::<Vec<_>>();
 
-    println!("2. Collecting Label ... ");
-    let labels = collect_label(&lines);
-    println!("  - found #{} labels", labels.len());
+    println!("2. Parse Codes");
+    let codes = lines
+        .iter()
+        .scan(0 as u16, |pc, line| {
+            let (code, msg) = Code::parse(line, *pc);
+            if let Some(Stmt::Op { .. }) = &code.stmt {
+                *pc += 1;
+            }
+            msgs.extend(msg);
+            Some(code)
+        })
+        .collect::<Vec<_>>();
 
-    println!("3. Resolve Label");
+    dump(&msgs);
+    msgs.clear();
+
+    println!("3. Collect Label");
+    let labels = {
+        let mut labels = HashMap::<String, (&Line, &Label, u16)>::new();
+        codes.iter().for_each(|code| {
+            if let Some(Stmt::Label(ref lab)) = code.stmt {
+                match lab {
+                    Label::Code { key, val }
+                    | Label::Addr { key, val }
+                    | Label::Const { key, val } => {
+                        if let Some((prev, _, _)) =
+                            labels.insert(key.clone(), (code.line, lab, *val))
+                        {
+                            msgs.extend(vec![
+                                Msg::error(format!("Re-defined label `{}`", key), &code.line),
+                                Msg::note(format!("Already defined here"), &prev),
+                            ])
+                        }
+                    }
+                }
+            }
+        });
+        labels
+    };
+
+    dump(&msgs);
+    msgs.clear();
 
     println!("4. Generate Binary");
+    codes.iter().for_each(|code| code.gen_binary(&labels));
 
-    println!("5. Output Binary");
-
-    println!("----------------------------------------------------");
+    dump(&msgs);
+    msgs.clear();
+    if args.dump {
+        for line in &codes {
+            println!("{}", line.cformat());
+        }
+        println!("+-----+------+-------------+-----------------------------+");
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -59,4 +104,6 @@ struct AppArgs {
     input: Vec<String>,
     #[clap(short = 'o', long = "output", default_value = "out.rk.bin")]
     output: String,
+    #[clap(short = 'd', long = "dump")]
+    dump: bool,
 }

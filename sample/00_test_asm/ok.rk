@@ -1,4 +1,4 @@
-; This is a sample code of rk16 assembly language
+; This is a sample code for rk16 assembly
 
 @0x0200 hoge
 @0x0123 fuga
@@ -6,8 +6,6 @@
 @0x89AB foo
 @0xcdef bar
 @0x0010 exit
-
-@0123 hoge
 
 #0x0100 const
 #0x0030 '0'

@@ -22,7 +22,7 @@ pub enum Reg {
 
 impl Display for Reg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.print())
+        write!(f, "{:?}", self.format())
     }
 }
 
@@ -45,10 +45,10 @@ impl Reg {
             "s1" => Ok(Reg::S1),
             "s2" => Ok(Reg::S2),
             "s3" => Ok(Reg::S3),
-            _ => Err(format!("Unknown Reg Name: {}", s)),
+            _ => Err(format!("Unknown Registor Name: `{}`", s)),
         }
     }
-    pub fn print(&self) -> String {
+    pub fn format(&self) -> String {
         match self {
             Reg::ZERO => "zero",
             Reg::IRQ => "irq",
