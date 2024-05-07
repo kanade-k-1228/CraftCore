@@ -1,5 +1,5 @@
 use color_print::cformat;
-use rk16::Reg;
+use rk16::{op::OpKind, reg::Reg};
 use std::{cell::Cell, collections::HashMap, num::ParseIntError};
 
 use crate::message::Msg;
@@ -260,264 +260,162 @@ pub struct Op {
     imm: Option<Imm>,
 }
 
-#[derive(Debug, Default)]
-pub enum OpKind {
-    // Calculation Operations
-    Add,
-    Sub,
-    And,
-    Or,
-    Xor,
-
-    Eq,
-    Neq,
-    Lt,
-    Lts,
-
-    Sr,
-    Srs,
-    Srr,
-    Sl,
-    Slr,
-
-    #[default]
-    Nop,
-    Mov,
-
-    Addi,
-    Subi,
-    Andi,
-    Ori,
-    Xori,
-
-    Eqi,
-    Neqi,
-    Lti,
-    Ltsi,
-
-    Not,
-    Loadi,
-
-    // Memory Operations
-    Load,
-    Store,
-
-    // Controll Operations
-    If,
-    Ifr,
-    Jump,
-    Jumpr,
-    Call,
-    Ret,
-    Iret,
-}
-
 impl Op {
     fn parse(code: &str, _line: &Line) -> Result<Op, String> {
         if let Some((op, args)) = code.split_whitespace().collect::<Vec<_>>().split_first() {
             let op: &str = op.to_owned();
-            match op {
-                // Calculation Operations
-
-                // []
-                "nop" => {
-                    return Ok(Op {
-                        kind: OpKind::Nop,
-                        ..Default::default()
-                    })
-                }
-
-                // [rd, rs1]
-                "sr" | "srs" | "srr" | "sl" | "slr" | "mov" | "not" => {
-                    if let Some([ref rd, ref rs1]) = args.get(0..2) {
-                        let rd = Reg::parse(rd)?;
-                        let rs1 = Reg::parse(rs1)?;
-                        let kind = match op {
-                            "sr" => OpKind::Sr,
-                            "srs" => OpKind::Srs,
-                            "srr" => OpKind::Srr,
-                            "sl" => OpKind::Sl,
-                            "slr" => OpKind::Slr,
-                            "mov" => OpKind::Mov,
-                            "not" => OpKind::Not,
-                            _ => unreachable!(),
-                        };
+            if let Ok(kind) = OpKind::parse(op) {
+                match kind {
+                    // []
+                    OpKind::Nop | OpKind::Ret | OpKind::Iret => {
                         return Ok(Op {
                             kind: kind,
-                            rd: Some(rd),
-                            rs1: Some(rs1),
                             ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rd rs1]"));
+                        })
                     }
-                }
 
-                // [rd, rs1, rs2]
-                "add" | "sub" | "and" | "or" | "xor" | "eq" | "neq" | "lt" | "lts" => {
-                    if let Some([ref rd, ref rs1, ref rs2]) = args.get(0..3) {
-                        let rd = Reg::parse(rd)?;
-                        let rs1 = Reg::parse(rs1)?;
-                        let rs2 = Reg::parse(rs2)?;
-                        let kind = match op {
-                            "add" => OpKind::Add,
-                            "sub" => OpKind::Sub,
-                            "and" => OpKind::And,
-                            "or" => OpKind::Or,
-                            "xor" => OpKind::Xor,
-                            "eq" => OpKind::Eq,
-                            "neq" => OpKind::Neq,
-                            "lt" => OpKind::Lt,
-                            "lts" => OpKind::Lts,
-                            _ => unreachable!(),
-                        };
-                        return Ok(Op {
-                            kind: kind,
-                            rd: Some(rd),
-                            rs1: Some(rs1),
-                            rs2: Some(rs2),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rd rs1 rs2]"));
+                    // [rd, rs1]
+                    OpKind::Sr
+                    | OpKind::Srs
+                    | OpKind::Srr
+                    | OpKind::Sl
+                    | OpKind::Slr
+                    | OpKind::Mov
+                    | OpKind::Not => {
+                        if let Some([ref rd, ref rs1]) = args.get(0..2) {
+                            let rd = Reg::parse(rd)?;
+                            let rs1 = Reg::parse(rs1)?;
+                            return Ok(Op {
+                                kind: kind,
+                                rd: Some(rd),
+                                rs1: Some(rs1),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [rd rs1]"));
+                        }
                     }
-                }
 
-                // [rd, imm]
-                "loadi" => {
-                    if let Some([ref rd, ref imm]) = args.get(0..2) {
-                        let rd = Reg::parse(rd)?;
-                        let imm = Imm::parse(imm)?;
-                        return Ok(Op {
-                            kind: OpKind::Loadi,
-                            rd: Some(rd),
-                            imm: Some(imm),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rd imm]"));
+                    // [rd, rs1, rs2]
+                    OpKind::Add
+                    | OpKind::Sub
+                    | OpKind::And
+                    | OpKind::Or
+                    | OpKind::Xor
+                    | OpKind::Eq
+                    | OpKind::Neq
+                    | OpKind::Lt
+                    | OpKind::Lts => {
+                        if let Some([ref rd, ref rs1, ref rs2]) = args.get(0..3) {
+                            let rd = Reg::parse(rd)?;
+                            let rs1 = Reg::parse(rs1)?;
+                            let rs2 = Reg::parse(rs2)?;
+                            return Ok(Op {
+                                kind: kind,
+                                rd: Some(rd),
+                                rs1: Some(rs1),
+                                rs2: Some(rs2),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [rd rs1 rs2]"));
+                        }
                     }
-                }
 
-                // [rd, rs1, imm]
-                "addi" | "subi" | "andi" | "ori" | "xori" | "eqi" | "neqi" | "lti" | "ltsi" => {
-                    if let Some([ref rd, ref rs1, ref imm]) = args.get(0..3) {
-                        let rd = Reg::parse(rd)?;
-                        let rs1 = Reg::parse(rs1)?;
-                        let imm = Imm::parse(imm)?;
-                        let kind = match op {
-                            "addi" => OpKind::Addi,
-                            "subi" => OpKind::Subi,
-                            "andi" => OpKind::Andi,
-                            "ori" => OpKind::Ori,
-                            "xori" => OpKind::Xori,
-                            "eqi" => OpKind::Eqi,
-                            "neqi" => OpKind::Neqi,
-                            "lti" => OpKind::Lti,
-                            "ltsi" => OpKind::Ltsi,
-                            _ => unreachable!(),
-                        };
-                        return Ok(Op {
-                            kind: kind,
-                            rd: Some(rd),
-                            rs1: Some(rs1),
-                            imm: Some(imm),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rd rs1 imm]"));
+                    // [rd, rs1, imm]
+                    OpKind::Addi
+                    | OpKind::Subi
+                    | OpKind::Andi
+                    | OpKind::Ori
+                    | OpKind::Xori
+                    | OpKind::Eqi
+                    | OpKind::Neqi
+                    | OpKind::Lti
+                    | OpKind::Ltsi
+                    | OpKind::Load => {
+                        if let Some([ref rd, ref rs1, ref imm]) = args.get(0..3) {
+                            let rd = Reg::parse(rd)?;
+                            let rs1 = Reg::parse(rs1)?;
+                            let imm = Imm::parse(imm)?;
+                            return Ok(Op {
+                                kind: kind,
+                                rd: Some(rd),
+                                rs1: Some(rs1),
+                                imm: Some(imm),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [rd rs1 imm]"));
+                        }
                     }
-                }
 
-                //--------------------------------------
-                // Memory Operations
-                "load" => {
-                    if let Some([ref rd, ref rs1, ref imm]) = args.get(0..3) {
-                        let rd = Reg::parse(rd)?;
-                        let rs1 = Reg::parse(rs1)?;
-                        let imm = Imm::parse(imm)?;
-                        return Ok(Op {
-                            kind: OpKind::Load,
-                            rd: Some(rd),
-                            rs1: Some(rs1),
-                            imm: Some(imm),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rd rs1 imm]"));
+                    // [rd, imm]
+                    OpKind::Loadi => {
+                        if let Some([ref rd, ref imm]) = args.get(0..2) {
+                            let rd = Reg::parse(rd)?;
+                            let imm = Imm::parse(imm)?;
+                            return Ok(Op {
+                                kind: kind,
+                                rd: Some(rd),
+                                imm: Some(imm),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [rd imm]"));
+                        }
                     }
-                }
-                "store" => {
-                    if let Some([ref rs2, ref rs1, ref imm]) = args.get(0..3) {
-                        let rs2 = Reg::parse(rs2)?;
-                        let rs1 = Reg::parse(rs1)?;
-                        let imm = Imm::parse(imm)?;
-                        return Ok(Op {
-                            kind: OpKind::Store,
-                            rs2: Some(rs2),
-                            rs1: Some(rs1),
-                            imm: Some(imm),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rs2 rs1 imm]"));
-                    }
-                }
 
-                //--------------------------------------
-                // Controll Operations
-                "if" | "ifr" => {
-                    if let Some([ref rs2, ref imm]) = args.get(0..2) {
-                        let rs2 = Reg::parse(rs2)?;
-                        let imm = Imm::parse(imm)?;
-                        let kind = match op {
-                            "if" => OpKind::If,
-                            "ifr" => OpKind::Ifr,
-                            _ => unreachable!(),
-                        };
-                        return Ok(Op {
-                            kind: kind,
-                            rs2: Some(rs2),
-                            imm: Some(imm),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [rs2 imm]"));
+                    // [rs2, rs1, imm]
+                    OpKind::Store => {
+                        if let Some([ref rs2, ref rs1, ref imm]) = args.get(0..3) {
+                            let rs2 = Reg::parse(rs2)?;
+                            let rs1 = Reg::parse(rs1)?;
+                            let imm = Imm::parse(imm)?;
+                            return Ok(Op {
+                                kind: kind,
+                                rs2: Some(rs2),
+                                rs1: Some(rs1),
+                                imm: Some(imm),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [rs2 rs1 imm]"));
+                        }
                     }
-                }
-                "jump" | "jumpr" | "call" => {
-                    if let Some([ref imm]) = args.get(0..1) {
-                        let imm = Imm::parse(imm)?;
-                        let kind = match op {
-                            "jump" => OpKind::Jump,
-                            "jumpr" => OpKind::Jumpr,
-                            "call" => OpKind::Call,
-                            _ => unreachable!(),
-                        };
-                        return Ok(Op {
-                            kind: kind,
-                            imm: Some(imm),
-                            ..Default::default()
-                        });
-                    } else {
-                        return Err(format!("Invalid operands: expected [imm]"));
-                    }
-                }
-                "ret" => {
-                    return Ok(Op {
-                        kind: OpKind::Ret,
-                        ..Default::default()
-                    })
-                }
-                "iret" => {
-                    return Ok(Op {
-                        kind: OpKind::Iret,
-                        ..Default::default()
-                    })
-                }
 
-                _ => return Err(format!("Unknown operation: `{}`", op)),
-            };
+                    // [rs2, imm]
+                    OpKind::If | OpKind::Ifr => {
+                        if let Some([ref rs2, ref imm]) = args.get(0..2) {
+                            let rs2 = Reg::parse(rs2)?;
+                            let imm = Imm::parse(imm)?;
+                            return Ok(Op {
+                                kind: kind,
+                                rs2: Some(rs2),
+                                imm: Some(imm),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [rs2 imm]"));
+                        }
+                    }
+
+                    // [imm]
+                    OpKind::Jump | OpKind::Jumpr | OpKind::Call => {
+                        if let Some([ref imm]) = args.get(0..1) {
+                            let imm = Imm::parse(imm)?;
+                            return Ok(Op {
+                                kind: kind,
+                                imm: Some(imm),
+                                ..Default::default()
+                            });
+                        } else {
+                            return Err(format!("Invalid operands: expected [imm]"));
+                        }
+                    }
+                }
+            } else {
+                return Err(format!("Unknown operation: `{}`", op));
+            }
         }
         return Err(format!("Unknown Error: Cannot parse as Op"));
     }
@@ -702,11 +600,23 @@ impl Imm {
 // ----------------------------------------------------------------------------
 // Generate Binary
 
+fn field(b_31_16: u16, b_15_12: u8, b_11_8: u8, b_7_4: u8, b_3_0: u8) -> u32 {
+    (b_31_16 as u32 & 0xFF) << 16
+        | (b_15_12 as u32 & 0xF) << 12
+        | (b_11_8 as u32 & 0xF) << 8
+        | (b_7_4 as u32 & 0xF) << 8
+        | (b_3_0 as u32 & 0xF) << 8
+}
+
 impl Code<'_> {
     pub fn generate_bin(&self) {
         if let Some(stmt) = &self.stmt {
-            if let Stmt::Op { pc, bin, op: _ } = stmt {
-                bin.set(Some(*pc as u32));
+            if let Stmt::Op { pc: _, bin, op } = stmt {
+                bin.set(Some(match op.kind {
+                    OpKind::Add => field(0, 0, 0, 0, 0),
+                    OpKind::Sub => field(1, 0, 0, 0, 0),
+                    _ => 0,
+                }));
             }
         }
     }
