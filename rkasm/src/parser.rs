@@ -1,5 +1,5 @@
 use color_print::cformat;
-use rk16::{op::OpKind, reg::Reg};
+use rk16::{alu::Alu, op::OpKind, reg::Reg};
 use std::{cell::Cell, collections::HashMap, num::ParseIntError};
 
 use crate::message::Msg;
@@ -56,7 +56,7 @@ impl<'a> Code<'a> {
 impl Code<'_> {
     pub fn cformat(&self) -> String {
         let comment = match self.comment {
-            Some(s) => format!(" ;{}", s),
+            Some(s) => format!(";{}", s),
             None => format!(""),
         };
 
@@ -242,8 +242,8 @@ impl Label {
     fn cformat(&self) -> String {
         match self.kind {
             LabelKind::Code => cformat!("<green>{}:{:04X}</>", self.key, self.val),
-            LabelKind::Addr => cformat!("<blue>{:04X} = {}</>", self.val, self.key),
-            LabelKind::Const => cformat!("<yellow>{:04X} = {}</>", self.val, self.key),
+            LabelKind::Addr => cformat!("<blue>{:04X} = {:}</>", self.val, self.key),
+            LabelKind::Const => cformat!("<yellow>{:04X} = {:}</>", self.val, self.key),
         }
     }
 }
@@ -259,10 +259,34 @@ pub struct Op {
     rd: Option<Reg>,
     imm: Option<Imm>,
 }
+pub enum Ops {
+    None,
+    Calc {
+        fnct: Alu,
+        rs1: Reg,
+        rs2: Reg,
+        rd: Reg,
+    },
+    Calci {
+        rs1: Reg,
+        rd: Reg,
+        imm: Imm,
+    },
+}
 
 impl Op {
     fn parse(code: &str, _line: &Line) -> Result<Op, String> {
-        if let Some((op, args)) = code.split_whitespace().collect::<Vec<_>>().split_first() {
+        let toks = code.split_whitespace().collect::<Vec<_>>();
+
+        // Mathmatical Style
+        if let Some(eq) = toks.get(1) {
+            if *eq == "=" {
+                println!("Mathmatical Style")
+            }
+        }
+
+        // Operational Style
+        if let Some((op, args)) = toks.split_first() {
             let op: &str = op.to_owned();
             if let Ok(kind) = OpKind::parse(op) {
                 match kind {
@@ -508,18 +532,18 @@ pub struct Imm {
 
 #[derive(Debug, Clone, Copy)]
 enum ImmKind {
-    Literal,
+    Lit,
     Unknown,
-    OprLab,
-    ConstLab,
-    AddrLab,
+    RomAddr,
+    Const,
+    RamAddr,
 }
 
 impl Imm {
     fn parse(s: &str) -> Result<Imm, String> {
         if let Ok(value) = parse_with_prefix(s) {
             return Ok(Imm {
-                kind: Cell::new(ImmKind::Literal),
+                kind: Cell::new(ImmKind::Lit),
                 label: s.to_string(),
                 value: Cell::new(value),
             });
@@ -532,11 +556,13 @@ impl Imm {
     }
     fn cformat(&self) -> String {
         match self.kind.get() {
-            ImmKind::Literal => cformat!("<yellow>0x{:0>4X}</>", self.value.get()),
-            ImmKind::Unknown => cformat!("<underline>{}</>", self.label),
-            ImmKind::OprLab => cformat!("<green>0x{:0>4X} = {}</>", self.value.get(), self.label),
-            ImmKind::ConstLab => cformat!("<blue>0x{:0>4X} = {}</>", self.value.get(), self.label),
-            ImmKind::AddrLab => cformat!("<blue>0x{:0>4X} = {}</>", self.value.get(), self.label),
+            ImmKind::Lit => cformat!("<yellow>0x{:0>4X}</>", self.value.get()),
+            ImmKind::Unknown => cformat!("<underline>{:16}</> ", self.label),
+            ImmKind::RomAddr => {
+                cformat!("<green>0x{:0>4X} = {:8}</>", self.value.get(), self.label)
+            }
+            ImmKind::Const => cformat!("<blue>0x{:0>4X} = {:8}</>", self.value.get(), self.label),
+            ImmKind::RamAddr => cformat!("<blue>0x{:0>4X} = {:8}</>", self.value.get(), self.label),
         }
     }
 }
@@ -582,9 +608,9 @@ impl Imm {
             ImmKind::Unknown => {
                 if let Some((_line, lab, val)) = labels.get(&self.label) {
                     match lab.kind {
-                        LabelKind::Code => self.kind.set(ImmKind::OprLab),
-                        LabelKind::Addr => self.kind.set(ImmKind::AddrLab),
-                        LabelKind::Const => self.kind.set(ImmKind::ConstLab),
+                        LabelKind::Code => self.kind.set(ImmKind::RomAddr),
+                        LabelKind::Addr => self.kind.set(ImmKind::RamAddr),
+                        LabelKind::Const => self.kind.set(ImmKind::Const),
                     }
                     self.value.set(*val);
                 } else {
@@ -613,8 +639,14 @@ impl Code<'_> {
         if let Some(stmt) = &self.stmt {
             if let Stmt::Op { pc: _, bin, op } = stmt {
                 bin.set(Some(match op.kind {
-                    OpKind::Add => field(0, 0, 0, 0, 0),
-                    OpKind::Sub => field(1, 0, 0, 0, 0),
+                    OpKind::Add => field(
+                        Alu::Add.into(),
+                        op.rd.unwrap().into(),
+                        op.rs2.unwrap().into(),
+                        op.rs1.unwrap().into(),
+                        0,
+                    ),
+                    OpKind::Sub => field(Alu::Sub.into(), 0, 0, 0, 0),
                     _ => 0,
                 }));
             }
