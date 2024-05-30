@@ -1,5 +1,5 @@
 use color_print::cformat;
-use rk16::{op::OpKind, reg::Reg};
+use rk16_arch::{op::OpKind, reg::Reg};
 use std::{cell::Cell, collections::HashMap, num::ParseIntError};
 
 use crate::message::Msg;
@@ -424,7 +424,7 @@ impl Op {
 impl Op {
     fn cformat(&self) -> String {
         let format_opt_reg = |r: &Option<Reg>| match r {
-            Some(a) => a.format(),
+            Some(a) => a.to_string(),
             None => "".to_string(),
         };
         let cformat_rrr = |op: &str, r1: &Option<Reg>, r2: &Option<Reg>, r3: &Option<Reg>| {

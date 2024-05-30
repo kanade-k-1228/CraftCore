@@ -1,0 +1,2 @@
+[workspace]
+members = ["rk16-arch", "rk16-asm"]
