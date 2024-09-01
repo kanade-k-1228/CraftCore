@@ -67,3 +67,5 @@ c:
     ret  ; pc = ra
 d:
     iret ; pc = ira
+e:
+    jump e

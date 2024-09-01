@@ -7,23 +7,23 @@ use serde::{Deserialize, Serialize};
 #[repr(u8)]
 pub enum Alu {
     #[default]
-    Add,
-    Sub,
-    And,
-    Or,
-    Xor,
-    Eq,
-    Neq,
-    Lt,
-    Lts,
-    Sr,
-    Srs,
-    Srr,
-    Sl,
-    Slr,
+    ADD,
+    SUB,
+    AND,
+    OR,
+    XOR,
+    EQ,
+    NEQ,
+    LT,
+    LTS,
+    SR,
+    SRS,
+    SRR,
+    SL,
+    SLR,
 }
 
-macro_rules! bol {
+macro_rules! boo {
     ($cond:expr) => {
         if $cond {
             0xFFFF
@@ -36,19 +36,19 @@ macro_rules! bol {
 pub fn valu<T: Into<Alu>>(op: T, a: u16, b: u16) -> u16 {
     use Alu::*;
     match op.into() {
-        Add => a + b,
-        Sub => a - b,
-        And => a & b,
-        Or => a | b,
-        Xor => a ^ b,
-        Eq => bol!(a == b),
-        Neq => bol!(a != b),
-        Lt => bol!(a < b),
-        Lts => bol!((a as i16) < (b as i16)),
-        Sr => a >> 1,
-        Srs => (a as i16 >> 1) as u16,
-        Srr => a >> 1 | a << 15,
-        Sl => a << 1,
-        Slr => a << 1 | a >> 15,
+        ADD => a + b,
+        SUB => a - b,
+        AND => a & b,
+        OR => a | b,
+        XOR => a ^ b,
+        EQ => boo!(a == b),
+        NEQ => boo!(a != b),
+        LT => boo!(a < b),
+        LTS => boo!((a as i16) < (b as i16)),
+        SR => a >> 1,
+        SRS => (a as i16 >> 1) as u16,
+        SRR => a >> 1 | a << 15,
+        SL => a << 1,
+        SLR => a << 1 | a >> 15,
     }
 }

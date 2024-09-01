@@ -267,7 +267,7 @@ impl Op {
             if let Ok(kind) = OpKind::parse(op) {
                 match kind {
                     // []
-                    OpKind::Nop | OpKind::Ret | OpKind::Iret => {
+                    OpKind::NOP | OpKind::RET | OpKind::IRET => {
                         return Ok(Op {
                             kind: kind,
                             ..Default::default()
@@ -275,13 +275,13 @@ impl Op {
                     }
 
                     // [rd, rs1]
-                    OpKind::Sr
-                    | OpKind::Srs
-                    | OpKind::Srr
-                    | OpKind::Sl
-                    | OpKind::Slr
-                    | OpKind::Mov
-                    | OpKind::Not => {
+                    OpKind::SR
+                    | OpKind::SRS
+                    | OpKind::SRR
+                    | OpKind::SL
+                    | OpKind::SLR
+                    | OpKind::MOV
+                    | OpKind::NOT => {
                         if let Some([ref rd, ref rs1]) = args.get(0..2) {
                             let rd = Reg::parse(rd)?;
                             let rs1 = Reg::parse(rs1)?;
@@ -297,15 +297,15 @@ impl Op {
                     }
 
                     // [rd, rs1, rs2]
-                    OpKind::Add
-                    | OpKind::Sub
-                    | OpKind::And
-                    | OpKind::Or
-                    | OpKind::Xor
-                    | OpKind::Eq
-                    | OpKind::Neq
-                    | OpKind::Lt
-                    | OpKind::Lts => {
+                    OpKind::ADD
+                    | OpKind::SUB
+                    | OpKind::AND
+                    | OpKind::OR
+                    | OpKind::XOR
+                    | OpKind::EQ
+                    | OpKind::NEQ
+                    | OpKind::LT
+                    | OpKind::LTS => {
                         if let Some([ref rd, ref rs1, ref rs2]) = args.get(0..3) {
                             let rd = Reg::parse(rd)?;
                             let rs1 = Reg::parse(rs1)?;
@@ -323,16 +323,16 @@ impl Op {
                     }
 
                     // [rd, rs1, imm]
-                    OpKind::Addi
-                    | OpKind::Subi
-                    | OpKind::Andi
-                    | OpKind::Ori
-                    | OpKind::Xori
-                    | OpKind::Eqi
-                    | OpKind::Neqi
-                    | OpKind::Lti
-                    | OpKind::Ltsi
-                    | OpKind::Load => {
+                    OpKind::ADDI
+                    | OpKind::SUBI
+                    | OpKind::ANDI
+                    | OpKind::ORI
+                    | OpKind::XORI
+                    | OpKind::EQI
+                    | OpKind::NEQI
+                    | OpKind::LTI
+                    | OpKind::LTSI
+                    | OpKind::LOAD => {
                         if let Some([ref rd, ref rs1, ref imm]) = args.get(0..3) {
                             let rd = Reg::parse(rd)?;
                             let rs1 = Reg::parse(rs1)?;
@@ -350,7 +350,7 @@ impl Op {
                     }
 
                     // [rd, imm]
-                    OpKind::Loadi => {
+                    OpKind::LOADI => {
                         if let Some([ref rd, ref imm]) = args.get(0..2) {
                             let rd = Reg::parse(rd)?;
                             let imm = Imm::parse(imm)?;
@@ -366,7 +366,7 @@ impl Op {
                     }
 
                     // [rs2, rs1, imm]
-                    OpKind::Store => {
+                    OpKind::STORE => {
                         if let Some([ref rs2, ref rs1, ref imm]) = args.get(0..3) {
                             let rs2 = Reg::parse(rs2)?;
                             let rs1 = Reg::parse(rs1)?;
@@ -384,7 +384,7 @@ impl Op {
                     }
 
                     // [rs2, imm]
-                    OpKind::If | OpKind::Ifr => {
+                    OpKind::IF | OpKind::IFR => {
                         if let Some([ref rs2, ref imm]) = args.get(0..2) {
                             let rs2 = Reg::parse(rs2)?;
                             let imm = Imm::parse(imm)?;
@@ -400,7 +400,7 @@ impl Op {
                     }
 
                     // [imm]
-                    OpKind::Jump | OpKind::Jumpr | OpKind::Call => {
+                    OpKind::JUMP | OpKind::JUMPR | OpKind::CALL => {
                         if let Some([ref imm]) = args.get(0..1) {
                             let imm = Imm::parse(imm)?;
                             return Ok(Op {
@@ -450,48 +450,48 @@ impl Op {
             )
         };
         match self.kind {
-            OpKind::Add => cformat_rrr("add", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Sub => cformat_rrr("sub", &self.rd, &self.rs1, &self.rs2),
-            OpKind::And => cformat_rrr("and", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Or => cformat_rrr("or", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Xor => cformat_rrr("xor", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Eq => cformat_rrr("eq", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Neq => cformat_rrr("neq", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Lt => cformat_rrr("lt", &self.rd, &self.rs1, &self.rs2),
-            OpKind::Lts => cformat_rrr("lts", &self.rd, &self.rs1, &self.rs2),
+            OpKind::ADD => cformat_rrr("add", &self.rd, &self.rs1, &self.rs2),
+            OpKind::SUB => cformat_rrr("sub", &self.rd, &self.rs1, &self.rs2),
+            OpKind::AND => cformat_rrr("and", &self.rd, &self.rs1, &self.rs2),
+            OpKind::OR => cformat_rrr("or", &self.rd, &self.rs1, &self.rs2),
+            OpKind::XOR => cformat_rrr("xor", &self.rd, &self.rs1, &self.rs2),
+            OpKind::EQ => cformat_rrr("eq", &self.rd, &self.rs1, &self.rs2),
+            OpKind::NEQ => cformat_rrr("neq", &self.rd, &self.rs1, &self.rs2),
+            OpKind::LT => cformat_rrr("lt", &self.rd, &self.rs1, &self.rs2),
+            OpKind::LTS => cformat_rrr("lts", &self.rd, &self.rs1, &self.rs2),
 
-            OpKind::Sr => cformat_rrr("sr", &self.rd, &self.rs1, &None),
-            OpKind::Srs => cformat_rrr("srs", &self.rd, &self.rs1, &None),
-            OpKind::Srr => cformat_rrr("srr", &self.rd, &self.rs1, &None),
-            OpKind::Sl => cformat_rrr("sl", &self.rd, &self.rs1, &None),
-            OpKind::Slr => cformat_rrr("slr", &self.rd, &self.rs1, &None),
+            OpKind::SR => cformat_rrr("sr", &self.rd, &self.rs1, &None),
+            OpKind::SRS => cformat_rrr("srs", &self.rd, &self.rs1, &None),
+            OpKind::SRR => cformat_rrr("srr", &self.rd, &self.rs1, &None),
+            OpKind::SL => cformat_rrr("sl", &self.rd, &self.rs1, &None),
+            OpKind::SLR => cformat_rrr("slr", &self.rd, &self.rs1, &None),
 
-            OpKind::Nop => cformat_rrr("nop", &None, &None, &None),
-            OpKind::Mov => cformat_rrr("mov", &self.rd, &self.rs1, &None),
+            OpKind::NOP => cformat_rrr("nop", &None, &None, &None),
+            OpKind::MOV => cformat_rrr("mov", &self.rd, &self.rs1, &None),
 
-            OpKind::Addi => cformat_rri("addi", &self.rd, &self.rs1, &self.imm),
-            OpKind::Subi => cformat_rri("subi", &self.rd, &self.rs1, &self.imm),
-            OpKind::Andi => cformat_rri("andi", &self.rd, &self.rs1, &self.imm),
-            OpKind::Ori => cformat_rri("ori", &self.rd, &self.rs1, &self.imm),
-            OpKind::Xori => cformat_rri("xori", &self.rd, &self.rs1, &self.imm),
-            OpKind::Eqi => cformat_rri("eqi", &self.rd, &self.rs1, &self.imm),
-            OpKind::Neqi => cformat_rri("neqi", &self.rd, &self.rs1, &self.imm),
-            OpKind::Lti => cformat_rri("lti", &self.rd, &self.rs1, &self.imm),
-            OpKind::Ltsi => cformat_rri("ltsi", &self.rd, &self.rs1, &self.imm),
+            OpKind::ADDI => cformat_rri("addi", &self.rd, &self.rs1, &self.imm),
+            OpKind::SUBI => cformat_rri("subi", &self.rd, &self.rs1, &self.imm),
+            OpKind::ANDI => cformat_rri("andi", &self.rd, &self.rs1, &self.imm),
+            OpKind::ORI => cformat_rri("ori", &self.rd, &self.rs1, &self.imm),
+            OpKind::XORI => cformat_rri("xori", &self.rd, &self.rs1, &self.imm),
+            OpKind::EQI => cformat_rri("eqi", &self.rd, &self.rs1, &self.imm),
+            OpKind::NEQI => cformat_rri("neqi", &self.rd, &self.rs1, &self.imm),
+            OpKind::LTI => cformat_rri("lti", &self.rd, &self.rs1, &self.imm),
+            OpKind::LTSI => cformat_rri("ltsi", &self.rd, &self.rs1, &self.imm),
 
-            OpKind::Not => cformat_rrr("not", &self.rd, &self.rs1, &None),
-            OpKind::Loadi => cformat_rri("loadi", &self.rd, &None, &self.imm),
+            OpKind::NOT => cformat_rrr("not", &self.rd, &self.rs1, &None),
+            OpKind::LOADI => cformat_rri("loadi", &self.rd, &None, &self.imm),
 
-            OpKind::Load => cformat_rri("load", &self.rd, &self.rs1, &self.imm),
-            OpKind::Store => cformat_rri("store", &self.rs2, &self.rs1, &self.imm),
+            OpKind::LOAD => cformat_rri("load", &self.rd, &self.rs1, &self.imm),
+            OpKind::STORE => cformat_rri("store", &self.rs2, &self.rs1, &self.imm),
 
-            OpKind::If => cformat_rri("if", &self.rs2, &None, &self.imm),
-            OpKind::Ifr => cformat_rri("ifr", &self.rs2, &None, &self.imm),
-            OpKind::Jump => cformat_rri("jump", &None, &None, &self.imm),
-            OpKind::Jumpr => cformat_rri("jumpr", &None, &None, &self.imm),
-            OpKind::Call => cformat_rri("call", &None, &None, &self.imm),
-            OpKind::Ret => cformat_rrr("ret", &None, &None, &None),
-            OpKind::Iret => cformat_rrr("iret", &None, &None, &None),
+            OpKind::IF => cformat_rri("if", &self.rs2, &None, &self.imm),
+            OpKind::IFR => cformat_rri("ifr", &self.rs2, &None, &self.imm),
+            OpKind::JUMP => cformat_rri("jump", &None, &None, &self.imm),
+            OpKind::JUMPR => cformat_rri("jumpr", &None, &None, &self.imm),
+            OpKind::CALL => cformat_rri("call", &None, &None, &self.imm),
+            OpKind::RET => cformat_rrr("ret", &None, &None, &None),
+            OpKind::IRET => cformat_rrr("iret", &None, &None, &None),
         }
     }
 }
@@ -613,8 +613,8 @@ impl Code<'_> {
         if let Some(stmt) = &self.stmt {
             if let Stmt::Op { pc: _, bin, op } = stmt {
                 bin.set(Some(match op.kind {
-                    OpKind::Add => field(0, 0, 0, 0, 0),
-                    OpKind::Sub => field(1, 0, 0, 0, 0),
+                    OpKind::ADD => field(0, 0, 0, 0, 0),
+                    OpKind::SUB => field(1, 0, 0, 0, 0),
                     _ => 0,
                 }));
             }
