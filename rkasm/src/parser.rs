@@ -1,19 +1,31 @@
 use arch::{op::OpKind, reg::Reg};
 use color_print::cformat;
-use std::{cell::Cell, collections::HashMap, num::ParseIntError};
+use std::{
+    cell::{Cell, OnceCell},
+    collections::HashMap,
+    num::ParseIntError,
+};
 
-use crate::message::Msg;
+use crate::{label::Labels, msg::Msgs};
 
 #[derive(Debug, Clone)]
-pub struct Line<'a> {
-    file: &'a String,
+pub struct Line {
+    file: String,
     idx: usize,
     raw: String,
+    stmt: OnceCell<Option<Stmt>>,
+    comment: OnceCell<Option<String>>,
 }
 
-impl<'a> Line<'a> {
-    pub fn new(file: &'a String, idx: usize, raw: String) -> Self {
-        Self { file, idx, raw }
+impl Line {
+    pub fn new(file: &str, idx: usize, line: &str) -> Self {
+        Self {
+            file: file.to_string(),
+            idx,
+            raw: line.to_string(),
+            stmt: OnceCell::new(),
+            comment: OnceCell::new(),
+        }
     }
     pub fn pos(&self) -> String {
         format!("{}:{:0>4}", self.file, self.idx + 1)
@@ -21,8 +33,21 @@ impl<'a> Line<'a> {
     pub fn line_no(&self) -> usize {
         self.idx + 1
     }
-    pub fn raw(&'a self) -> &'a String {
-        &self.raw
+    pub fn raw(&self) -> String {
+        self.raw.clone()
+    }
+}
+
+impl Line {
+    pub fn parse(self, pc: u16) -> Msgs {
+        let (code, comment) = match self.raw.split_once(";") {
+            Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
+            None => (self.raw.clone(), None),
+        };
+        let (stmt, msgs) = Stmt::parse(&code, &self, pc);
+        self.stmt.set(stmt).unwrap();
+        self.comment.set(comment).unwrap();
+        msgs
     }
 }
 
@@ -30,22 +55,25 @@ impl<'a> Line<'a> {
 // Code
 
 #[derive(Debug)]
-pub struct Code<'a> {
-    pub line: &'a Line<'a>,
-    pub code: &'a str,
-    comment: Option<&'a str>,
+pub struct Code {
+    pub line: Line,
+    pub code: String,
+    comment: Option<String>,
     pub stmt: Option<Stmt>,
 }
 
-impl<'a> Code<'a> {
-    pub fn parse(line: &'a Line, pc: u16) -> (Code<'a>, Vec<Msg<'a>>) {
-        let (code, comment) = line.raw.split_once(";").unwrap_or((&line.raw, ""));
-        let (stmt, msgs) = Stmt::parse(&code, line, pc);
+impl Code {
+    pub fn parse(line: Line, pc: u16) -> (Code, Msgs) {
+        let (code, comment) = match line.raw.split_once(";") {
+            Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
+            None => (line.raw.clone(), None),
+        };
+        let (stmt, msgs) = Stmt::parse(&code, &line, pc);
         return (
             Code {
                 line,
                 code,
-                comment: if comment == "" { None } else { Some(comment) },
+                comment,
                 stmt,
             },
             msgs,
@@ -53,9 +81,9 @@ impl<'a> Code<'a> {
     }
 }
 
-impl Code<'_> {
+impl Code {
     pub fn cformat(&self) -> String {
-        let comment = match self.comment {
+        let comment = match &self.comment {
             Some(s) => format!(" ;{}", s),
             None => format!(""),
         };
@@ -112,7 +140,7 @@ impl Code<'_> {
 // ----------------------------------------------------------------------------
 // Statement
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Err,
     Op {
@@ -124,14 +152,17 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    fn parse<'a>(code: &str, line: &'a Line, pc: u16) -> (Option<Stmt>, Vec<Msg<'a>>) {
+    fn parse(code: &str, line: &Line, pc: u16) -> (Option<Stmt>, Msgs) {
+        let mut msgs = Msgs::new();
+
         let words: Vec<&str> = code.split_whitespace().collect();
+
         if words.len() == 0 {
-            return (None, vec![]);
+            return (None, msgs);
         }
 
         match Label::parse(code, pc) {
-            Some(lab) => return (Some(Stmt::Label(lab)), vec![]),
+            Some(lab) => return (Some(Stmt::Label(lab)), msgs),
             None => {}
         };
 
@@ -144,10 +175,13 @@ impl Stmt {
                         bin: Cell::new(None),
                         op,
                     }),
-                    vec![],
+                    msgs,
                 )
             }
-            Err(msg) => return (Some(Stmt::Err), vec![Msg::error(msg, line)]),
+            Err(msg) => {
+                msgs.error(msg, line.clone());
+                return (Some(Stmt::Err), msgs);
+            }
         };
     }
 }
@@ -251,7 +285,7 @@ impl Label {
 // ----------------------------------------------------------------------------
 // Operation
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Op {
     kind: OpKind,
     rs1: Option<Reg>,
@@ -499,7 +533,7 @@ impl Op {
 // ----------------------------------------------------------------------------
 // Immidiate
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Imm {
     kind: Cell<ImmKind>,
     label: String,
@@ -559,25 +593,25 @@ fn parse_with_prefix(s: &str) -> Result<u16, ParseIntError> {
 // ----------------------------------------------------------------------------
 // Resolve Label
 
-impl Code<'_> {
-    pub fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) -> Vec<Msg> {
+impl Code {
+    pub fn resolve(&self, labels: &Labels) -> Msgs {
+        let mut msgs = Msgs::new();
         if let Some(stmt) = &self.stmt {
             if let Stmt::Op { op, .. } = stmt {
                 if let Some(imm) = &op.imm {
                     let err = imm.resolve(labels);
-                    return err
-                        .iter()
-                        .map(|e| Msg::error(e.to_string(), self.line))
-                        .collect();
+                    for e in err {
+                        msgs.error(e, self.line.clone());
+                    }
                 }
             }
         }
-        vec![]
+        msgs
     }
 }
 
 impl Imm {
-    fn resolve(&self, labels: &HashMap<String, (&Line, &Label, u16)>) -> Vec<String> {
+    fn resolve(&self, labels: &Labels) -> Vec<String> {
         match self.kind.get() {
             ImmKind::Unknown => {
                 if let Some((_line, lab, val)) = labels.get(&self.label) {
@@ -608,8 +642,9 @@ fn field(b_31_16: u16, b_15_12: u8, b_11_8: u8, b_7_4: u8, b_3_0: u8) -> u32 {
         | (b_3_0 as u32 & 0xF) << 8
 }
 
-impl Code<'_> {
-    pub fn generate_bin(&self) {
+impl Code {
+    pub fn generate_bin(&self) -> Msgs {
+        let mut msgs = Msgs::new();
         if let Some(stmt) = &self.stmt {
             if let Stmt::Op { pc: _, bin, op } = stmt {
                 bin.set(Some(match op.kind {
@@ -619,5 +654,6 @@ impl Code<'_> {
                 }));
             }
         }
+        msgs
     }
 }
