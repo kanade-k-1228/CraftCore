@@ -1,5 +1,6 @@
 mod message;
 mod parser;
+
 use clap::Parser;
 use color_print::cformat;
 use std::{
@@ -13,8 +14,24 @@ use crate::{
     parser::{Code, Label, Line, Stmt},
 };
 
+#[derive(Parser, Debug)]
+#[clap(
+    name = "RK16 Assembler",
+    author = "kanade-k-1228",
+    version = "v1.0.0",
+    about = "Assembler for RK16 ISA"
+)]
+struct Args {
+    #[clap()]
+    input: Vec<String>,
+    #[clap(short = 'o', long = "output", default_value = "out.rk.bin")]
+    output: String,
+    #[clap(short = 'd', long = "dump")]
+    dump: bool,
+}
+
 fn main() {
-    let args: AppArgs = AppArgs::parse();
+    let args: Args = Args::parse();
     println!("RK16 Assembler by kanade-k-1228");
 
     let mut msgs: Vec<Msg> = vec![];
@@ -95,20 +112,4 @@ fn main() {
         }
         println!("+-----+------+-------------+-----------------------------+");
     }
-}
-
-#[derive(Parser, Debug)]
-#[clap(
-    name = "RK16 Assembler",
-    author = "kanade-k-1228",
-    version = "v1.0.0",
-    about = "Assembler for RK16 ISA"
-)]
-struct AppArgs {
-    #[clap()]
-    input: Vec<String>,
-    #[clap(short = 'o', long = "output", default_value = "out.rk.bin")]
-    output: String,
-    #[clap(short = 'd', long = "dump")]
-    dump: bool,
 }

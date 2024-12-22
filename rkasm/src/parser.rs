@@ -1,5 +1,5 @@
+use arch::{op::OpKind, reg::Reg};
 use color_print::cformat;
-use rk16_arch::{op::OpKind, reg::Reg};
 use std::{cell::Cell, collections::HashMap, num::ParseIntError};
 
 use crate::message::Msg;
