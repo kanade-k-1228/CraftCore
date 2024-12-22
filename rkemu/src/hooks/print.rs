@@ -9,8 +9,7 @@ use crate::computer::{Hook, State};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Print {
     dumps: HashMap<u16, Dump>,
-    print_op: bool,
-    dump_all: bool,
+    print_all: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,13 +19,12 @@ struct Dump {
 }
 
 impl Print {
-    pub fn arg(file: Option<String>, print_op: bool, dump_all: bool) -> Self {
+    pub fn arg(file: Option<String>, print_all: bool) -> Self {
         match file {
             Some(fname) => Self::from_file(&fname),
             None => Self {
                 dumps: HashMap::new(),
-                print_op,
-                dump_all,
+                print_all,
             },
         }
     }
@@ -43,9 +41,7 @@ impl Print {
     }
 
     fn print_op(&self, pc: u16, cpu: &State) {
-        if self.print_op {
-            println!("0x{:04x}: {:?}", pc, cpu.ram.get(pc));
-        }
+        println!("0x{:04x}: {:?}", pc, cpu.ram.get(pc));
     }
     fn print_reg(&self, cpu: &State) {
         // println!("  - Regs: {:?}", cpu.ram.regs);

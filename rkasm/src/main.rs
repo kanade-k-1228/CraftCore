@@ -22,11 +22,11 @@ use crate::{
     about = "Assembler for RK16 ISA"
 )]
 struct Args {
-    #[clap()]
+    #[clap(default_value = "main.rk")]
     input: Vec<String>,
-    #[clap(short = 'o', long = "output", default_value = "out.rk.bin")]
+    #[clap(short, long, default_value = "out.rk.bin")]
     output: String,
-    #[clap(short = 'd', long = "dump")]
+    #[clap(short, long)]
     dump: bool,
 }
 

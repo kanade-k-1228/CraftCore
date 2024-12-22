@@ -18,16 +18,13 @@ struct Args {
     tmax: Option<u64>,
 
     #[arg(short, long)]
-    print_file: Option<String>,
-
-    #[arg(short, long)]
-    print_op: bool,
+    print_cfg: Option<String>,
 
     #[arg(short = 'a', long)]
-    dump_all: bool,
+    print_all: bool,
 
     #[arg(short, long)]
-    intr_file: Option<String>,
+    intr_cfg: Option<String>,
 
     #[arg(default_value = "out.rk.bin")]
     input_file: String,
@@ -39,21 +36,22 @@ fn main() {
 
     println!("+-----------------------------------------------+");
     println!("| Emulate: {:<37} |", args.input_file);
-    if let Some(fname) = &args.print_file {
-        println!("|  - Dump: {:<37} |", fname);
+    if let Some(fname) = &args.print_cfg {
+        println!("|  - Print: {:<37} |", fname);
     }
-    if args.dump_all {
-        println!("|  - Dump: {:<37} |", "All");
+    if args.print_all {
+        println!("|  - Print: {:<37} |", "All");
     }
-    if let Some(fname) = &args.intr_file {
-        println!("|  - Evnt: {:<37} |", fname);
+    if let Some(fname) = &args.intr_cfg {
+        println!("|  - Interrupt: {:<37} |", fname);
     }
     println!("+-----------------------------------------------+");
 
     // ------------------------------------------------------------------------
+
     // Hooks
-    let mut print = Print::arg(args.print_file, args.print_op, args.dump_all);
-    let mut intr = Intr::arg(args.intr_file);
+    let mut print = Print::arg(args.print_cfg, args.print_all);
+    let mut intr = Intr::arg(args.intr_cfg);
     let mut serial = Serial::new();
 
     // Computer Model
