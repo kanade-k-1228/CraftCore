@@ -123,3 +123,53 @@ fn test() {
     println!("{:?}", OpKind::parse("iret"));
     println!("{:?}", OpKind::parse("hoge"));
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum Op {
+    ADD,
+    SUB,
+    AND,
+    OR,
+    XOR,
+    EQ,
+    NEQ,
+    LT,
+    LTS,
+    SR,
+    SRS,
+    SRR,
+    SL,
+    SLR,
+    #[default]
+    NOP,
+    MOV,
+    ADDI,
+    SUBI,
+    ANDI,
+    ORI,
+    XORI,
+    EQI,
+    NEQI,
+    LTI,
+    LTSI,
+    NOT,
+    LOADI,
+    LOAD,
+    STORE,
+    IF,
+    IFR,
+    JUMP,
+    JUMPR,
+    CALL,
+    RET,
+    IRET,
+}
+
+impl Op {
+    fn op_to_bin(&self) -> u32 {
+        0
+    }
+    fn bin_to_op(&self) -> Op {
+        Op::default()
+    }
+}

@@ -72,7 +72,7 @@ impl Msg {
         }
         cprintln!("     <blue>--></> <underline>{}</>", self.line.pos());
         cprintln!("      <blue>|</>");
-        cprintln!(" <blue>{:>4} |</> {}", self.line.line_no(), self.line.raw());
+        cprintln!(" <blue>{:>4} |</> {}", self.line.no(), self.line.raw());
         cprintln!("      <blue>|</>");
     }
 }

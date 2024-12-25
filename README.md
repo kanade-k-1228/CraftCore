@@ -14,3 +14,10 @@ RK16 is a simple RISC ISA.
 ## rkemu: emulator
 
 ## RKOS: Real Time OS for RK16
+
+## Installation
+
+```
+$ cargo install --path rkasm
+$ cargo install --path rkemu
+```

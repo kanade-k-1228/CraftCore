@@ -2,35 +2,43 @@ use arch::{op::OpKind, reg::Reg};
 use color_print::cformat;
 use std::{
     cell::{Cell, OnceCell},
-    collections::HashMap,
     num::ParseIntError,
 };
 
 use crate::{label::Labels, msg::Msgs};
 
+// ----------------------------------------------------------------------------
+// Line
+
 #[derive(Debug, Clone)]
 pub struct Line {
-    file: String,
+    path: String,
     idx: usize,
     raw: String,
-    stmt: OnceCell<Option<Stmt>>,
-    comment: OnceCell<Option<String>>,
+    code: String,
+    comment: Option<String>,
+    pub stmt: OnceCell<Option<Stmt>>,
 }
 
 impl Line {
-    pub fn new(file: &str, idx: usize, line: &str) -> Self {
+    pub fn new(path: &str, idx: usize, str: &str) -> Self {
+        let (code, comment) = match str.split_once(";") {
+            Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
+            None => (str.to_string(), None),
+        };
         Self {
-            file: file.to_string(),
+            path: path.to_string(),
             idx,
-            raw: line.to_string(),
+            raw: str.to_string(),
+            code,
+            comment,
             stmt: OnceCell::new(),
-            comment: OnceCell::new(),
         }
     }
     pub fn pos(&self) -> String {
-        format!("{}:{:0>4}", self.file, self.idx + 1)
+        format!("{}:{:0>4}", self.path, self.idx + 1)
     }
-    pub fn line_no(&self) -> usize {
+    pub fn no(&self) -> usize {
         self.idx + 1
     }
     pub fn raw(&self) -> String {
@@ -39,59 +47,26 @@ impl Line {
 }
 
 impl Line {
-    pub fn parse(self, pc: u16) -> Msgs {
-        let (code, comment) = match self.raw.split_once(";") {
-            Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
-            None => (self.raw.clone(), None),
-        };
-        let (stmt, msgs) = Stmt::parse(&code, &self, pc);
+    pub fn parse(&self, pc: u16) -> Msgs {
+        let (stmt, msgs) = Stmt::parse(&self, pc);
         self.stmt.set(stmt).unwrap();
-        self.comment.set(comment).unwrap();
-        msgs
+        return msgs;
     }
 }
 
-// ----------------------------------------------------------------------------
-// Code
-
-#[derive(Debug)]
-pub struct Code {
-    pub line: Line,
-    pub code: String,
-    comment: Option<String>,
-    pub stmt: Option<Stmt>,
-}
-
-impl Code {
-    pub fn parse(line: Line, pc: u16) -> (Code, Msgs) {
-        let (code, comment) = match line.raw.split_once(";") {
-            Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
-            None => (line.raw.clone(), None),
-        };
-        let (stmt, msgs) = Stmt::parse(&code, &line, pc);
-        return (
-            Code {
-                line,
-                code,
-                comment,
-                stmt,
-            },
-            msgs,
-        );
-    }
-}
-
-impl Code {
+impl Line {
     pub fn cformat(&self) -> String {
+        let stmt = self.stmt.get().unwrap();
+
         let comment = match &self.comment {
             Some(s) => format!(" ;{}", s),
             None => format!(""),
         };
 
-        let line = self.line.line_no();
+        let line = self.no();
 
         let binary = {
-            if let Some(Stmt::Op { pc: _, bin, op: _ }) = &self.stmt {
+            if let Some(Stmt::Op { pc: _, bin, op: _ }) = &stmt {
                 if let Some(bin) = bin.get() {
                     format!(
                         "{:02X} {:02X} {:02X} {:02X}",
@@ -109,29 +84,29 @@ impl Code {
         };
 
         let pc = {
-            if let Some(Stmt::Op { pc, .. }) = &self.stmt {
-                cformat!("<green>{:>4X}</>", pc)
+            if let Some(Stmt::Op { pc, .. }) = &stmt {
+                cformat!("<green>{:0>4X}</>", pc)
             } else {
                 " ".repeat(4).to_string()
             }
         };
 
         let stmt = {
-            match &self.stmt {
+            match &stmt {
                 Some(stmt) => stmt.cformat(),
                 None => "".to_string(),
             }
         };
 
         let file = if line == 1 {
-            let line = "+-----+------+-------------+-----------------------------+";
-            format!("{}\n| {:<54} |\n{}\n", line, self.line.file, line)
+            let line = "+------+------+-------------+-----------------------------+";
+            format!("{}\n| {:<55} |\n{}\n", line, self.path, line)
         } else {
             "".to_string()
         };
 
         format!(
-            "{}| {:>4}| {} | {} | {}{}",
+            "{}| {:>4} | {} | {} | {}{}",
             file, line, pc, binary, stmt, comment
         )
     }
@@ -145,29 +120,29 @@ pub enum Stmt {
     Err,
     Op {
         pc: u16,
+        op: UnresolvedOp,
         bin: Cell<Option<u32>>,
-        op: Op,
     },
     Label(Label),
 }
 
 impl Stmt {
-    fn parse(code: &str, line: &Line, pc: u16) -> (Option<Stmt>, Msgs) {
+    fn parse(line: &Line, pc: u16) -> (Option<Stmt>, Msgs) {
         let mut msgs = Msgs::new();
 
-        let words: Vec<&str> = code.split_whitespace().collect();
+        let words: Vec<&str> = line.code.split_whitespace().collect();
 
         if words.len() == 0 {
             return (None, msgs);
         }
 
-        match Label::parse(code, pc) {
+        match Label::parse(&line.code, pc) {
             Some(lab) => return (Some(Stmt::Label(lab)), msgs),
             None => {}
         };
 
         // Operation
-        match Op::parse(code, line) {
+        match UnresolvedOp::parse(&line) {
             Ok(op) => {
                 return (
                     Some(Stmt::Op {
@@ -286,7 +261,7 @@ impl Label {
 // Operation
 
 #[derive(Debug, Default, Clone)]
-pub struct Op {
+pub struct UnresolvedOp {
     kind: OpKind,
     rs1: Option<Reg>,
     rs2: Option<Reg>,
@@ -294,15 +269,20 @@ pub struct Op {
     imm: Option<Imm>,
 }
 
-impl Op {
-    fn parse(code: &str, _line: &Line) -> Result<Op, String> {
-        if let Some((op, args)) = code.split_whitespace().collect::<Vec<_>>().split_first() {
+impl UnresolvedOp {
+    fn parse(line: &Line) -> Result<UnresolvedOp, String> {
+        if let Some((op, args)) = line
+            .code
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .split_first()
+        {
             let op: &str = op.to_owned();
             if let Ok(kind) = OpKind::parse(op) {
                 match kind {
                     // []
                     OpKind::NOP | OpKind::RET | OpKind::IRET => {
-                        return Ok(Op {
+                        return Ok(UnresolvedOp {
                             kind: kind,
                             ..Default::default()
                         })
@@ -319,7 +299,7 @@ impl Op {
                         if let Some([ref rd, ref rs1]) = args.get(0..2) {
                             let rd = Reg::parse(rd)?;
                             let rs1 = Reg::parse(rs1)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 rd: Some(rd),
                                 rs1: Some(rs1),
@@ -344,7 +324,7 @@ impl Op {
                             let rd = Reg::parse(rd)?;
                             let rs1 = Reg::parse(rs1)?;
                             let rs2 = Reg::parse(rs2)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 rd: Some(rd),
                                 rs1: Some(rs1),
@@ -371,7 +351,7 @@ impl Op {
                             let rd = Reg::parse(rd)?;
                             let rs1 = Reg::parse(rs1)?;
                             let imm = Imm::parse(imm)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 rd: Some(rd),
                                 rs1: Some(rs1),
@@ -388,7 +368,7 @@ impl Op {
                         if let Some([ref rd, ref imm]) = args.get(0..2) {
                             let rd = Reg::parse(rd)?;
                             let imm = Imm::parse(imm)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 rd: Some(rd),
                                 imm: Some(imm),
@@ -405,7 +385,7 @@ impl Op {
                             let rs2 = Reg::parse(rs2)?;
                             let rs1 = Reg::parse(rs1)?;
                             let imm = Imm::parse(imm)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 rs2: Some(rs2),
                                 rs1: Some(rs1),
@@ -422,7 +402,7 @@ impl Op {
                         if let Some([ref rs2, ref imm]) = args.get(0..2) {
                             let rs2 = Reg::parse(rs2)?;
                             let imm = Imm::parse(imm)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 rs2: Some(rs2),
                                 imm: Some(imm),
@@ -437,7 +417,7 @@ impl Op {
                     OpKind::JUMP | OpKind::JUMPR | OpKind::CALL => {
                         if let Some([ref imm]) = args.get(0..1) {
                             let imm = Imm::parse(imm)?;
-                            return Ok(Op {
+                            return Ok(UnresolvedOp {
                                 kind: kind,
                                 imm: Some(imm),
                                 ..Default::default()
@@ -455,7 +435,7 @@ impl Op {
     }
 }
 
-impl Op {
+impl UnresolvedOp {
     fn cformat(&self) -> String {
         let format_opt_reg = |r: &Option<Reg>| match r {
             Some(a) => a.to_string(),
@@ -593,15 +573,15 @@ fn parse_with_prefix(s: &str) -> Result<u16, ParseIntError> {
 // ----------------------------------------------------------------------------
 // Resolve Label
 
-impl Code {
+impl Line {
     pub fn resolve(&self, labels: &Labels) -> Msgs {
         let mut msgs = Msgs::new();
-        if let Some(stmt) = &self.stmt {
+        if let Some(Some(stmt)) = &self.stmt.get() {
             if let Stmt::Op { op, .. } = stmt {
                 if let Some(imm) = &op.imm {
                     let err = imm.resolve(labels);
                     for e in err {
-                        msgs.error(e, self.line.clone());
+                        msgs.error(e, self.clone());
                     }
                 }
             }
@@ -642,15 +622,48 @@ fn field(b_31_16: u16, b_15_12: u8, b_11_8: u8, b_7_4: u8, b_3_0: u8) -> u32 {
         | (b_3_0 as u32 & 0xF) << 8
 }
 
-impl Code {
+impl Line {
     pub fn generate_bin(&self) -> Msgs {
-        let mut msgs = Msgs::new();
-        if let Some(stmt) = &self.stmt {
+        let msgs = Msgs::new();
+        if let Some(Some(stmt)) = &self.stmt.get() {
             if let Stmt::Op { pc: _, bin, op } = stmt {
                 bin.set(Some(match op.kind {
                     OpKind::ADD => field(0, 0, 0, 0, 0),
                     OpKind::SUB => field(1, 0, 0, 0, 0),
-                    _ => 0,
+                    OpKind::AND => field(0, 0, 0, 0, 0),
+                    OpKind::OR => field(0, 0, 0, 0, 0),
+                    OpKind::XOR => field(0, 0, 0, 0, 0),
+                    OpKind::EQ => field(0, 0, 0, 0, 0),
+                    OpKind::NEQ => field(0, 0, 0, 0, 0),
+                    OpKind::LT => field(0, 0, 0, 0, 0),
+                    OpKind::LTS => field(0, 0, 0, 0, 0),
+                    OpKind::SR => field(0, 0, 0, 0, 0),
+                    OpKind::SRS => field(0, 0, 0, 0, 0),
+                    OpKind::SRR => field(0, 0, 0, 0, 0),
+                    OpKind::SL => field(0, 0, 0, 0, 0),
+                    OpKind::SLR => field(0, 0, 0, 0, 0),
+                    OpKind::NOP => field(0, 0, 0, 0, 0),
+                    OpKind::MOV => field(0, 0, 0, 0, 0),
+                    OpKind::ADDI => field(0, 0, 0, 0, 0),
+                    OpKind::SUBI => field(0, 0, 0, 0, 0),
+                    OpKind::ANDI => field(0, 0, 0, 0, 0),
+                    OpKind::ORI => field(0, 0, 0, 0, 0),
+                    OpKind::XORI => field(0, 0, 0, 0, 0),
+                    OpKind::EQI => field(0, 0, 0, 0, 0),
+                    OpKind::NEQI => field(0, 0, 0, 0, 0),
+                    OpKind::LTI => field(0, 0, 0, 0, 0),
+                    OpKind::LTSI => field(0, 0, 0, 0, 0),
+                    OpKind::NOT => field(0, 0, 0, 0, 0),
+                    OpKind::LOADI => field(0, 0, 0, 0, 0),
+                    OpKind::LOAD => field(0, 0, 0, 0, 0),
+                    OpKind::STORE => field(0, 0, 0, 0, 0),
+                    OpKind::IF => field(0, 0, 0, 0, 0),
+                    OpKind::IFR => field(0, 0, 0, 0, 0),
+                    OpKind::JUMP => field(0, 0, 0, 0, 0),
+                    OpKind::JUMPR => field(0, 0, 0, 0, 0),
+                    OpKind::CALL => field(0, 0, 0, 0, 0),
+                    OpKind::RET => field(0, 0, 0, 0, 0),
+                    OpKind::IRET => field(0, 0, 0, 0, 0),
                 }));
             }
         }

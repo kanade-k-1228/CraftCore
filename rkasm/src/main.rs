@@ -13,7 +13,7 @@ use color_print::cformat;
 
 use label::Labels;
 use msg::Msgs;
-use parser::{Code, Line, Stmt};
+use parser::{Line, Stmt};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -38,67 +38,55 @@ fn main() {
     let mut msgs = Msgs::new();
 
     println!("1. Read Files and Parse Lines");
-    let lines = {
-        let mut lines = vec![];
-        for fpath in &args.input {
-            println!("  - {}", fpath);
-            let file =
-                File::open(fpath).expect(&cformat!("<red,bold>Failed to open File</>: {}", fpath));
-            for (idx, line) in BufReader::new(file).lines().enumerate() {
-                lines.push(Line::new(
-                    &fpath,
-                    idx,
-                    &line.expect(&cformat!("Failed to read line")),
-                ));
-            }
+    let mut lines = vec![];
+    for path in &args.input {
+        println!("  - {}", path);
+        let file = File::open(path).expect(&cformat!("<red,bold>Failed to open File</>: {}", path));
+        for (idx, line) in BufReader::new(file).lines().enumerate() {
+            lines.push(Line::new(
+                &path,
+                idx,
+                &line.expect(&cformat!("Failed to read line")),
+            ));
         }
-        lines
-    };
+    }
 
     println!("2. Parse Codes");
-    let codes = {
-        let mut codes = vec![];
-        let mut pc = 0;
-        for line in lines {
-            let (code, msg) = Code::parse(line, pc);
-            if let Some(Stmt::Op { .. }) = &code.stmt {
-                pc += 1;
-            }
-            msgs.extend(msg);
-            codes.push(code);
+    let mut pc = 0;
+    for line in &lines {
+        let msg = line.parse(pc);
+        if let Some(Stmt::Op { .. }) = line.stmt.get().unwrap() {
+            pc += 1;
         }
-        codes
-    };
+        msgs.extend(msg);
+    }
     msgs.flush();
 
     println!("3. Collect Label");
-    let labels = {
-        let mut labels = Labels::new();
-        for code in &codes {
-            if let Some(Stmt::Label(lab)) = &code.stmt {
-                if let Some((prev, _, _)) =
-                    labels.insert(lab.key.clone(), (code.line.clone(), lab.clone(), lab.val))
-                {
-                    msgs.error(format!("Re-defined label `{}`", lab.key), code.line.clone());
-                    msgs.note(format!("Already defined here"), prev.clone());
-                }
+    let mut labels = Labels::new();
+    for line in &lines {
+        if let Some(Stmt::Label(lab)) = &line.stmt.get().unwrap() {
+            if let Some((prev, _, _)) =
+                labels.insert(lab.key.clone(), (line.clone(), lab.clone(), lab.val))
+            {
+                msgs.error(format!("Re-defined label `{}`", lab.key), line.clone());
+                msgs.note(format!("Already defined here"), prev.clone());
             }
         }
-        labels
-    };
+    }
     msgs.flush();
 
     println!("4. Resolve Label & Generate Binary");
-    for code in &codes {
-        msgs.extend(code.resolve(&labels));
-        msgs.extend(code.generate_bin());
+    for line in &lines {
+        msgs.extend(line.resolve(&labels));
+        msgs.extend(line.generate_bin());
     }
     msgs.flush();
 
     if args.dump {
-        for line in &codes {
+        for line in &lines {
             println!("{}", line.cformat());
         }
-        println!("+-----+------+-------------+-----------------------------+");
+        println!("+------+------+-------------+-----------------------------+");
     }
 }
