@@ -1,5 +1,5 @@
 pub mod alu;
-pub mod asm;
 pub mod op;
+pub mod psudo;
 pub mod reg;
 pub mod resolved;
