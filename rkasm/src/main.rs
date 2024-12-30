@@ -1,21 +1,10 @@
 mod label;
-#[allow(dead_code)]
 mod msg;
 mod parser;
 
-use std::{
-    fs::File,
-    io::{BufRead, BufReader, Write},
-};
-
-use clap::Parser;
 use color_print::cformat;
 
-use label::Labels;
-use msg::Msg;
-use parser::Line;
-
-#[derive(Parser, Debug)]
+#[derive(Debug, clap::Parser)]
 #[clap(
     name = "RK16 Assembler",
     author = "kanade-k-1228",
@@ -32,6 +21,9 @@ struct Args {
 }
 
 fn main() {
+    use clap::Parser;
+    use std::io::{BufRead, Write};
+
     let args: Args = Args::parse();
     println!("RK16 Assembler by kanade-k-1228");
 
@@ -39,14 +31,15 @@ fn main() {
 
     let mut lines = vec![];
     let mut pc: u16 = 0;
-    let mut labels = Labels::new();
+    let mut labels = label::Labels::new();
 
     for path in &args.input {
         println!("  - {}", path);
-        let file = File::open(path).expect(&cformat!("<red,bold>Failed to open File</>: {}", path));
-        for (idx, raw) in BufReader::new(file).lines().enumerate() {
+        let file = std::fs::File::open(path)
+            .expect(&cformat!("<red,bold>Failed to open File</>: {}", path));
+        for (idx, raw) in std::io::BufReader::new(file).lines().enumerate() {
             let raw = raw.expect(&cformat!("Failed to read line"));
-            let (line, msgs) = Line::parse(path, idx, &raw, pc);
+            let (line, msgs) = parser::Line::parse(path, idx, &raw, pc);
             if let Some(_) = line.get_op() {
                 pc += 1;
             }
@@ -54,15 +47,16 @@ fn main() {
             // Collect Label
             if let Some(lab) = &line.get_label() {
                 if let Some(prev) = labels.insert(lab.get_key(), line.clone()) {
-                    Msg::Error(format!("Re-defined label: `{}`", lab.get_key()))
-                        .print(line.get_info());
-                    Msg::Note(format!("Already defined here")).print(prev.get_info());
+                    msg::Msg::Warn(format!("Re-defined label: `{}`", lab.get_key()))
+                        .diag(line.get_info());
+                    msg::Msg::Note(format!("Already defined here. The value has been overridden. If this is not intentional, please reorder the sourcefile."))
+                        .diag(prev.get_info());
                 }
             }
 
             // Print Messages
             for msg in msgs {
-                msg.print(line.get_info());
+                msg.diag(line.get_info());
             }
             lines.push(line);
         }
@@ -70,13 +64,19 @@ fn main() {
 
     println!("2. Resolve Label & Generate Binary");
     println!("  - out: {}", args.output);
-    let mut file = File::create(&args.output).expect(&cformat!(
+    let mut file = std::fs::File::create(&args.output).expect(&cformat!(
         "<red,bold>Failed to create File</>: {}",
         args.output
     ));
     for line in &lines {
         if let Some(asm) = &line.get_op() {
-            let bin = asm.resolve(&labels).to_op().to_bin();
+            let bin = match asm.resolve(&labels) {
+                Some(ok) => ok.to_op().clone().to_bin(),
+                None => {
+                    msg::Msg::Error(format!("Undefined label")).diag(line.get_info());
+                    continue;
+                }
+            };
             file.write(&bin.to_le_bytes()).expect(&cformat!(
                 "<red,bold>Failed to write File</>: {}",
                 args.output

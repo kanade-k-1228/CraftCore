@@ -14,12 +14,13 @@ use strum::{Display, EnumString};
     IntoPrimitive,
     EnumString,
     Display,
+    Eq,
 )]
 #[repr(u8)]
 pub enum Reg {
     #[default]
     ZERO,
-    IRQ,
+    IRA,
     PC,
     SP,
     RA,
@@ -40,7 +41,7 @@ impl Reg {
     pub fn parse(s: &str) -> Result<Self, String> {
         match s.to_ascii_uppercase().parse::<Self>() {
             Ok(a) => Ok(a),
-            Err(_) => Err(format!("Undefined Reg: {s}")),
+            Err(_) => Err(format!("Unknown reg name: {s}")),
         }
     }
 }

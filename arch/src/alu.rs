@@ -2,10 +2,10 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use serde::{Deserialize, Serialize};
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default, FromPrimitive, IntoPrimitive,
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, FromPrimitive, IntoPrimitive,
 )]
 #[repr(u8)]
-pub enum Alu {
+pub enum ALU {
     #[default]
     ADD,
     SUB,
@@ -33,8 +33,8 @@ macro_rules! boo {
     };
 }
 
-pub fn valu<T: Into<Alu>>(op: T, a: u16, b: u16) -> u16 {
-    use Alu::*;
+pub fn valu<T: Into<ALU>>(op: T, a: u16, b: u16) -> u16 {
+    use ALU::*;
     match op.into() {
         ADD => a + b,
         SUB => a - b,

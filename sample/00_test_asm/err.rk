@@ -1,8 +1,8 @@
-    hoge fuga fuga ; Undefined operation `hoge`
-    add zero zero ; Operand required
-    add a0 a1 hoge ; Invalid register name
+    hoge fuga fuga ; Unknown operation `hoge`
+    add zero zero ; More argument required
+    add a0 a1 hoge ; Unknown register name
     call hoge ; Undefined label
-a:
+a: ; Defined here
     nop
-a: ; Re-define error
+a: ; Re-defined label
     nop

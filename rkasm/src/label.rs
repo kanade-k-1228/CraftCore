@@ -1,19 +1,19 @@
-use std::collections::HashMap;
-
-use crate::parser::{Label, Line};
-
-pub struct Labels(HashMap<String, Line>);
+pub struct Labels(std::collections::HashMap<String, crate::parser::Line>);
 
 impl Labels {
     pub fn new() -> Self {
-        Labels(HashMap::new())
+        Labels(std::collections::HashMap::new())
     }
 
-    pub fn insert(&mut self, name: String, entry: Line) -> Option<Line> {
+    pub fn insert(
+        &mut self,
+        name: String,
+        entry: crate::parser::Line,
+    ) -> Option<crate::parser::Line> {
         self.0.insert(name, entry)
     }
 
-    pub fn get(&self, name: &str) -> Option<&Line> {
+    pub fn get(&self, name: &str) -> Option<&crate::parser::Line> {
         self.0.get(name)
     }
 

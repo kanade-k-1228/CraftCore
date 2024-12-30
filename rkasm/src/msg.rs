@@ -8,13 +8,16 @@ pub enum Msg {
 }
 
 impl Msg {
-    pub fn print(&self, info: (&str, usize, &str)) {
-        let (file, line, raw) = info;
+    pub fn print(&self) {
         match self {
             Msg::Error(msg) => cprintln!("<red,bold>error</>: {}", msg),
             Msg::Warn(msg) => cprintln!("<yellow,bold>warn</>: {}", msg),
             Msg::Note(msg) => cprintln!("<green,bold>note</>: {}", msg),
         }
+    }
+    pub fn diag(&self, info: (&str, usize, &str)) {
+        let (file, line, raw) = info;
+        self.print();
         cprintln!("     <blue>--></> <underline>{}:{}</>", file, line);
         cprintln!("      <blue>|</>");
         cprintln!(" <blue>{:>4} |</> {}", line, raw);
