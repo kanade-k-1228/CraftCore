@@ -20,4 +20,7 @@ RK16 is a simple RISC ISA.
 ```
 $ cargo install --path rkasm
 $ cargo install --path rkemu
+$ cd sample/02_emu_test
+$ rkasm -d
+$ rkemu -t 10 -a
 ```

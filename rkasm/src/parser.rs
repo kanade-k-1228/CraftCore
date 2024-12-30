@@ -239,42 +239,42 @@ impl Label {
 
 #[derive(Debug, Clone)]
 pub enum Asm {
-    ADD { rd: Reg, rs1: Reg, rs2: Reg },
-    SUB { rd: Reg, rs1: Reg, rs2: Reg },
-    AND { rd: Reg, rs1: Reg, rs2: Reg },
-    OR { rd: Reg, rs1: Reg, rs2: Reg },
-    XOR { rd: Reg, rs1: Reg, rs2: Reg },
-    EQ { rd: Reg, rs1: Reg, rs2: Reg },
-    NEQ { rd: Reg, rs1: Reg, rs2: Reg },
-    LT { rd: Reg, rs1: Reg, rs2: Reg },
-    LTS { rd: Reg, rs1: Reg, rs2: Reg },
-    SR { rd: Reg, rs1: Reg },
-    SRS { rd: Reg, rs1: Reg },
-    SRR { rd: Reg, rs1: Reg },
-    SL { rd: Reg, rs1: Reg },
-    SLR { rd: Reg, rs1: Reg },
-    NOP,
-    MOV { rd: Reg, rs1: Reg },
-    ADDI { rd: Reg, rs1: Reg, imm: Imm },
-    SUBI { rd: Reg, rs1: Reg, imm: Imm },
-    ANDI { rd: Reg, rs1: Reg, imm: Imm },
-    ORI { rd: Reg, rs1: Reg, imm: Imm },
-    XORI { rd: Reg, rs1: Reg, imm: Imm },
-    EQI { rd: Reg, rs1: Reg, imm: Imm },
-    NEQI { rd: Reg, rs1: Reg, imm: Imm },
-    LTI { rd: Reg, rs1: Reg, imm: Imm },
-    LTSI { rd: Reg, rs1: Reg, imm: Imm },
-    NOT { rd: Reg, rs1: Reg },
-    LOADI { rd: Reg, imm: Imm },
-    LOAD { rd: Reg, rs1: Reg, imm: Imm },
-    STORE { rs2: Reg, rs1: Reg, imm: Imm },
-    IF { rs2: Reg, imm: Imm },
-    IFR { rs2: Reg, imm: Imm },
-    JUMP { imm: Imm },
-    JUMPR { imm: Imm },
-    CALL { imm: Imm },
-    RET,
-    IRET,
+    ADD(Reg, Reg, Reg),
+    SUB(Reg, Reg, Reg),
+    AND(Reg, Reg, Reg),
+    OR(Reg, Reg, Reg),
+    XOR(Reg, Reg, Reg),
+    EQ(Reg, Reg, Reg),
+    NEQ(Reg, Reg, Reg),
+    LT(Reg, Reg, Reg),
+    LTS(Reg, Reg, Reg),
+    SR(Reg, Reg),
+    SRS(Reg, Reg),
+    SRR(Reg, Reg),
+    SL(Reg, Reg),
+    SLR(Reg, Reg),
+    NOP(),
+    MOV(Reg, Reg),
+    ADDI(Reg, Reg, Imm),
+    SUBI(Reg, Reg, Imm),
+    ANDI(Reg, Reg, Imm),
+    ORI(Reg, Reg, Imm),
+    XORI(Reg, Reg, Imm),
+    EQI(Reg, Reg, Imm),
+    NEQI(Reg, Reg, Imm),
+    LTI(Reg, Reg, Imm),
+    LTSI(Reg, Reg, Imm),
+    NOT(Reg, Reg),
+    LOADI(Reg, Imm),
+    LOAD(Reg, Reg, Imm),
+    STORE(Reg, Reg, Imm),
+    IF(Reg, Imm),
+    IFR(Reg, Imm),
+    JUMP(Imm),
+    JUMPR(Imm),
+    CALL(Imm),
+    RET(),
+    IRET(),
 }
 
 impl Asm {
@@ -289,109 +289,44 @@ impl Asm {
                 };
             }
 
-            use Asm::*;
-
-            macro_rules! rd_rs1_rs2 {
-                ($op:ident) => {
-                    $op {
-                        rd: arg!(0, Reg),
-                        rs1: arg!(1, Reg),
-                        rs2: arg!(2, Reg),
-                    }
-                };
-            }
-
-            macro_rules! rd_rs1 {
-                ($op:ident) => {
-                    $op {
-                        rd: arg!(0, Reg),
-                        rs1: arg!(1, Reg),
-                    }
-                };
-            }
-
-            macro_rules! rd_rs1_imm {
-                ($op:ident) => {
-                    $op {
-                        rd: arg!(0, Reg),
-                        rs1: arg!(1, Reg),
-                        imm: arg!(2, Imm),
-                    }
-                };
-            }
-
-            macro_rules! rs2_rs1_imm {
-                ($op:ident) => {
-                    $op {
-                        rs2: arg!(0, Reg),
-                        rs1: arg!(1, Reg),
-                        imm: arg!(2, Imm),
-                    }
-                };
-            }
-
-            macro_rules! rd_imm {
-                ($op:ident) => {
-                    $op {
-                        rd: arg!(0, Reg),
-                        imm: arg!(1, Imm),
-                    }
-                };
-            }
-
-            macro_rules! rs1_imm {
-                ($op:ident) => {
-                    $op {
-                        rs2: arg!(0, Reg),
-                        imm: arg!(1, Imm),
-                    }
-                };
-            }
-
-            macro_rules! imm {
-                ($op:ident) => {
-                    $op { imm: arg!(0, Imm) }
-                };
-            }
-
             let op: &str = op.to_owned();
             let asm = match op {
-                "nop" => NOP,
-                "add" => rd_rs1_rs2!(ADD),
-                "sub" => rd_rs1_rs2!(SUB),
-                "and" => rd_rs1_rs2!(AND),
-                "or" => rd_rs1_rs2!(OR),
-                "xor" => rd_rs1_rs2!(XOR),
-                "eq" => rd_rs1_rs2!(EQ),
-                "neq" => rd_rs1_rs2!(NEQ),
-                "lt" => rd_rs1_rs2!(LT),
-                "lts" => rd_rs1_rs2!(LTS),
-                "sr" => rd_rs1!(SR),
-                "srs" => rd_rs1!(SRS),
-                "srr" => rd_rs1!(SRR),
-                "sl" => rd_rs1!(SL),
-                "slr" => rd_rs1!(SLR),
-                "mov" => rd_rs1!(MOV),
-                "addi" => rd_rs1_imm!(ADDI),
-                "subi" => rd_rs1_imm!(SUBI),
-                "andi" => rd_rs1_imm!(ANDI),
-                "ori" => rd_rs1_imm!(ORI),
-                "xori" => rd_rs1_imm!(XORI),
-                "eqi" => rd_rs1_imm!(EQI),
-                "neqi" => rd_rs1_imm!(NEQI),
-                "lti" => rd_rs1_imm!(LTI),
-                "ltsi" => rd_rs1_imm!(LTSI),
-                "not" => rd_rs1!(NOT),
-                "loadi" => rd_imm!(LOADI),
-                "load" => rd_rs1_imm!(LOAD),
-                "store" => rs2_rs1_imm!(STORE),
-                "if" => rs1_imm!(IF),
-                "ifr" => rs1_imm!(IFR),
-                "jump" => imm!(JUMP),
-                "jumpr" => imm!(JUMPR),
-                "call" => imm!(CALL),
-                "ret" => Asm::RET,
-                "iret" => Asm::IRET,
+                "nop" => Asm::NOP(),
+                "add" => Asm::ADD(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "sub" => Asm::SUB(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "and" => Asm::AND(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "or" => Asm::OR(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "xor" => Asm::XOR(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "eq" => Asm::EQ(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "neq" => Asm::NEQ(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "lt" => Asm::LT(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "lts" => Asm::LTS(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg)),
+                "sr" => Asm::SR(arg!(0, Reg), arg!(1, Reg)),
+                "srs" => Asm::SRS(arg!(0, Reg), arg!(1, Reg)),
+                "srr" => Asm::SRR(arg!(0, Reg), arg!(1, Reg)),
+                "sl" => Asm::SL(arg!(0, Reg), arg!(1, Reg)),
+                "slr" => Asm::SLR(arg!(0, Reg), arg!(1, Reg)),
+                "mov" => Asm::MOV(arg!(0, Reg), arg!(1, Reg)),
+                "addi" => Asm::ADDI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "subi" => Asm::SUBI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "andi" => Asm::ANDI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "ori" => Asm::ORI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "xori" => Asm::XORI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "eqi" => Asm::EQI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "neqi" => Asm::NEQI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "lti" => Asm::LTI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "ltsi" => Asm::LTSI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "not" => Asm::NOT(arg!(0, Reg), arg!(1, Reg)),
+                "loadi" => Asm::LOADI(arg!(0, Reg), arg!(1, Imm)),
+                "load" => Asm::LOAD(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "store" => Asm::STORE(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm)),
+                "if" => Asm::IF(arg!(0, Reg), arg!(1, Imm)),
+                "ifr" => Asm::IFR(arg!(0, Reg), arg!(1, Imm)),
+                "jump" => Asm::JUMP(arg!(0, Imm)),
+                "jumpr" => Asm::JUMPR(arg!(0, Imm)),
+                "call" => Asm::CALL(arg!(0, Imm)),
+                "ret" => Asm::RET(),
+                "iret" => Asm::IRET(),
                 _ => return Err(format!("Unknown operation: `{}`", op)),
             };
             return Ok(asm);
@@ -402,239 +337,54 @@ impl Asm {
 
 impl Asm {
     fn cformat(&self, labels: &Labels) -> String {
+        macro_rules! opformat {
+            ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {
+                cformat!(
+                    "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
+                    $name,
+                    $rd,
+                    $rs1,
+                    $rs2
+                )
+            };
+        }
         match self {
-            Asm::ADD { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "add",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::SUB { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "sub",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::AND { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "and",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::OR { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "or",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::XOR { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "xor",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::EQ { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "eq",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::NEQ { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "neq",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::LT { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "lt",
-                rd,
-                rs1,
-                rs2
-            ),
-            Asm::LTS { rd, rs1, rs2 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "lts",
-                rd,
-                rs1,
-                rs2
-            ),
-
-            Asm::SR { rd, rs1 } => {
-                cformat!("  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>", "sr", rd, rs1, "")
-            }
-            Asm::SRS { rd, rs1 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "srs",
-                rd,
-                rs1,
-                ""
-            ),
-            Asm::SRR { rd, rs1 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "srr",
-                rd,
-                rs1,
-                ""
-            ),
-            Asm::SL { rd, rs1 } => {
-                cformat!("  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>", "sl", rd, rs1, "")
-            }
-            Asm::SLR { rd, rs1 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "slr",
-                rd,
-                rs1,
-                ""
-            ),
-
-            Asm::NOP => cformat!("  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>", "nop", "", "", ""),
-            Asm::MOV { rd, rs1 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "mov",
-                rd,
-                rs1,
-                ""
-            ),
-
-            Asm::ADDI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "addi",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::SUBI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "subi",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::ANDI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "andi",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::ORI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "ori",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::XORI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "xori",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::EQI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "eqi",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::NEQI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "neqi",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::LTI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "lti",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::LTSI { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "ltsi",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-
-            Asm::NOT { rd, rs1 } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "not",
-                rd,
-                rs1,
-                ""
-            ),
-            Asm::LOADI { rd, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}</>{:<18}",
-                "loadi",
-                rd,
-                imm.cformat(labels)
-            ),
-
-            Asm::LOAD { rd, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "load",
-                rd,
-                rs1,
-                imm.cformat(labels)
-            ),
-            Asm::STORE { rs2, rs1, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}</>{:<18}",
-                "store",
-                rs2,
-                rs1,
-                imm.cformat(labels)
-            ),
-
-            Asm::IF { rs2, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}</>{:<18}",
-                "if",
-                rs2,
-                imm.cformat(labels)
-            ),
-            Asm::IFR { rs2, imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}</>{:<18}",
-                "ifr",
-                rs2,
-                imm.cformat(labels)
-            ),
-            Asm::JUMP { imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}</>{:<18}",
-                "jump",
-                "",
-                imm.cformat(labels)
-            ),
-            Asm::JUMPR { imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}</>{:<18}",
-                "jumpr",
-                "",
-                imm.cformat(labels)
-            ),
-            Asm::CALL { imm } => cformat!(
-                "  <red>{:<6}</><blue>{:<6}</>{:<18}",
-                "call",
-                "",
-                imm.cformat(labels)
-            ),
-            Asm::RET => cformat!("  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>", "ret", "", "", ""),
-            Asm::IRET => cformat!(
-                "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
-                "iret",
-                "",
-                "",
-                ""
-            ),
+            Asm::ADD(rd, rs1, rs2) => opformat!("add", rd, rs1, rs2),
+            Asm::SUB(rd, rs1, rs2) => opformat!("sub", rd, rs1, rs2),
+            Asm::AND(rd, rs1, rs2) => opformat!("and", rd, rs1, rs2),
+            Asm::OR(rd, rs1, rs2) => opformat!("or", rd, rs1, rs2),
+            Asm::XOR(rd, rs1, rs2) => opformat!("xor", rd, rs1, rs2),
+            Asm::EQ(rd, rs1, rs2) => opformat!("eq", rd, rs1, rs2),
+            Asm::NEQ(rd, rs1, rs2) => opformat!("neq", rd, rs1, rs2),
+            Asm::LT(rd, rs1, rs2) => opformat!("lt", rd, rs1, rs2),
+            Asm::LTS(rd, rs1, rs2) => opformat!("lts", rd, rs1, rs2),
+            Asm::SR(rd, rs1) => opformat!("sr", rd, rs1, ""),
+            Asm::SRS(rd, rs1) => opformat!("srs", rd, rs1, ""),
+            Asm::SRR(rd, rs1) => opformat!("srr", rd, rs1, ""),
+            Asm::SL(rd, rs1) => opformat!("sl", rd, rs1, ""),
+            Asm::SLR(rd, rs1) => opformat!("slr", rd, rs1, ""),
+            Asm::NOP() => opformat!("nop", "", "", ""),
+            Asm::MOV(rd, rs1) => opformat!("mov", rd, rs1, ""),
+            Asm::ADDI(rd, rs1, imm) => opformat!("addi", rd, rs1, imm.cformat(labels)),
+            Asm::SUBI(rd, rs1, imm) => opformat!("subi", rd, rs1, imm.cformat(labels)),
+            Asm::ANDI(rd, rs1, imm) => opformat!("andi", rd, rs1, imm.cformat(labels)),
+            Asm::ORI(rd, rs1, imm) => opformat!("ori", rd, rs1, imm.cformat(labels)),
+            Asm::XORI(rd, rs1, imm) => opformat!("xori", rd, rs1, imm.cformat(labels)),
+            Asm::EQI(rd, rs1, imm) => opformat!("eqi", rd, rs1, imm.cformat(labels)),
+            Asm::NEQI(rd, rs1, imm) => opformat!("neqi", rd, rs1, imm.cformat(labels)),
+            Asm::LTI(rd, rs1, imm) => opformat!("lti", rd, rs1, imm.cformat(labels)),
+            Asm::LTSI(rd, rs1, imm) => opformat!("ltsi", rd, rs1, imm.cformat(labels)),
+            Asm::NOT(rd, rs1) => opformat!("not", rd, rs1, ""),
+            Asm::LOADI(rd, imm) => opformat!("loadi", rd, "", imm.cformat(labels)),
+            Asm::LOAD(rd, rs1, imm) => opformat!("load", rd, rs1, imm.cformat(labels)),
+            Asm::STORE(rs2, rs1, imm) => opformat!("store", rs2, rs1, imm.cformat(labels)),
+            Asm::IF(rs2, imm) => opformat!("if", rs2, "", imm.cformat(labels)),
+            Asm::IFR(rs2, imm) => opformat!("ifr", rs2, "", imm.cformat(labels)),
+            Asm::JUMP(imm) => opformat!("jump", "", "", imm.cformat(labels)),
+            Asm::JUMPR(imm) => opformat!("jumpr", "", "", imm.cformat(labels)),
+            Asm::CALL(imm) => opformat!("call", "", "", imm.cformat(labels)),
+            Asm::RET() => opformat!("ret", "", "", ""),
+            Asm::IRET() => opformat!("iret", "", "", ""),
         }
     }
 }
@@ -642,42 +392,42 @@ impl Asm {
 impl Asm {
     pub fn resolve(&self, labels: &Labels) -> Option<Inst> {
         match self {
-            Asm::ADD { rd, rs1, rs2 } => Some(Inst::ADD(*rd, *rs1, *rs2)),
-            Asm::SUB { rd, rs1, rs2 } => Some(Inst::SUB(*rd, *rs1, *rs2)),
-            Asm::AND { rd, rs1, rs2 } => Some(Inst::AND(*rd, *rs1, *rs2)),
-            Asm::OR { rd, rs1, rs2 } => Some(Inst::OR(*rd, *rs1, *rs2)),
-            Asm::XOR { rd, rs1, rs2 } => Some(Inst::XOR(*rd, *rs1, *rs2)),
-            Asm::EQ { rd, rs1, rs2 } => Some(Inst::EQ(*rd, *rs1, *rs2)),
-            Asm::NEQ { rd, rs1, rs2 } => Some(Inst::NEQ(*rd, *rs1, *rs2)),
-            Asm::LT { rd, rs1, rs2 } => Some(Inst::LT(*rd, *rs1, *rs2)),
-            Asm::LTS { rd, rs1, rs2 } => Some(Inst::LTS(*rd, *rs1, *rs2)),
-            Asm::SR { rd, rs1 } => Some(Inst::SR(*rd, *rs1)),
-            Asm::SRS { rd, rs1 } => Some(Inst::SRS(*rd, *rs1)),
-            Asm::SRR { rd, rs1 } => Some(Inst::SRR(*rd, *rs1)),
-            Asm::SL { rd, rs1 } => Some(Inst::SL(*rd, *rs1)),
-            Asm::SLR { rd, rs1 } => Some(Inst::SLR(*rd, *rs1)),
-            Asm::MOV { rd, rs1 } => Some(Inst::MOV(*rd, *rs1)),
-            Asm::ADDI { rd, rs1, imm } => Some(Inst::ADDI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::SUBI { rd, rs1, imm } => Some(Inst::SUBI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::ANDI { rd, rs1, imm } => Some(Inst::ANDI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::ORI { rd, rs1, imm } => Some(Inst::ORI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::XORI { rd, rs1, imm } => Some(Inst::XORI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::EQI { rd, rs1, imm } => Some(Inst::EQI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::NEQI { rd, rs1, imm } => Some(Inst::NEQI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::LTI { rd, rs1, imm } => Some(Inst::LTI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::LTSI { rd, rs1, imm } => Some(Inst::LTSI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::NOT { rd, rs1 } => Some(Inst::NOT(*rd, *rs1)),
-            Asm::LOADI { rd, imm } => Some(Inst::LOADI(*rd, imm.resolve(&labels)?)),
-            Asm::LOAD { rd, rs1, imm } => Some(Inst::LOAD(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::STORE { rs2, rs1, imm } => Some(Inst::STORE(*rs2, *rs1, imm.resolve(&labels)?)),
-            Asm::NOP => Some(Inst::NOP),
-            Asm::IF { rs2, imm } => Some(Inst::IF(*rs2, imm.resolve(&labels)?)),
-            Asm::IFR { rs2, imm } => Some(Inst::IFR(*rs2, imm.resolve(&labels)?)),
-            Asm::JUMP { imm } => Some(Inst::JUMP(imm.resolve(&labels)?)),
-            Asm::JUMPR { imm } => Some(Inst::JUMPR(imm.resolve(&labels)?)),
-            Asm::CALL { imm } => Some(Inst::CALL(imm.resolve(&labels)?)),
-            Asm::RET => Some(Inst::RET),
-            Asm::IRET => Some(Inst::IRET),
+            Asm::ADD(rd, rs1, rs2) => Some(Inst::ADD(*rd, *rs1, *rs2)),
+            Asm::SUB(rd, rs1, rs2) => Some(Inst::SUB(*rd, *rs1, *rs2)),
+            Asm::AND(rd, rs1, rs2) => Some(Inst::AND(*rd, *rs1, *rs2)),
+            Asm::OR(rd, rs1, rs2) => Some(Inst::OR(*rd, *rs1, *rs2)),
+            Asm::XOR(rd, rs1, rs2) => Some(Inst::XOR(*rd, *rs1, *rs2)),
+            Asm::EQ(rd, rs1, rs2) => Some(Inst::EQ(*rd, *rs1, *rs2)),
+            Asm::NEQ(rd, rs1, rs2) => Some(Inst::NEQ(*rd, *rs1, *rs2)),
+            Asm::LT(rd, rs1, rs2) => Some(Inst::LT(*rd, *rs1, *rs2)),
+            Asm::LTS(rd, rs1, rs2) => Some(Inst::LTS(*rd, *rs1, *rs2)),
+            Asm::SR(rd, rs1) => Some(Inst::SR(*rd, *rs1)),
+            Asm::SRS(rd, rs1) => Some(Inst::SRS(*rd, *rs1)),
+            Asm::SRR(rd, rs1) => Some(Inst::SRR(*rd, *rs1)),
+            Asm::SL(rd, rs1) => Some(Inst::SL(*rd, *rs1)),
+            Asm::SLR(rd, rs1) => Some(Inst::SLR(*rd, *rs1)),
+            Asm::MOV(rd, rs1) => Some(Inst::MOV(*rd, *rs1)),
+            Asm::ADDI(rd, rs1, imm) => Some(Inst::ADDI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::SUBI(rd, rs1, imm) => Some(Inst::SUBI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::ANDI(rd, rs1, imm) => Some(Inst::ANDI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::ORI(rd, rs1, imm) => Some(Inst::ORI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::XORI(rd, rs1, imm) => Some(Inst::XORI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::EQI(rd, rs1, imm) => Some(Inst::EQI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::NEQI(rd, rs1, imm) => Some(Inst::NEQI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::LTI(rd, rs1, imm) => Some(Inst::LTI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::LTSI(rd, rs1, imm) => Some(Inst::LTSI(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::NOT(rd, rs1) => Some(Inst::NOT(*rd, *rs1)),
+            Asm::LOADI(rd, imm) => Some(Inst::LOADI(*rd, imm.resolve(&labels)?)),
+            Asm::LOAD(rd, rs1, imm) => Some(Inst::LOAD(*rd, *rs1, imm.resolve(&labels)?)),
+            Asm::STORE(rs2, rs1, imm) => Some(Inst::STORE(*rs2, *rs1, imm.resolve(&labels)?)),
+            Asm::NOP() => Some(Inst::NOP),
+            Asm::IF(rs2, imm) => Some(Inst::IF(*rs2, imm.resolve(&labels)?)),
+            Asm::IFR(rs2, imm) => Some(Inst::IFR(*rs2, imm.resolve(&labels)?)),
+            Asm::JUMP(imm) => Some(Inst::JUMP(imm.resolve(&labels)?)),
+            Asm::JUMPR(imm) => Some(Inst::JUMPR(imm.resolve(&labels)?)),
+            Asm::CALL(imm) => Some(Inst::CALL(imm.resolve(&labels)?)),
+            Asm::RET() => Some(Inst::RET),
+            Asm::IRET() => Some(Inst::IRET),
         }
     }
 }
