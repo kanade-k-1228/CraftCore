@@ -1,0 +1,64 @@
+; -----------------------------------------------
+; 割り込み
+
+zero:
+_reset:
+    jump zero zero _main
+
+; CSR Bits
+
+#0x0100 clock_stop
+
+#0xfffe intr_disable
+#0x0001 intr_enable
+
+#0x0004 intr0_flag
+#0x0008 intr1_flag
+#0x0010 intr2_flag
+#0x0020 intr3_flag
+
+#0xfffb intr0_flag_clear
+#0xfff7 intr1_flag_clear
+#0xffef intr2_flag_clear
+#0xffdf intr3_flag_clear
+
+_intr:
+    andi  csr csr intr_disable ; 二重割り込み禁止
+    ; コンテキストの保存
+    subi  sp sp 10 ; スタックを確保
+    store s0 sp 10
+    store s1 sp 9
+    store s2 sp 8
+    store s3 sp 7
+    store t0 sp 6
+    store t1 sp 5
+    store t2 sp 4
+    store t3 sp 3
+    store fp sp 2
+    store ra sp 1
+    ; 実行中のタスクのTCBに保存
+    load  t0 zero task_running
+    store ira t0 .ra ; 戻りアドレスの保存
+    store sp  t0 .sp ; スタックポインタの保存
+    ; 割り込みフラグが立っている場合
+    ; 割り込み番号の処理にジャンプ
+    andi  t0 csr intr0_flag
+    if    t0 intr0
+    andi  t0 csr intr1_flag
+    if    t0 intr1
+    andi  t0 csr intr2_flag
+    if    t0 intr2
+    andi  t0 csr intr3_flag
+    if    t0 intr3
+    ; マッチしなかった場合
+    ; 元の処理に戻る
+
+; プログラム開始前処理
+_main:
+    loadi sp 0xffff
+    loadi fp 0xffff
+    call  os_init
+
+; プログラム終了後処理
+_exit:
+    ori csr csr clock_stop
