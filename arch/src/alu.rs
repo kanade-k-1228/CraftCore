@@ -33,7 +33,7 @@ macro_rules! boo {
     };
 }
 
-pub fn valu<T: Into<ALU>>(op: T, a: u16, b: u16) -> u16 {
+pub fn alu_model<T: Into<ALU>>(op: T, a: u16, b: u16) -> u16 {
     use ALU::*;
     match op.into() {
         ADD => a + b,

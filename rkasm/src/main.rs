@@ -14,8 +14,8 @@ use color_print::cformat;
 struct Args {
     #[clap(default_value = "main.rk")]
     input: Vec<String>,
-    #[clap(short, long, default_value = "out.rk.bin")]
-    output: String,
+    #[clap(short, long)]
+    output: Option<String>,
     #[clap(short, long)]
     dump: bool,
 }
@@ -63,11 +63,12 @@ fn main() {
     }
 
     println!("2. Resolve Label & Generate Binary");
-    println!("  - out: {}", args.output);
-    let mut file = std::fs::File::create(&args.output).expect(&cformat!(
-        "<red,bold>Failed to create File</>: {}",
-        args.output
-    ));
+    let out = args
+        .output
+        .unwrap_or(format!("{}.bin", args.input.get(0).unwrap().clone()));
+    println!("  - out: {}", out);
+    let mut file = std::fs::File::create(&out)
+        .expect(&cformat!("<red,bold>Failed to create File</>: {}", &out));
     for line in &lines {
         if let Some(asm) = &line.get_op() {
             let bin = match asm.resolve(&labels) {
@@ -77,10 +78,8 @@ fn main() {
                     continue;
                 }
             };
-            file.write(&bin.to_le_bytes()).expect(&cformat!(
-                "<red,bold>Failed to write File</>: {}",
-                args.output
-            ));
+            file.write(&bin.to_le_bytes())
+                .expect(&cformat!("<red,bold>Failed to write File</>: {}", &out));
         }
     }
 

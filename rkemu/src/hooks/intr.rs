@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 
-use crate::computer::{Hook, State};
+use crate::model::State;
+
+use super::Hook;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Intr {
@@ -41,9 +43,12 @@ impl Intr {
 }
 
 impl Hook for Intr {
+    fn init(&mut self, state: State) -> State {
+        state
+    }
     fn exec(&mut self, time: u64, _addr: u16, _code: u32, state: State) -> State {
         if self.is_intr(time as u16) {
-            state.interrupt(self.events[&(time as i32)].irq_flag as u16);
+            // state.interrupt(self.events[&(time as i32)].irq_flag as u16);
         }
         state
     }

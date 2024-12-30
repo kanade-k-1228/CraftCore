@@ -46,6 +46,12 @@ impl Reg {
     }
 }
 
+impl Into<u16> for Reg {
+    fn into(self) -> u16 {
+        self as u16
+    }
+}
+
 #[test]
 fn test() {
     println!("{}", Reg::ZERO);

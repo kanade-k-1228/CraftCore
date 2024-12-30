@@ -272,6 +272,7 @@ dependencies = [
 name = "rkemu"
 version = "0.1.0"
 dependencies = [
+ "arch",
  "clap",
  "color-print",
  "serde",

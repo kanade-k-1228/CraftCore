@@ -6,3 +6,4 @@ a: ; Defined here
     nop
 a: ; Re-defined label
     nop
+    jump a
