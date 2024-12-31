@@ -70,25 +70,25 @@ impl Inst {
             Inst::LTS(rs1, rs2, rd) => Op::CALC(ALU::LTS, rd, rs1, rs2),
             Inst::LTSI(rs, rd, imm) => Op::CALCI(ALU::LTS, rd, rs, imm),
 
-            Inst::SR(rs, rd) => Op::CALC(ALU::SR, rd, rs, Reg::ZERO),
-            Inst::SRS(rs, rd) => Op::CALC(ALU::SRS, rd, rs, Reg::ZERO),
-            Inst::SRR(rs, rd) => Op::CALC(ALU::SRR, rd, rs, Reg::ZERO),
-            Inst::SL(rs, rd) => Op::CALC(ALU::SL, rd, rs, Reg::ZERO),
-            Inst::SLR(rs, rd) => Op::CALC(ALU::SLR, rd, rs, Reg::ZERO),
+            Inst::SR(rs, rd) => Op::CALC(ALU::SR, rd, rs, Reg::Z),
+            Inst::SRS(rs, rd) => Op::CALC(ALU::SRS, rd, rs, Reg::Z),
+            Inst::SRR(rs, rd) => Op::CALC(ALU::SRR, rd, rs, Reg::Z),
+            Inst::SL(rs, rd) => Op::CALC(ALU::SL, rd, rs, Reg::Z),
+            Inst::SLR(rs, rd) => Op::CALC(ALU::SLR, rd, rs, Reg::Z),
 
-            Inst::MOV(rs, rd) => Op::CALC(ALU::ADD, rd, rs, Reg::ZERO),
+            Inst::MOV(rs, rd) => Op::CALC(ALU::ADD, rd, rs, Reg::Z),
             Inst::LOAD(rs, rd, imm) => Op::LOAD(rd, rs, imm),
-            Inst::LOADI(rd, imm) => Op::LOAD(rd, Reg::ZERO, imm),
+            Inst::LOADI(rd, imm) => Op::LOAD(rd, Reg::Z, imm),
             Inst::STORE(rs, rd, imm) => Op::STORE(rd, rs, imm),
 
-            Inst::NOP => Op::CALC(ALU::ADD, Reg::ZERO, Reg::ZERO, Reg::ZERO),
-            Inst::IF(rs, imm) => Op::CTRL(Reg::ZERO, rs, Reg::ZERO, imm),
-            Inst::IFR(rs, imm) => Op::CTRL(Reg::ZERO, rs, Reg::ZERO, imm),
-            Inst::JUMP(imm) => Op::CTRL(Reg::ZERO, Reg::ZERO, Reg::ZERO, imm),
-            Inst::JUMPR(imm) => Op::CTRL(Reg::ZERO, Reg::ZERO, Reg::ZERO, imm),
-            Inst::CALL(imm) => Op::CTRL(Reg::ZERO, Reg::ZERO, Reg::ZERO, imm),
-            Inst::RET => Op::CTRL(Reg::ZERO, Reg::RA, Reg::ZERO, 0),
-            Inst::IRET => Op::CTRL(Reg::ZERO, Reg::IRA, Reg::ZERO, 0),
+            Inst::NOP => Op::CALC(ALU::ADD, Reg::Z, Reg::Z, Reg::Z),
+            Inst::IF(rs, imm) => Op::CTRL(Reg::Z, rs, Reg::Z, imm),
+            Inst::IFR(rs, imm) => Op::CTRL(Reg::Z, rs, Reg::Z, imm),
+            Inst::JUMP(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
+            Inst::JUMPR(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
+            Inst::CALL(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
+            Inst::RET => Op::CTRL(Reg::Z, Reg::RA, Reg::Z, 0),
+            Inst::IRET => Op::CTRL(Reg::Z, Reg::IRA, Reg::Z, 0),
         }
     }
 
@@ -96,7 +96,7 @@ impl Inst {
         match op {
             Op::CALC(alu, rd, rs1, rs2) => match alu {
                 ALU::ADD => {
-                    if rs2 == Reg::ZERO {
+                    if rs2 == Reg::Z {
                         return Inst::MOV(rs1, rd);
                     }
                     Inst::ADD(rs1, rs2, rd)
@@ -117,7 +117,7 @@ impl Inst {
             },
             Op::CALCI(alu, rd, rs1, imm) => match alu {
                 ALU::ADD => {
-                    if rs1 == Reg::ZERO {
+                    if rs1 == Reg::Z {
                         return Inst::LOADI(rd, imm);
                     }
                     Inst::ADDI(rs1, rd, imm)
@@ -139,22 +139,22 @@ impl Inst {
             Op::LOAD(rd, rs, imm) => Inst::LOAD(rs, rd, imm),
             Op::STORE(rd, rs, imm) => Inst::STORE(rs, rd, imm),
             Op::CTRL(rd, rs1, rs2, imm) => {
-                if rs2 != Reg::ZERO {
+                if rs2 != Reg::Z {
                     return Inst::IF(rs2, imm);
                 }
-                if rs1 == Reg::IRA && rs2 == Reg::ZERO && rd == Reg::ZERO {
+                if rs1 == Reg::IRA && rs2 == Reg::Z && rd == Reg::Z {
                     return Inst::IRET;
                 }
-                if rs1 == Reg::RA && rs2 == Reg::ZERO && rd == Reg::ZERO {
+                if rs1 == Reg::RA && rs2 == Reg::Z && rd == Reg::Z {
                     return Inst::RET;
                 }
                 if rd == Reg::RA {
                     return Inst::CALL(imm);
                 }
-                if rs1 == Reg::ZERO && rs2 == Reg::ZERO {
+                if rs1 == Reg::Z && rs2 == Reg::Z {
                     return Inst::JUMP(imm);
                 }
-                if rd == Reg::ZERO {
+                if rd == Reg::Z {
                     return Inst::IF(rs2, imm);
                 }
                 panic!("Undefined Inst: {:?}", op);

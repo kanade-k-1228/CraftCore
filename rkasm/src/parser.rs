@@ -39,6 +39,10 @@ impl Line {
         (&self.file, self.idx, &self.raw)
     }
 
+    fn get_link(&self) -> String {
+        format!("{}:{}", self.file, self.idx)
+    }
+
     pub fn get_op(&self) -> Option<&Asm> {
         match &self.content {
             Content::Asm { asm, .. } => Some(asm),
@@ -54,52 +58,59 @@ impl Line {
     }
 }
 
-pub const HL: &str = "+------+------+-------------+-----------------------------+";
-
 impl Line {
     pub fn cformat(&self, labels: &Labels) -> String {
-        let file = if self.idx == 1 {
-            format!("{}\n| {:<55} |\n{}\n", HL, self.file, HL)
-        } else {
-            "".to_string()
+        let file = match self.idx {
+            1 => format!(
+                "{}+------[{}]{}\n",
+                "-".repeat(19),
+                self.file,
+                "-".repeat(60 - self.file.len())
+            ),
+            _ => format!(""),
         };
-
-        let binary = {
-            let mut binary = " ".repeat(11);
-            if let Content::Asm { pc: _, asm } = &self.content {
-                if let Some(ok) = asm.resolve(&labels) {
-                    let bin = ok.to_op().clone().to_bin();
-                    binary = format!(
-                        "{:02X} {:02X} {:02X} {:02X}",
-                        (bin >> 24) & 0xFF,
-                        (bin >> 16) & 0xFF,
-                        (bin >> 8) & 0xFF,
-                        bin & 0xFF
-                    );
-                }
-            }
-            binary
-        };
-
-        let pc = {
-            if let Content::Asm { pc, .. } = self.content {
-                cformat!("<green>{:0>4X}</>", pc)
-            } else {
-                " ".repeat(4).to_string()
-            }
-        };
-
-        let stmt = self.content.cformat(labels);
 
         let comment = match &self.comment {
-            Some(s) => format!(" ;{}", s),
+            Some(s) => format!(";{}", s),
             None => format!(""),
         };
 
-        format!(
-            "{}| {:>4} | {} | {} | {}{}",
-            file, self.idx, pc, binary, stmt, comment
-        )
+        let body = {
+            match &self.content {
+                Content::None => format!("{:19}| {:>4}: {}", "", self.idx, comment),
+                Content::Err => cformat!("<r,s>[!!!!]</> {:40} {}", self.get_link(), comment),
+                Content::Asm { pc, asm } => {
+                    let bin = match asm.resolve(&labels) {
+                        Some(inst) => {
+                            let bin = inst.to_op().clone().to_bin();
+                            format!(
+                                "{:02X} {:02X} {:02X} {:02X}",
+                                (bin >> 24) & 0xFF,
+                                (bin >> 16) & 0xFF,
+                                (bin >> 8) & 0xFF,
+                                bin & 0xFF
+                            )
+                        }
+                        None => cformat!("<r,s>!! !! !! !!</>"),
+                    };
+                    format!(
+                        "[{pc:0>4X}] {bin} | {:>4}:   {} {comment}",
+                        self.idx,
+                        asm.cformat(labels)
+                    )
+                }
+                Content::Label(label) => {
+                    let label = match label {
+                        Label::Code { key, val } => cformat!("<g>{}:0x{:04X}</>", key, val),
+                        Label::Addr { key, val } => cformat!("<c>@0x{:04X} {}</>", val, key),
+                        Label::Const { key, val } => cformat!("<y>#0x{:04X} {}</>", val, key),
+                    };
+                    format!("{:19}| {:>4}: {} {}", "", self.idx, label, comment)
+                }
+            }
+        };
+
+        format!("{file}{body}")
     }
 }
 
@@ -136,17 +147,6 @@ impl Content {
                 return (Content::Err, vec![Msg::Error(msg)]);
             }
         };
-    }
-}
-
-impl Content {
-    fn cformat(&self, labels: &Labels) -> String {
-        match self {
-            Content::None => "".to_string(),
-            Content::Err => cformat!("<red,bold>! ERROR</>"),
-            Content::Asm { pc: _, asm } => asm.cformat(labels),
-            Content::Label(label) => label.cformat(),
-        }
     }
 }
 
@@ -221,16 +221,6 @@ impl Label {
         };
 
         None
-    }
-}
-
-impl Label {
-    fn cformat(&self) -> String {
-        match self {
-            Label::Code { key, val } => cformat!("<green>{}:{:04X}</>", key, val),
-            Label::Addr { key, val } => cformat!("<blue>{:04X} = {}</>", val, key),
-            Label::Const { key, val } => cformat!("<yellow>{:04X} = {}</>", val, key),
-        }
     }
 }
 
@@ -346,7 +336,7 @@ impl Asm {
         macro_rules! opformat {
             ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {
                 cformat!(
-                    "  <red>{:<6}</><blue>{:<6}{:<6}{:<8}</>",
+                    "<red>{:<6}</><blue>{:<2} {:<2} {:<6}</>",
                     $name,
                     $rd,
                     $rs1,
@@ -457,10 +447,17 @@ impl Imm {
     fn cformat(&self, labels: &Labels) -> String {
         match self {
             Imm::Label(str) => match labels.get(str) {
-                Some(line) => line.content.cformat(labels),
-                None => cformat!("<underline>{}</>", str),
+                Some(line) => match &line.content {
+                    Content::Label(label) => match label {
+                        Label::Code { key, val } => cformat!("<g>0x{:0>4X}({})</>", val, key),
+                        Label::Addr { key, val } => cformat!("<c>0x{:0>4X}({})</>", val, key),
+                        Label::Const { key, val } => cformat!("<y>0x{:0>4X}({})</>", val, key),
+                    },
+                    _ => unreachable!(),
+                },
+                None => cformat!("<r,u>{}</>", str),
             },
-            Imm::Literal(val) => cformat!("<yellow>0x{:0>4X}</>", val),
+            Imm::Literal(val) => cformat!("<y>0x{:0>4X}</>", val),
         }
     }
 }

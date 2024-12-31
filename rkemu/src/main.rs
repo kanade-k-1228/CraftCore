@@ -3,7 +3,7 @@ mod model;
 
 use clap::Parser;
 
-use hooks::{intr::Intr, print::Print, serial::Serial, Hook};
+use hooks::{dump::Dump, intr::Intr, serial::Serial, Hook};
 use model::State;
 
 #[derive(Parser, Debug)]
@@ -18,10 +18,10 @@ struct Args {
     tmax: Option<u64>,
 
     #[arg(short, long)]
-    print_cfg: Option<String>,
+    dump_cfg: Option<String>,
 
     #[arg(short = 'a', long)]
-    print_all: bool,
+    dump_all: bool,
 
     #[arg(short, long)]
     intr_cfg: Option<String>,
@@ -35,16 +35,7 @@ fn main() {
     println!("RK16 Emulator by kanade-k-1228");
 
     println!("+-----------------------------------------------+");
-    println!("| Emulate: {:<36} |", args.input_file);
-    if let Some(fname) = &args.print_cfg {
-        println!("|  - Print: {:<35} |", fname);
-    }
-    if args.print_all {
-        println!("|  - Print: {:<35} |", "All");
-    }
-    if let Some(fname) = &args.intr_cfg {
-        println!("|  - Interrupt: {:<31} |", fname);
-    }
+    println!("| {:<45} |", args.input_file);
     println!("+-----------------------------------------------+");
 
     // ------------------------------------------------------------------------
@@ -57,8 +48,9 @@ fn main() {
 
     // ------------------------------------------------------------------------
     // Initialize hooks
+    println!("[INIT]");
     let mut hooks: Vec<Box<dyn Hook>> = vec![
-        Box::new(Print::arg(args.print_cfg, args.print_all)),
+        Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
         Box::new(Intr::arg(args.intr_cfg)),
         Box::new(Serial::new()),
     ];

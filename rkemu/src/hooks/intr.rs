@@ -8,52 +8,48 @@ use crate::model::State;
 
 use super::Hook;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Intr {
     file: Option<String>,
-    events: Events,
+    list: List,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Events(HashMap<i32, i32>);
+pub struct List(HashMap<i32, i32>);
 
 impl Intr {
     pub fn arg(file: Option<String>) -> Self {
         match file {
             Some(fname) => {
                 let file = File::open(&fname).unwrap();
-                let events: Events = serde_yaml::from_reader(BufReader::new(file)).unwrap();
+                let list: List = serde_yaml::from_reader(BufReader::new(file)).unwrap();
                 Self {
                     file: Some(fname.clone()),
-                    events,
+                    list,
                 }
             }
             None => Self {
                 file: None,
-                events: Events(HashMap::new()),
+                list: List(HashMap::new()),
             },
         }
     }
 
-    fn get(&self, time: u16) -> Option<(&i32, &i32)> {
-        self.events.0.get_key_value(&(time as i32))
+    fn get(&self, time: u16) -> Option<&i32> {
+        self.list.0.get(&(time as i32))
     }
 }
 
 impl Hook for Intr {
     fn init(&mut self, state: State) -> State {
         if let Some(fname) = &self.file {
-            println!(
-                "* Intr: Initialized: {:?} # {:?}",
-                fname,
-                self.events.0.len()
-            );
+            println!(" * Intr: #{:?} {:?}", self.list.0.len(), fname);
         }
         state
     }
     fn exec(&mut self, time: u64, _addr: u16, _code: u32, mut cpu: State) -> State {
-        if let Some((t, i)) = self.get(time as u16) {
-            println!("* Intr: at {} # {}", t, i);
+        if let Some(intr) = self.get(time as u16) {
+            println!(" * Intr: @ {} # {}", time, intr);
             cpu.interrupt();
         }
         cpu

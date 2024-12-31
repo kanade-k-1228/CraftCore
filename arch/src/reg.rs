@@ -19,7 +19,7 @@ use strum::{Display, EnumString};
 #[repr(u8)]
 pub enum Reg {
     #[default]
-    ZERO,
+    Z,
     IRA,
     PC,
     SP,
@@ -51,9 +51,8 @@ impl Into<u16> for Reg {
 
 #[test]
 fn test() {
-    assert_eq!(Some(Reg::ZERO), Reg::parse("zero"));
-    assert_eq!(Some(Reg::ZERO), Reg::parse("ZERO"));
-    assert_eq!(Some(Reg::ZERO), Reg::parse("Zero"));
+    assert_eq!(Some(Reg::Z), Reg::parse("z"));
+    assert_eq!(Some(Reg::Z), Reg::parse("Z"));
     assert_eq!(Some(Reg::IRA), Reg::parse("ira"));
     assert_eq!(Some(Reg::PC), Reg::parse("pc"));
     assert_eq!(Some(Reg::SP), Reg::parse("sp"));

@@ -115,20 +115,20 @@ macro_rules! test_op {
     };
 }
 
-test_op!(test_add, Op::CALC(ALU::ADD, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_sub, Op::CALC(ALU::SUB, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_and, Op::CALC(ALU::AND, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_or, Op::CALC(ALU::OR, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_xor, Op::CALC(ALU::XOR, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_eq, Op::CALC(ALU::EQ, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_neq, Op::CALC(ALU::NEQ, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_lt, Op::CALC(ALU::LT, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_lts, Op::CALC(ALU::LTS, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_sr, Op::CALC(ALU::SR, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_srs, Op::CALC(ALU::SRS, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_srr, Op::CALC(ALU::SRR, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_sl, Op::CALC(ALU::SL, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_slr, Op::CALC(ALU::SLR, Reg::ZERO, Reg::T1, Reg::T2));
-test_op!(test_load, Op::LOAD(Reg::ZERO, Reg::T1, 42));
-test_op!(test_store, Op::STORE(Reg::ZERO, Reg::T1, 42));
-test_op!(test_ctrl, Op::CTRL(Reg::ZERO, Reg::T1, Reg::T2, 42));
+test_op!(test_add, Op::CALC(ALU::ADD, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_sub, Op::CALC(ALU::SUB, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_and, Op::CALC(ALU::AND, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_or, Op::CALC(ALU::OR, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_xor, Op::CALC(ALU::XOR, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_eq, Op::CALC(ALU::EQ, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_neq, Op::CALC(ALU::NEQ, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_lt, Op::CALC(ALU::LT, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_lts, Op::CALC(ALU::LTS, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_sr, Op::CALC(ALU::SR, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_srs, Op::CALC(ALU::SRS, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_srr, Op::CALC(ALU::SRR, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_sl, Op::CALC(ALU::SL, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_slr, Op::CALC(ALU::SLR, Reg::Z, Reg::T1, Reg::T2));
+test_op!(test_load, Op::LOAD(Reg::Z, Reg::T1, 42));
+test_op!(test_store, Op::STORE(Reg::Z, Reg::T1, 42));
+test_op!(test_ctrl, Op::CTRL(Reg::Z, Reg::T1, Reg::T2, 42));
