@@ -266,6 +266,20 @@ pub enum Asm {
     RET(),
     IRET(),
 }
+pub enum Ops {
+    None,
+    Calc {
+        fnct: Alu,
+        rs1: Reg,
+        rs2: Reg,
+        rd: Reg,
+    },
+    Calci {
+        rs1: Reg,
+        rd: Reg,
+        imm: Imm,
+    },
+}
 
 impl Asm {
     fn parse(code: &str) -> Result<Asm, String> {
