@@ -1,0 +1,9 @@
+    hoge fuga fuga ; Unknown operation `hoge`
+    add zero zero ; More argument required
+    add a0 a1 hoge ; Unknown register name
+    call hoge ; Undefined label
+a: ; Defined here
+    nop
+a: ; Re-defined label
+    nop
+    jump a

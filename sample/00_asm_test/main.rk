@@ -1,0 +1,71 @@
+; This is a sample code for rk16 assembly
+
+@0x0200 hoge
+@0x0123 fuga
+@0x4567 piyo
+@0x89AB foo
+@0xcdef bar
+@0x0010 exit
+
+#0x0100 const
+#0x0030 '0'
+#0x0031 '1'
+#0x0032 '2'
+#0x0033 '3'
+#0x0034 '4'
+#0x0035 '5'
+
+calc:
+    add  t2 t0 t1 ; t2 = t0 + t1
+    sub  t2 t0 t1 ; t2 = t0 - t1
+    and  t2 t0 t1 ; t2 = t0 & t1
+    or   t2 t0 t1 ; t2 = t0 | t1
+    xor  t2 t0 t1 ; t2 = t0 ^ t1
+
+    eq   t2 t0 t1 ; t2 = t0 == t1
+    neq  t2 t0 t1 ; t2 = t0 != t1
+    lt   t2 t0 t1 ; t2 = t0 < t1
+    lts  t2 t0 t1 ; t2 = t0 < t1
+
+    sr   t2 t0    ; t2 = >> t0
+    srs  t2 t0    ; t2 = >>> t0
+    srr  t2 t0    ; t2 = >>> t0
+    sl   t2 t0    ; t2 = <<  t0
+    slr  t2 t0    ; t2 = <<< t0
+
+    nop           ; ;
+    mov  s0 s1    ; s0 = s1
+
+calci:
+    addi  t2 t0 const  ; t2 = t0 + const
+    subi  t2 t0 hoge   ; t2 = t0 - hoge
+    andi  t2 t0 fuga   ; t2 = t0 & fuga
+    ori   t2 t0 0x0000 ; t2 = t0 | 0x0000
+    xori  t2 t0 0x0110 ; t2 = t0 ^ 0x0110
+
+    eqi   t2 t0 0x1100 ; t2 = t0 == 0x1100
+    neqi  t2 t0 0x1100 ; t2 = t0 != 0x1100
+    lti   t2 t0 0xf000 ; t2 = t0 < 0xf000
+    ltsi  t2 t0 0xf000 ; t2 = t0 < 0xf000
+
+    not   t2 t0        ; t2 = ~ t0
+    loadi t0    0x0123 ; t0 = 0x0123
+
+memory:
+    load  t2 t0 hoge ; t2 <= [t0 + hoge]
+    store t2 t0 fuga ; t2 => [t0 + fuga]
+
+ctrl_test:
+a:
+    if    t1 b  ; ?t1 > b
+    ifr   t1 b  ;
+    jump   e    ; > e
+    jumpr  0x1  ;
+b:
+    call c ; >>> c
+c:
+    ret  ; <<<
+d:
+    iret ; !<<
+e:
+    jump e

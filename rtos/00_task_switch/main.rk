@@ -1,0 +1,181 @@
+; -----------------------------------------------
+; ユーザプログラム
+
+#3 user_global_size
+
+@0x0044 task_id_a
+@0x0045 task_id_b
+@0x0046 task_id_c
+
+; 各割り込みの処理
+intr0:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '0'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr0_flag_clear
+    jump  os_task_scheduler
+
+intr1:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '1'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr1_flag_clear
+    jump  os_task_scheduler
+
+intr2:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '2'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr2_flag_clear
+    jump  os_task_scheduler
+
+intr3:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '3'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr3_flag_clear
+    jump  os_task_scheduler
+
+init_tasks:
+    mov  s0 ra
+    ; task_id_a = task_setup(ready, 0x1000, task_a)
+    loadi t0 task_state_ready
+    loadi t1 0x1000
+    loadi t2 task_a
+    call  os_task_setup
+    store t0 zero task_id_a
+    ; task_id_b = task_setup(ready, 0x1000, task_b)
+    loadi t0 task_state_ready
+    loadi t1 0x1000
+    loadi t2 task_b
+    call  os_task_setup
+    store t0 zero task_id_b
+    ; task_id_c = task_setup(ready, 0x1000, task_c)
+    loadi t0 task_state_ready
+    loadi t1 0x1000
+    loadi t2 task_c
+    call  os_task_setup
+    store t0 zero task_id_c
+    ; start os
+    mov  ra s0 
+    ret
+
+task_a:
+    loadi cout 'S'
+    loadi cout 't'
+    loadi cout 'a'
+    loadi cout 'r'
+    loadi cout 't'
+    loadi cout ''
+    loadi cout 'A'
+    loadi cout '\n'
+    loadi s0 0xAAA0
+    loadi s1 0xAAA1
+    loadi s2 0xAAA2
+    loadi s3 0xAAA3
+    loadi t0 0xAAA4
+    loadi t1 0xAAA5
+    loadi t2 0xAAA6
+    loadi t3 0xAAA7
+    jump  ra zero os_task_wait
+    loadi cout 'R'
+    loadi cout 'e'
+    loadi cout 's'
+    loadi cout 'u'
+    loadi cout 'm'
+    loadi cout 'e'
+    loadi cout ''
+    loadi cout 'A'
+    loadi cout '\n'
+    ; ready B
+    load  t0 zero task_id_b
+    jump  ra zero os_task_ready
+    jump  ra zero os_task_exit
+    
+task_b:
+    loadi cout 'S'
+    loadi cout 't'
+    loadi cout 'a'
+    loadi cout 'r'
+    loadi cout 't'
+    loadi cout ''
+    loadi cout 'B'
+    loadi cout '\n'
+    loadi s0 0xBBB0
+    loadi s1 0xBBB1
+    loadi s2 0xBBB2
+    loadi s3 0xBBB3
+    loadi t0 0xBBB4
+    loadi t1 0xBBB5
+    loadi t2 0xBBB6
+    loadi t3 0xBBB7
+    jump  ra zero os_task_wait
+    loadi cout 'R'
+    loadi cout 'e'
+    loadi cout 's'
+    loadi cout 'u'
+    loadi cout 'm'
+    loadi cout 'e'
+    loadi cout ''
+    loadi cout 'B'
+    loadi cout '\n'
+    jump  ra zero os_task_exit
+
+task_c:
+    loadi cout 'S'   
+    loadi cout 't'
+    loadi cout 'a'
+    loadi cout 'r'
+    loadi cout 't'
+    loadi cout ''
+    loadi cout 'C'
+    loadi cout '\n'
+    loadi s0 0xCCC0
+    loadi s1 0xCCC1
+    loadi s2 0xCCC2
+    loadi s3 0xCCC3
+    loadi t0 0xCCC4
+    loadi t1 0xCCC5
+    loadi t2 0xCCC6
+    loadi t3 0xCCC7
+    ; ready A
+    load  t0 zero task_id_a
+    jump  ra zero os_task_ready
+    loadi cout 'R'
+    loadi cout 'e'
+    loadi cout 's'    
+    loadi cout 'u'
+    loadi cout 'm'
+    loadi cout 'e'
+    loadi cout ''
+    loadi cout 'C'
+    loadi cout '\n'
+    jump  ra zero os_task_exit

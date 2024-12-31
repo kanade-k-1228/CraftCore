@@ -1,0 +1,142 @@
+; -----------------------------------------------
+; ユーザプログラム
+
+#8 user_global_size
+@0x0048 task_id_x
+@0x0049 task_id_y
+@0x004A task_id_z
+
+; 各割り込みの処理
+intr0:
+    loadi cout '\n'
+    loadi cout '<'
+    loadi cout 'S'
+    loadi cout 'w'
+    loadi cout 'i'
+    loadi cout 't'
+    loadi cout 'c'
+    loadi cout 'h'
+    loadi cout 'T'
+    loadi cout 'a'
+    loadi cout 's'
+    loadi cout 'k'
+    loadi cout '>'
+    loadi cout '\n'
+    ; Rotate Task Queue
+    load t1 zero task_list
+task_rot_next:
+    add   t0 t1 zero
+    load  t1 t0 .next
+    brlt  zero t1 task_rot_next ; t0 が末尾のTCBを指すまで
+    load  t2 zero task_list     ; t2 は先頭のTCBを指す
+    store t2 t0 .next ; 末尾の次に現在の先頭を追加
+    load  t1 t2 .next ; 先頭をひとつ進める
+    store t1 zero task_list
+    ; t2 が新たな末尾になる
+    store zero t2 .next
+    ; これで、リストが回転した
+    ; タスクスケジューラに渡す
+    andi  csr csr intr0_flag_clear
+    jump zero zero os_task_scheduler
+
+intr1:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '1'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr1_flag_clear
+    jump zero zero os_task_scheduler
+
+intr2:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '2'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr2_flag_clear
+    jump zero zero os_task_scheduler
+
+intr3:
+    loadi cout ''
+    loadi cout '<'
+    loadi cout 'I'
+    loadi cout 'n'
+    loadi cout 't'
+    loadi cout 'r'
+    loadi cout ':'
+    loadi cout '3'
+    loadi cout '>'
+    loadi cout ''
+    andi  csr csr intr3_flag_clear
+    jump zero zero os_task_scheduler
+
+init_tasks:
+    add  s0 ra zero ; s0 <= ra
+    ; setup task X
+    loadi a0 task_state_ready
+    loadi a1 0x1000 ; stack_size
+    loadi a2 task_x ; entry address
+    jump ra zero os_task_setup
+    store a0 zero task_id_x
+    ; setup task Y
+    loadi a0 task_state_ready
+    loadi a1 0x1000 ; stack_size
+    loadi a2 task_y ; entry address
+    jump ra zero os_task_setup
+    store a0 zero task_id_y
+    ; setup task Z
+    loadi a0 task_state_ready
+    loadi a1 0x1000 ; stack_size
+    loadi a2 task_z ; entry address
+    jump ra zero os_task_setup
+    store a0 zero task_id_z
+    ; os start
+    add  ra s0 zero ; ra <= s0 
+    jump zero ra 0
+
+task_x:
+    loadi a0 0
+    loadi s0 10
+task_x_loop:
+    loadi cout 'X'
+    loadi cout ':'
+    jump  ra zero print_hex
+    loadi cout '\n'
+    addi  a0 a0 1
+    brlt  a0 s0 task_x_loop
+    jump zero zero os_task_exit
+
+task_y:
+    loadi a0 0
+    loadi s0 10
+task_y_loop:
+    loadi cout 'Y'
+    loadi cout ':'
+    jump  ra zero print_hex
+    loadi cout '\n'
+    addi  a0 a0 1
+    brlt  a0 s0 task_y_loop
+    jump zero zero os_task_exit
+
+task_z:
+    loadi a0 0
+    loadi s0 10
+task_z_loop:
+    loadi cout 'Z'
+    loadi cout ':'
+    jump  ra zero print_hex
+    loadi cout '\n'
+    addi  a0 a0 1
+    brlt  a0 s0 task_z_loop
+    jump zero zero os_task_exit
