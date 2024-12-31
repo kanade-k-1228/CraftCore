@@ -18,7 +18,7 @@ pub struct Print {
 #[derive(Debug, Serialize, Deserialize)]
 struct Dump {
     stack: bool,
-    address: HashSet<u16>,
+    heap: HashSet<u16>,
 }
 
 impl Print {
@@ -88,7 +88,7 @@ impl Print {
 impl Hook for Print {
     fn init(&mut self, state: State) -> State {
         if self.print_all {
-            println!("Print: all");
+            println!("* Print: all");
         }
         state
     }
@@ -100,7 +100,7 @@ impl Hook for Print {
         if let Some(dump) = self.dumps.get(&addr) {
             println!("Dump at 0x{:0>4X}:", addr);
             // println!("  - Stack: {:?}", cpu.ram.stack);
-            for addr in dump.address.iter() {
+            for addr in dump.heap.iter() {
                 println!("  - 0x{:0>4X}: 0x{:0>4X}", addr, state.get(*addr));
             }
         }

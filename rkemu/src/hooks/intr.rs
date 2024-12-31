@@ -10,46 +10,52 @@ use super::Hook;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Intr {
-    events: HashMap<i32, Irq>,
+    file: Option<String>,
+    events: Events,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Irq {
-    irq_flag: i32,
-}
+pub struct Events(HashMap<i32, i32>);
 
 impl Intr {
     pub fn arg(file: Option<String>) -> Self {
         match file {
-            Some(fname) => Self::from_file(&fname),
-            None => Self::new(),
+            Some(fname) => {
+                let file = File::open(&fname).unwrap();
+                let events: Events = serde_yaml::from_reader(BufReader::new(file)).unwrap();
+                Self {
+                    file: Some(fname.clone()),
+                    events,
+                }
+            }
+            None => Self {
+                file: None,
+                events: Events(HashMap::new()),
+            },
         }
     }
 
-    fn new() -> Self {
-        Self {
-            events: HashMap::new(),
-        }
-    }
-
-    fn from_file(path: &str) -> Self {
-        let file = File::open(path).unwrap();
-        serde_yaml::from_reader(BufReader::new(file)).unwrap()
-    }
-
-    fn is_intr(&self, time: u16) -> bool {
-        self.events.contains_key(&(time as i32))
+    fn get(&self, time: u16) -> Option<(&i32, &i32)> {
+        self.events.0.get_key_value(&(time as i32))
     }
 }
 
 impl Hook for Intr {
     fn init(&mut self, state: State) -> State {
-        state
-    }
-    fn exec(&mut self, time: u64, _addr: u16, _code: u32, state: State) -> State {
-        if self.is_intr(time as u16) {
-            // state.interrupt(self.events[&(time as i32)].irq_flag as u16);
+        if let Some(fname) = &self.file {
+            println!(
+                "* Intr: Initialized: {:?} # {:?}",
+                fname,
+                self.events.0.len()
+            );
         }
         state
+    }
+    fn exec(&mut self, time: u64, _addr: u16, _code: u32, mut cpu: State) -> State {
+        if let Some((t, i)) = self.get(time as u16) {
+            println!("* Intr: at {} # {}", t, i);
+            cpu.interrupt();
+        }
+        cpu
     }
 }

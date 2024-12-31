@@ -72,7 +72,7 @@ fn main() {
         None => 0_u64..u64::MAX,
     } {
         // Execute instruction
-        let (addr, code) = state.exec();
+        let (addr, code) = state.exec(time);
         // Execute side effects
         state = hooks
             .iter_mut()

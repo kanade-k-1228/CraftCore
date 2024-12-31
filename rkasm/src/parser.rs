@@ -284,9 +284,15 @@ impl Asm {
             // Example: arg!(0, Reg) -> Reg
             // Meaning: Get 0th argument and parse as Reg
             macro_rules! arg {
-                ($index:expr, $Type:ident) => {
-                    $Type::parse(args.get($index).ok_or("More argument required")?)?
-                };
+                ($index:expr, $Type:ident) => {{
+                    let arg = args.get($index).ok_or("More argument required")?;
+                    let arg = $Type::parse(arg).ok_or(format!(
+                        "Cannot parse `{}` as {}",
+                        arg,
+                        stringify!($Type)
+                    ))?;
+                    arg
+                }};
             }
 
             let op: &str = op.to_owned();
@@ -442,11 +448,11 @@ pub enum Imm {
 }
 
 impl Imm {
-    fn parse(s: &str) -> Result<Imm, String> {
+    fn parse(s: &str) -> Option<Imm> {
         if let Ok(value) = parse_with_prefix(s) {
-            return Ok(Imm::Literal(value));
+            return Some(Imm::Literal(value));
         };
-        Ok(Imm::Label(s.to_string()))
+        Some(Imm::Label(s.to_string()))
     }
     fn cformat(&self, labels: &Labels) -> String {
         match self {

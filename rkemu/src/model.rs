@@ -34,6 +34,13 @@ impl State {
 }
 
 impl State {
+    const INTR_ADDR: u16 = 0x0001;
+    pub fn interrupt(&mut self) {
+        self.ram[Reg::PC as usize] = Self::INTR_ADDR;
+    }
+}
+
+impl State {
     pub fn new() -> Self {
         State {
             rom: vec![0; 65536],
@@ -57,13 +64,13 @@ impl State {
         Ok(())
     }
 
-    pub fn exec(&mut self) -> (u16, u32) {
+    pub fn exec(&mut self, time: u64) -> (u16, u32) {
         let pc = self.ram[Reg::PC as usize];
         let bin = self.rom[pc as usize];
         let op = Op::from_bin(bin);
         let inst = Inst::from_op(op.clone());
 
-        println!("[{:0>4X}] {:0>8X} : {:?} : {:?}", pc, bin, op, inst);
+        println!("[{:0>4}] {:?}", time, inst);
 
         match op {
             Op::CALC(alu, rd, rs1, rs2) => self.calc(alu, rd, rs1, rs2),
