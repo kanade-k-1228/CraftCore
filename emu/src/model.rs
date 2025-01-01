@@ -76,7 +76,7 @@ impl State {
             Op::CALC(alu, rd, rs1, rs2) => self.calc(alu, rd, rs1, rs2),
             Op::CALCI(alu, rd, rs1, imm) => self.calci(alu, rd, rs1, imm),
             Op::LOAD(rd, rs1, imm) => self.load(rd, rs1, imm),
-            Op::STORE(rs1, rs2, imm) => self.store(rs1, rs2, imm),
+            Op::STORE(rs2, rs1, imm) => self.store(rs2, rs1, imm),
             Op::CTRL(rd, rs1, rs2, imm) => self.ctrl(rd, rs1, rs2, imm),
         };
         return (pc, bin);
@@ -99,7 +99,7 @@ impl State {
         self.inc_pc();
     }
 
-    fn store(&mut self, rs1: Reg, rs2: Reg, imm: u16) {
+    fn store(&mut self, rs2: Reg, rs1: Reg, imm: u16) {
         self.set(self.get(rs1) + imm, self.get(rs2));
         self.inc_pc();
     }

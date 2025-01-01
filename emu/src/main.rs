@@ -57,7 +57,7 @@ fn main() {
     let mut hooks: Vec<Box<dyn Hook>> = vec![
         Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
         Box::new(Intr::arg(args.intr_cfg)),
-        Box::new(Serial::new()),
+        Box::new(Serial::arg(true, vec!['a', 'b', 'c'])),
     ];
     // Apply initializations
     state = hooks.iter_mut().fold(state, |state, hook| hook.init(state));

@@ -1,0 +1,9 @@
+2:
+  stack: false
+  heap: [0x1000]
+3:
+  stack: false
+  heap: [0x1000]
+4:
+  stack: false
+  heap: [0x1000]

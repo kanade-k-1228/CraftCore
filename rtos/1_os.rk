@@ -17,15 +17,15 @@ os_init:
     loadi t0 mem_top
     addi  t0 t0 os_global_size
     addi  t0 t0 user_global_size
-    store t0 zero heap_top
+    store t0 z heap_top
     loadi t0 mem_bottom
-    store t0 zero heap_bottom
-    store zero zero task_running
-    store zero zero task_list
+    store t0 z heap_bottom
+    store z z task_running
+    store z z task_list
     ; 各種オブジェクトの初期化
     call init_tasks
     ; jump  ra zero os_heap_init
-    jump  zero zero os_task_scheduler
+    jump  z z os_task_scheduler
 
 ; ---------------------------------------------------
 ; OS - タスク管理機能
@@ -52,55 +52,55 @@ os_task_setup:
 os_task_setup_next:
     mov   t0 t1       ; t0 <= t1 
     load  t1 t0 .next ; t0 の次のアイテムのアドレスを、t1に格納する
-    brlt  zero t1 os_task_setup_next
+    if t1 os_task_setup_next
     ; t0 が、リストの末尾のアドレスを指している
     ; [task_list] -> A[next=B] -> B[next=null] -> x
     ; 新たに追加するTCBのアドレスを、リストの末尾に連結する
-    load  t1 zero heap_top
+    load  t1 z heap_top
     store t1 t0 .next
     ; t0 は新たに追加されたTCBのアドレスを指す
-    add   t0 t1 zero
+    add   t0 t1 z
     ; メモリを確保する
     addi  t1 t1 tcb_size
-    store t1 zero heap_top
+    store t1 z heap_top
     ; タスクの初期化
     store a0 t0 .state
     store a2 t0 .ra
     ; スタックの確保
-    load  t1 zero heap_bottom
+    load  t1 z heap_bottom
     store t1 t0 .bp ; ベースポインタを登録
     sub   t2 t1 a1  ; スタックサイズ (a1) メモリを確保
-    store t2 zero heap_bottom
-    add   t2 t1 zero ; t2 = fp
+    store t2 z heap_bottom
+    add   t2 t1 z ; t2 = fp
     subi  t1 t1 14  ; 初期コンテキスト分だけスタックポインタを進める
     store t1 t0 .sp
     ; 初期コンテキストをスタックに追加
-    store zero t1 14 ; s0
-    store zero t1 13 ; s1
-    store zero t1 12 ; s2
-    store zero t1 11 ; s3
-    store zero t1 10 ; t0
-    store zero t1 9  ; t1
-    store zero t1 8  ; t2
-    store zero t1 7  ; t3
-    store zero t1 6  ; a0
-    store zero t1 5  ; a1
-    store zero t1 4  ; a2
-    store zero t1 3  ; a3
+    store z t1 14 ; s0
+    store z t1 13 ; s1
+    store z t1 12 ; s2
+    store z t1 11 ; s3
+    store z t1 10 ; t0
+    store z t1 9  ; t1
+    store z t1 8  ; t2
+    store z t1 7  ; t3
+    store z t1 6  ; a0
+    store z t1 5  ; a1
+    store z t1 4  ; a2
+    store z t1 3  ; a3
     store t2 t1 2  ; fp
     loadi t2 os_task_exit
     store t2 t1 1  ; ra = exit
-    add  a0 t0 zero   ; return task_pointer
-    jump zero ra zero ; return
+    mov   a0 t0    ; return task_pointer
+    ret
 
 ; タスクの終了
 os_task_exit:
     andi  csr csr 0xfffe ; 割り込み禁止
     ; 状態を exit に変更
-    load  t0 zero task_running
+    load  t0 z task_running
     loadi t1 task_state_exit
     store t1 t0 .state
-    jump  zero zero os_task_scheduler
+    jump os_task_scheduler
 
 ; 実行中のタスクを一時停止
 os_task_wait:
@@ -122,13 +122,13 @@ os_task_wait:
     store fp sp 2
     store ra sp 1
     ; TCB の更新
-    load t0 zero task_running
+    load t0 z task_running
     store sp t0 .sp
     store ra t0 .ra
     ; 状態を waiting に変更
     loadi t1 task_state_waiting
     store t1 t0 .state
-    jump zero zero os_task_scheduler
+    jump os_task_scheduler
 
 ; 指定した ID のタスクを Ready 状態にする
 ; a0 > task id
@@ -151,33 +151,34 @@ os_task_ready:
     store fp sp 2
     store ra sp 1
     ; TCB の更新
-    load t0 zero task_running
+    load t0 z task_running
     store sp t0 .sp
     store ra t0 .ra
     ; 状態を ready に変更
     loadi t1 task_state_ready
     store t1 a0 .state
-    jump zero zero os_task_scheduler
+    jump os_task_scheduler
 
 os_task_scheduler:
     ; タスクリストから、Ready のタスクを探す
-    load t1 zero task_list
+    load t1 z task_list
     loadi t3 task_state_ready
 os_task_scheduler_next:
-    add   t0 t1 zero  ; t0 <= t1 
+    add   t0 t1 z  ; t0 <= t1 
     load  t2 t0 .state
-    breq  t2 t3 os_task_scheduler_found_ready
+    eq    s0 t2 t3
+    if    s0 os_task_scheduler_found_ready
     load  t1 t0 .next ; t0 の次のアイテムのアドレスを、t1に格納する
-    brlt  zero t1 os_task_scheduler_next
+    if  t1 os_task_scheduler_next
     ; 末尾に到達 =  Ready が見つからなかった
     ; 全てのタスクが exit なら、exitする
-    jump zero zero _exit
+    jump z z _exit
 os_task_scheduler_found_ready:
-    store t0 zero task_running
+    store t0 z task_running
 
 os_restore_context:
     ; タスクを再開
-    load t0 zero task_running
+    load t0 z task_running
     load sp t0 .sp  ; スタックポインタを復元
     load ira t0 .ra ; 戻りアドレスを 「IRA」に復元
     load ra sp 1
@@ -196,7 +197,7 @@ os_restore_context:
     load s0 sp 14
     addi sp sp 14 ; スタックを解放
     ori  csr csr 0x0001 ; 割り込み許可
-    jump zero ira zero ; 中断地点に戻る
+    iret ; 中断地点に戻る
 
 ; -----------------------------------------------
 ; メモリ管理機能
