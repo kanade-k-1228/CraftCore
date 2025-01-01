@@ -33,6 +33,12 @@ struct Args {
 
     #[arg(default_value = "main.rk.bin")]
     input_file: String,
+
+    #[arg(long = "sin")]
+    serial_in: Option<String>,
+
+    #[arg(long = "sout")]
+    serial_out: Option<String>,
 }
 
 fn main() {
@@ -57,10 +63,13 @@ fn main() {
     let mut hooks: Vec<Box<dyn Hook>> = vec![
         Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
         Box::new(Intr::arg(args.intr_cfg)),
-        Box::new(Serial::arg(true, vec!['a', 'b', 'c'])),
+        Box::new(Serial::arg(true, args.serial_out, args.serial_in)),
     ];
+
     // Apply initializations
-    state = hooks.iter_mut().fold(state, |state, hook| hook.init(state));
+    for hook in hooks.iter_mut() {
+        state = hook.init(state);
+    }
 
     // ------------------------------------------------------------------------
     // Main loop
@@ -69,11 +78,14 @@ fn main() {
         None => 0_u64..u64::MAX,
     } {
         // Execute instruction
-        let (addr, code) = state.exec(time);
+        let (addr, code, _op, inst) = state.exec();
+        println!("[{:0>4}] {:?}", time, inst);
+
         // Execute side effects
-        state = hooks
-            .iter_mut()
-            .fold(state, |state, hook| hook.exec(time, addr, code, state));
+        for hook in hooks.iter_mut() {
+            state = hook.exec(time, addr, code, state);
+        }
+
         if state.is_terminated() {
             break;
         }

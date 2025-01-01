@@ -64,13 +64,11 @@ impl State {
         Ok(())
     }
 
-    pub fn exec(&mut self, time: u64) -> (u16, u32) {
+    pub fn exec(&mut self) -> (u16, u32, Op, Inst) {
         let pc = self.ram[Reg::PC as usize];
         let bin = self.rom[pc as usize];
         let op = Op::from_bin(bin);
         let inst = Inst::from_op(op.clone());
-
-        println!("[{:0>4}] {:?}", time, inst);
 
         match op {
             Op::CALC(alu, rd, rs1, rs2) => self.calc(alu, rd, rs1, rs2),
@@ -79,7 +77,7 @@ impl State {
             Op::STORE(rs2, rs1, imm) => self.store(rs2, rs1, imm),
             Op::CTRL(rd, rs1, rs2, imm) => self.ctrl(rd, rs1, rs2, imm),
         };
-        return (pc, bin);
+        return (pc, bin, op, inst);
     }
 
     fn calc(&mut self, alu: ALU, rd: Reg, rs1: Reg, rs2: Reg) {

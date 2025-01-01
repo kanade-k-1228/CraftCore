@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use color_print::cprintln;
 
 use super::Hook;
@@ -5,15 +7,40 @@ use crate::model::State;
 
 pub struct Serial {
     style: bool,
-    tx_buf: Vec<char>,
+    read_buf: Vec<char>,
+    write_buf: Box<dyn std::io::Write>,
 }
 
 impl Serial {
     const TX: u16 = 0x1000;
     const RX: u16 = 0x1001;
     const NONE: u16 = 0xFFFF;
-    pub fn arg(style: bool, tx_buf: Vec<char>) -> Serial {
-        Serial { style, tx_buf }
+    pub fn arg(style: bool, write_file: Option<String>, read_file: Option<String>) -> Serial {
+        // open file and read
+        let read_buf = match read_file {
+            Some(file) => {
+                let mut buf = Vec::new();
+                let mut file = std::fs::File::open(file).unwrap();
+                file.read_to_end(&mut buf).unwrap();
+                buf.into_iter().map(|b| b as char).collect()
+            }
+            None => vec![],
+        };
+
+        // open file and create writer buffer
+        let write_buf = match write_file {
+            Some(file) => {
+                let file = std::fs::File::create(file).unwrap();
+                Box::new(std::io::BufWriter::new(file)) as Box<dyn std::io::Write>
+            }
+            None => Box::new(std::io::BufWriter::new(std::io::stdout())) as Box<dyn std::io::Write>,
+        };
+
+        Serial {
+            style,
+            read_buf,
+            write_buf,
+        }
     }
 }
 
@@ -33,9 +60,10 @@ impl Hook for Serial {
         if stdout != Serial::NONE {
             let c = stdout as u8 as char;
             match self.style {
-                true => cprintln!("   > <s>{:?}</>", c),
+                true => cprintln!("   > <r,s>{:?}</>", c),
                 false => print!("{}", c),
             }
+            self.write_buf.write_all(&[c as u8]).unwrap();
         }
         state.set(Serial::TX, Serial::NONE);
         state
