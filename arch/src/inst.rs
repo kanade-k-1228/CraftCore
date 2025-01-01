@@ -36,10 +36,10 @@ pub enum Inst {
     STORE(Reg, Reg, u16),
 
     NOP,
-    IF(Reg, u16),
-    IFR(Reg, u16),
     JUMP(u16),
     JUMPR(u16),
+    IF(Reg, u16),
+    IFR(Reg, u16),
     CALL(u16),
     RET,
     IRET,
@@ -48,45 +48,45 @@ pub enum Inst {
 impl Inst {
     pub fn to_op(self) -> Op {
         match self {
-            Inst::ADD(rs1, rs2, rd) => Op::CALC(ALU::ADD, rd, rs1, rs2),
-            Inst::ADDI(rs, rd, imm) => Op::CALCI(ALU::ADD, rd, rs, imm),
-            Inst::SUB(rs1, rs2, rd) => Op::CALC(ALU::SUB, rd, rs1, rs2),
-            Inst::SUBI(rs, rd, imm) => Op::CALCI(ALU::SUB, rd, rs, imm),
+            Inst::ADD(rd, rs1, rs2) => Op::CALC(ALU::ADD, rd, rs1, rs2),
+            Inst::ADDI(rd, rs, imm) => Op::CALCI(ALU::ADD, rd, rs, imm),
+            Inst::SUB(rd, rs1, rs2) => Op::CALC(ALU::SUB, rd, rs1, rs2),
+            Inst::SUBI(rd, rs, imm) => Op::CALCI(ALU::SUB, rd, rs, imm),
 
-            Inst::NOT(rs, rd) => Op::CALCI(ALU::XOR, rd, rs, 0xFF),
-            Inst::AND(rs1, rs2, rd) => Op::CALC(ALU::AND, rd, rs1, rs2),
-            Inst::ANDI(rs, rd, imm) => Op::CALCI(ALU::AND, rd, rs, imm),
-            Inst::OR(rs1, rs2, rd) => Op::CALC(ALU::OR, rd, rs1, rs2),
-            Inst::ORI(rs, rd, imm) => Op::CALCI(ALU::OR, rd, rs, imm),
-            Inst::XOR(rs1, rs2, rd) => Op::CALC(ALU::XOR, rd, rs1, rs2),
-            Inst::XORI(rs, rd, imm) => Op::CALCI(ALU::XOR, rd, rs, imm),
+            Inst::NOT(rd, rs) => Op::CALCI(ALU::XOR, rd, rs, 0xFFFF),
+            Inst::AND(rd, rs1, rs2) => Op::CALC(ALU::AND, rd, rs1, rs2),
+            Inst::ANDI(rd, rs, imm) => Op::CALCI(ALU::AND, rd, rs, imm),
+            Inst::OR(rd, rs1, rs2) => Op::CALC(ALU::OR, rd, rs1, rs2),
+            Inst::ORI(rd, rs, imm) => Op::CALCI(ALU::OR, rd, rs, imm),
+            Inst::XOR(rd, rs1, rs2) => Op::CALC(ALU::XOR, rd, rs1, rs2),
+            Inst::XORI(rd, rs, imm) => Op::CALCI(ALU::XOR, rd, rs, imm),
 
-            Inst::EQ(rs1, rs2, rd) => Op::CALC(ALU::EQ, rd, rs1, rs2),
-            Inst::EQI(rs, rd, imm) => Op::CALCI(ALU::EQ, rd, rs, imm),
-            Inst::NEQ(rs1, rs2, rd) => Op::CALC(ALU::NEQ, rd, rs1, rs2),
-            Inst::NEQI(rs, rd, imm) => Op::CALCI(ALU::NEQ, rd, rs, imm),
-            Inst::LT(rs1, rs2, rd) => Op::CALC(ALU::LT, rd, rs1, rs2),
-            Inst::LTI(rs, rd, imm) => Op::CALCI(ALU::LT, rd, rs, imm),
-            Inst::LTS(rs1, rs2, rd) => Op::CALC(ALU::LTS, rd, rs1, rs2),
-            Inst::LTSI(rs, rd, imm) => Op::CALCI(ALU::LTS, rd, rs, imm),
+            Inst::EQ(rd, rs1, rs2) => Op::CALC(ALU::EQ, rd, rs1, rs2),
+            Inst::EQI(rd, rs, imm) => Op::CALCI(ALU::EQ, rd, rs, imm),
+            Inst::NEQ(rd, rs1, rs2) => Op::CALC(ALU::NEQ, rd, rs1, rs2),
+            Inst::NEQI(rd, rs, imm) => Op::CALCI(ALU::NEQ, rd, rs, imm),
+            Inst::LT(rd, rs1, rs2) => Op::CALC(ALU::LT, rd, rs1, rs2),
+            Inst::LTI(rd, rs, imm) => Op::CALCI(ALU::LT, rd, rs, imm),
+            Inst::LTS(rd, rs1, rs2) => Op::CALC(ALU::LTS, rd, rs1, rs2),
+            Inst::LTSI(rd, rs, imm) => Op::CALCI(ALU::LTS, rd, rs, imm),
 
-            Inst::SR(rs, rd) => Op::CALC(ALU::SR, rd, rs, Reg::Z),
-            Inst::SRS(rs, rd) => Op::CALC(ALU::SRS, rd, rs, Reg::Z),
-            Inst::SRR(rs, rd) => Op::CALC(ALU::SRR, rd, rs, Reg::Z),
-            Inst::SL(rs, rd) => Op::CALC(ALU::SL, rd, rs, Reg::Z),
-            Inst::SLR(rs, rd) => Op::CALC(ALU::SLR, rd, rs, Reg::Z),
+            Inst::SR(rd, rs) => Op::CALC(ALU::SR, rd, rs, Reg::Z),
+            Inst::SRS(rd, rs) => Op::CALC(ALU::SRS, rd, rs, Reg::Z),
+            Inst::SRR(rd, rs) => Op::CALC(ALU::SRR, rd, rs, Reg::Z),
+            Inst::SL(rd, rs) => Op::CALC(ALU::SL, rd, rs, Reg::Z),
+            Inst::SLR(rd, rs) => Op::CALC(ALU::SLR, rd, rs, Reg::Z),
 
-            Inst::MOV(rs, rd) => Op::CALC(ALU::ADD, rd, rs, Reg::Z),
-            Inst::LOAD(rs, rd, imm) => Op::LOAD(rd, rs, imm),
-            Inst::LOADI(rd, imm) => Op::LOAD(rd, Reg::Z, imm),
-            Inst::STORE(rs, rd, imm) => Op::STORE(rd, rs, imm),
+            Inst::MOV(rd, rs) => Op::CALC(ALU::ADD, rd, rs, Reg::Z),
+            Inst::LOAD(rd, rs, imm) => Op::LOAD(rd, rs, imm),
+            Inst::LOADI(rd, imm) => Op::CALCI(ALU::ADD, rd, Reg::Z, imm),
+            Inst::STORE(rd, rs, imm) => Op::STORE(rd, rs, imm),
 
             Inst::NOP => Op::CALC(ALU::ADD, Reg::Z, Reg::Z, Reg::Z),
-            Inst::IF(rs, imm) => Op::CTRL(Reg::Z, rs, Reg::Z, imm),
-            Inst::IFR(rs, imm) => Op::CTRL(Reg::Z, rs, Reg::Z, imm),
             Inst::JUMP(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
-            Inst::JUMPR(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
-            Inst::CALL(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
+            Inst::JUMPR(imm) => Op::CTRL(Reg::Z, Reg::PC, Reg::Z, imm),
+            Inst::IF(rs, imm) => Op::CTRL(Reg::Z, Reg::Z, rs, imm),
+            Inst::IFR(rs, imm) => Op::CTRL(Reg::Z, Reg::PC, rs, imm),
+            Inst::CALL(imm) => Op::CTRL(Reg::RA, Reg::Z, Reg::Z, imm),
             Inst::RET => Op::CTRL(Reg::Z, Reg::RA, Reg::Z, 0),
             Inst::IRET => Op::CTRL(Reg::Z, Reg::IRA, Reg::Z, 0),
         }
@@ -95,70 +95,117 @@ impl Inst {
     pub fn from_op(op: Op) -> Inst {
         match op {
             Op::CALC(alu, rd, rs1, rs2) => match alu {
-                ALU::ADD => {
-                    if rs2 == Reg::Z {
-                        return Inst::MOV(rs1, rd);
-                    }
-                    Inst::ADD(rs1, rs2, rd)
-                }
-                ALU::SUB => Inst::SUB(rs1, rs2, rd),
-                ALU::AND => Inst::AND(rs1, rs2, rd),
-                ALU::OR => Inst::OR(rs1, rs2, rd),
-                ALU::XOR => Inst::XOR(rs1, rs2, rd),
-                ALU::EQ => Inst::EQ(rs1, rs2, rd),
-                ALU::NEQ => Inst::NEQ(rs1, rs2, rd),
-                ALU::LT => Inst::LT(rs1, rs2, rd),
-                ALU::LTS => Inst::LTS(rs1, rs2, rd),
-                ALU::SR => Inst::SR(rs1, rd),
-                ALU::SRS => Inst::SRS(rs1, rd),
-                ALU::SRR => Inst::SRR(rs1, rd),
-                ALU::SL => Inst::SL(rs1, rd),
-                ALU::SLR => Inst::SLR(rs1, rd),
+                ALU::ADD => match (rs1, rs2) {
+                    (Reg::Z, Reg::Z) => Inst::NOP,
+                    (_, Reg::Z) => Inst::MOV(rd, rs1),
+                    (_, _) => Inst::ADD(rd, rs1, rs2),
+                },
+                ALU::SUB => Inst::SUB(rd, rs1, rs2),
+                ALU::AND => Inst::AND(rd, rs1, rs2),
+                ALU::OR => Inst::OR(rd, rs1, rs2),
+                ALU::XOR => Inst::XOR(rd, rs1, rs2),
+                ALU::EQ => Inst::EQ(rd, rs1, rs2),
+                ALU::NEQ => Inst::NEQ(rd, rs1, rs2),
+                ALU::LT => Inst::LT(rd, rs1, rs2),
+                ALU::LTS => Inst::LTS(rd, rs1, rs2),
+                ALU::SR => Inst::SR(rd, rs1),
+                ALU::SRS => Inst::SRS(rd, rs1),
+                ALU::SRR => Inst::SRR(rd, rs1),
+                ALU::SL => Inst::SL(rd, rs1),
+                ALU::SLR => Inst::SLR(rd, rs1),
             },
             Op::CALCI(alu, rd, rs1, imm) => match alu {
-                ALU::ADD => {
-                    if rs1 == Reg::Z {
-                        return Inst::LOADI(rd, imm);
-                    }
-                    Inst::ADDI(rs1, rd, imm)
-                }
-                ALU::SUB => Inst::SUBI(rs1, rd, imm),
-                ALU::AND => Inst::ANDI(rs1, rd, imm),
-                ALU::OR => Inst::ORI(rs1, rd, imm),
-                ALU::XOR => Inst::XORI(rs1, rd, imm),
-                ALU::EQ => Inst::EQI(rs1, rd, imm),
-                ALU::NEQ => Inst::NEQI(rs1, rd, imm),
-                ALU::LT => Inst::LTI(rs1, rd, imm),
-                ALU::LTS => Inst::LTSI(rs1, rd, imm),
-                ALU::SR => Inst::SR(rs1, rd),
-                ALU::SRS => Inst::SRS(rs1, rd),
-                ALU::SRR => Inst::SRR(rs1, rd),
-                ALU::SL => Inst::SL(rs1, rd),
-                ALU::SLR => Inst::SLR(rs1, rd),
+                ALU::ADD => match rs1 {
+                    Reg::Z => Inst::LOADI(rd, imm),
+                    _ => Inst::ADDI(rd, rs1, imm),
+                },
+                ALU::SUB => Inst::SUBI(rd, rs1, imm),
+                ALU::AND => Inst::ANDI(rd, rs1, imm),
+                ALU::OR => Inst::ORI(rd, rs1, imm),
+                ALU::XOR => match imm {
+                    0xFFFF => Inst::NOT(rd, rs1),
+                    _ => Inst::XORI(rd, rs1, imm),
+                },
+                ALU::EQ => Inst::EQI(rd, rs1, imm),
+                ALU::NEQ => Inst::NEQI(rd, rs1, imm),
+                ALU::LT => Inst::LTI(rd, rs1, imm),
+                ALU::LTS => Inst::LTSI(rd, rs1, imm),
+                ALU::SR => Inst::SR(rd, rs1),
+                ALU::SRS => Inst::SRS(rd, rs1),
+                ALU::SRR => Inst::SRR(rd, rs1),
+                ALU::SL => Inst::SL(rd, rs1),
+                ALU::SLR => Inst::SLR(rd, rs1),
             },
-            Op::LOAD(rd, rs, imm) => Inst::LOAD(rs, rd, imm),
-            Op::STORE(rd, rs, imm) => Inst::STORE(rs, rd, imm),
-            Op::CTRL(rd, rs1, rs2, imm) => {
-                if rs2 != Reg::Z {
-                    return Inst::IF(rs2, imm);
-                }
-                if rs1 == Reg::IRA && rs2 == Reg::Z && rd == Reg::Z {
-                    return Inst::IRET;
-                }
-                if rs1 == Reg::RA && rs2 == Reg::Z && rd == Reg::Z {
-                    return Inst::RET;
-                }
-                if rd == Reg::RA {
-                    return Inst::CALL(imm);
-                }
-                if rs1 == Reg::Z && rs2 == Reg::Z {
-                    return Inst::JUMP(imm);
-                }
-                if rd == Reg::Z {
-                    return Inst::IF(rs2, imm);
-                }
-                panic!("Undefined Inst: {:?}", op);
-            }
+            Op::LOAD(rd, rs, imm) => Inst::LOAD(rd, rs, imm),
+            Op::STORE(rs2, rs1, imm) => Inst::STORE(rs2, rs1, imm),
+            Op::CTRL(rd, rs1, rs2, imm) => match (rd, rs1, rs2) {
+                (Reg::Z, Reg::Z, Reg::Z) => Inst::JUMP(imm),
+                (Reg::Z, Reg::PC, Reg::Z) => Inst::JUMPR(imm),
+                (Reg::Z, Reg::Z, rs2) => Inst::IF(rs2, imm),
+                (Reg::Z, Reg::PC, rs2) => Inst::IFR(rs2, imm),
+                (Reg::RA, _, _) => Inst::CALL(imm),
+                (Reg::Z, Reg::RA, Reg::Z) => Inst::RET,
+                (Reg::Z, Reg::IRA, Reg::Z) => Inst::IRET,
+                _ => panic!("Undefined Inst: {:?}", op),
+            },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! test_inst {
+        ($($name:ident: $inst:expr,)*) => {
+            $(
+                #[test]
+                fn $name() {
+                    let inst = $inst;
+                    let op = inst.clone().to_op();
+                    let inst_back = Inst::from_op(op);
+                    assert_eq!(inst, inst_back);
+                }
+            )*
+        }
+    }
+
+    test_inst! {
+        test_add: Inst::ADD(Reg::T0, Reg::T1, Reg::T2),
+        test_addi: Inst::ADDI(Reg::T0, Reg::T1, 0x0123),
+        test_sub: Inst::SUB(Reg::T0, Reg::T1, Reg::T2),
+        test_subi: Inst::SUBI(Reg::T0, Reg::T1, 0x0123),
+        test_not: Inst::NOT(Reg::T0, Reg::T1),
+        test_and: Inst::AND(Reg::T0, Reg::T1, Reg::T2),
+        test_andi: Inst::ANDI(Reg::T0, Reg::T1, 0x0123),
+        test_or: Inst::OR(Reg::T0, Reg::T1, Reg::T2),
+        test_ori: Inst::ORI(Reg::T0, Reg::T1, 0x0123),
+        test_xor: Inst::XOR(Reg::T0, Reg::T1, Reg::T2),
+        test_xori: Inst::XORI(Reg::T0, Reg::T1, 0x0123),
+        test_eq: Inst::EQ(Reg::T0, Reg::T1, Reg::T2),
+        test_eqi: Inst::EQI(Reg::T0, Reg::T1, 0x0123),
+        test_neq: Inst::NEQ(Reg::T0, Reg::T1, Reg::T2),
+        test_neqi: Inst::NEQI(Reg::T0, Reg::T1, 0x0123),
+        test_lt: Inst::LT(Reg::T0, Reg::T1, Reg::T2),
+        test_lti: Inst::LTI(Reg::T0, Reg::T1, 0x0123),
+        test_lts: Inst::LTS(Reg::T0, Reg::T1, Reg::T2),
+        test_ltsi: Inst::LTSI(Reg::T0, Reg::T1, 0x0123),
+        test_sr: Inst::SR(Reg::T0, Reg::T1),
+        test_srs: Inst::SRS(Reg::T0, Reg::T1),
+        test_srr: Inst::SRR(Reg::T0, Reg::T1),
+        test_sl: Inst::SL(Reg::T0, Reg::T1),
+        test_slr: Inst::SLR(Reg::T0, Reg::T1),
+        test_mov: Inst::MOV(Reg::T0, Reg::T1),
+        test_load: Inst::LOAD(Reg::T0, Reg::T1, 0x0123),
+        test_loadi: Inst::LOADI(Reg::T0, 0x0123),
+        test_store: Inst::STORE(Reg::T0, Reg::T1, 0x0123),
+        test_nop: Inst::NOP,
+        test_if: Inst::IF(Reg::T0, 0x0123),
+        test_ifr: Inst::IFR(Reg::T0, 0x0123),
+        test_jump: Inst::JUMP(0x0123),
+        test_jumpr: Inst::JUMPR(0x0123),
+        test_call: Inst::CALL(0x0123),
+        test_ret: Inst::RET,
+        test_iret: Inst::IRET,
     }
 }

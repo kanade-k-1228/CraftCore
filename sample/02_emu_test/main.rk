@@ -1,7 +1,12 @@
-; This is a sample code for rk16 emulator
+jump _main
 
-loadi t0 0x0000
-
-loop:
+_intr:
     addi t0 t0 0x0001
-    jump loop
+    iret
+
+_main:
+    loadi t0 0x0000
+    _loop:
+        nop
+        nop
+        jump _loop
