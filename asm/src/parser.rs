@@ -65,7 +65,7 @@ impl Line {
                 "{}+------[{}]{}\n",
                 "-".repeat(19),
                 self.file,
-                "-".repeat(60 - self.file.len())
+                "-".repeat(45 - self.file.len())
             ),
             _ => format!(""),
         };

@@ -2,10 +2,12 @@
 name = "rkasm"
 version = "0.1.0"
 edition = "2021"
+authors = ["Kanade <kanade.k.1228@gmail.com>"]
+description = "Assembler for RK16 architecture"
 
 [dependencies]
-bimap = "0.6.3"
-clap = { version = "4.5.4", features = ["derive"] }
+arch = { path = "../arch" }
+clap = { version = "4.5.23", features = ["derive"] }
 color-print = "0.3.6"
 once_cell = "1.19.0"
-arch = { path = "../arch" }
+bimap = "0.6.3"

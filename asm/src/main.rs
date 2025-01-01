@@ -4,18 +4,28 @@ mod parser;
 
 use color_print::cformat;
 
+const HELP_TEMPLATE: &str = "\
+{before-help}{bin} {version}
+  {author}
+  {about}
+
+{usage-heading}
+{tab}{usage}
+
+{all-args}{after-help}";
+
 #[derive(Debug, clap::Parser)]
-#[clap(
-    name = "RK16 Assembler",
-    author = "kanade-k-1228",
-    version = "v1.0.0",
-    about = "Assembler for RK16 ISA"
-)]
+#[clap(author, version, about,help_template = HELP_TEMPLATE)]
 struct Args {
+    /// Input files
     #[clap(default_value = "main.rk")]
     input: Vec<String>,
+
+    /// Output file
     #[clap(short, long, default_value = "main.rk.bin")]
     output: String,
+
+    /// Dump assembly code
     #[clap(short, long)]
     dump: bool,
 }

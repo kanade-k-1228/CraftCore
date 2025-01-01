@@ -6,13 +6,18 @@ use clap::Parser;
 use hooks::{dump::Dump, intr::Intr, serial::Serial, Hook};
 use model::State;
 
+const HELP_TEMPLATE: &str = "\
+{before-help}{bin} {version}
+  {author}
+  {about}
+
+{usage-heading}
+{tab}{usage}
+
+{all-args}{after-help}";
+
 #[derive(Parser, Debug)]
-#[clap(
-    name = "RK16 Emulator",
-    author = "kanade-k-1228",
-    version = "v1.0.0",
-    about = "Emulator for RK16 ISA"
-)]
+#[clap(author, version, about,help_template = HELP_TEMPLATE)]
 struct Args {
     #[arg(short = 't', long)]
     tmax: Option<u64>,
