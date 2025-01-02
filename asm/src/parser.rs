@@ -416,14 +416,14 @@ impl Asm {
             Asm::LOADI(rd, imm) => Some(Inst::LOADI(*rd, imm.resolve(&labels)?)),
             Asm::LOAD(rd, rs1, imm) => Some(Inst::LOAD(*rd, *rs1, imm.resolve(&labels)?)),
             Asm::STORE(rs2, rs1, imm) => Some(Inst::STORE(*rs2, *rs1, imm.resolve(&labels)?)),
-            Asm::NOP() => Some(Inst::NOP),
+            Asm::NOP() => Some(Inst::NOP()),
             Asm::IF(rs2, imm) => Some(Inst::IF(*rs2, imm.resolve(&labels)?)),
             Asm::IFR(rs2, imm) => Some(Inst::IFR(*rs2, imm.resolve(&labels)?)),
             Asm::JUMP(imm) => Some(Inst::JUMP(imm.resolve(&labels)?)),
             Asm::JUMPR(imm) => Some(Inst::JUMPR(imm.resolve(&labels)?)),
             Asm::CALL(imm) => Some(Inst::CALL(imm.resolve(&labels)?)),
-            Asm::RET() => Some(Inst::RET),
-            Asm::IRET() => Some(Inst::IRET),
+            Asm::RET() => Some(Inst::RET()),
+            Asm::IRET() => Some(Inst::IRET()),
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::model::State;
 pub struct Serial {
     style: bool,
     read_buf: Vec<char>,
-    write_buf: Box<dyn std::io::Write>,
+    write_buf: Option<Box<dyn std::io::Write>>,
 }
 
 impl Serial {
@@ -28,13 +28,10 @@ impl Serial {
         };
 
         // open file and create writer buffer
-        let write_buf = match write_file {
-            Some(file) => {
-                let file = std::fs::File::create(file).unwrap();
-                Box::new(std::io::BufWriter::new(file)) as Box<dyn std::io::Write>
-            }
-            None => Box::new(std::io::BufWriter::new(std::io::stdout())) as Box<dyn std::io::Write>,
-        };
+        let write_buf = write_file.map(|file| {
+            let file = std::fs::File::create(file).unwrap();
+            Box::new(std::io::BufWriter::new(file)) as Box<dyn std::io::Write>
+        });
 
         Serial {
             style,
@@ -60,10 +57,14 @@ impl Hook for Serial {
         if stdout != Serial::NONE {
             let c = stdout as u8 as char;
             match self.style {
-                true => cprintln!("   > <r,s>{:?}</>", c),
+                true => cprintln!(" > <r,s>{}</>", c),
                 false => print!("{}", c),
             }
-            self.write_buf.write_all(&[c as u8]).unwrap();
+            if let Some(buf) = self.write_buf.as_mut() {
+                buf.write_all(&[c as u8]).unwrap();
+            }
+        } else {
+            println!();
         }
         if let Some(c) = self.read_buf.pop() {
             state.set(Serial::RX, c as u16);
@@ -77,6 +78,8 @@ impl Hook for Serial {
 
 impl Drop for Serial {
     fn drop(&mut self) {
-        self.write_buf.flush().unwrap();
+        if let Some(buf) = self.write_buf.as_mut() {
+            buf.flush().unwrap();
+        }
     }
 }

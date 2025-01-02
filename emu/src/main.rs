@@ -79,7 +79,7 @@ fn main() {
     } {
         // Execute instruction
         let (addr, code, _op, inst) = state.exec();
-        println!("[{:0>4}] {:?}", time, inst);
+        print!("[{:0>4}] {}", time, inst.cformat());
 
         // Execute side effects
         for hook in hooks.iter_mut() {

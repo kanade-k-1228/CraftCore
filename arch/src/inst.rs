@@ -1,5 +1,7 @@
 use crate::{alu::ALU, op::Op, reg::Reg};
 
+use color_print::cformat;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inst {
     ADD(Reg, Reg, Reg),
@@ -35,14 +37,14 @@ pub enum Inst {
     LOADI(Reg, u16),
     STORE(Reg, Reg, u16),
 
-    NOP,
+    NOP(),
     JUMP(u16),
     JUMPR(u16),
     IF(Reg, u16),
     IFR(Reg, u16),
     CALL(u16),
-    RET,
-    IRET,
+    RET(),
+    IRET(),
 }
 
 impl Inst {
@@ -81,14 +83,14 @@ impl Inst {
             Inst::LOADI(rd, imm) => Op::CALCI(ALU::ADD, rd, Reg::Z, imm),
             Inst::STORE(rd, rs, imm) => Op::STORE(rd, rs, imm),
 
-            Inst::NOP => Op::CALC(ALU::ADD, Reg::Z, Reg::Z, Reg::Z),
+            Inst::NOP() => Op::CALC(ALU::ADD, Reg::Z, Reg::Z, Reg::Z),
             Inst::JUMP(imm) => Op::CTRL(Reg::Z, Reg::Z, Reg::Z, imm),
             Inst::JUMPR(imm) => Op::CTRL(Reg::Z, Reg::PC, Reg::Z, imm),
             Inst::IF(rs, imm) => Op::CTRL(Reg::Z, Reg::Z, rs, imm),
             Inst::IFR(rs, imm) => Op::CTRL(Reg::Z, Reg::PC, rs, imm),
             Inst::CALL(imm) => Op::CTRL(Reg::RA, Reg::Z, Reg::Z, imm),
-            Inst::RET => Op::CTRL(Reg::Z, Reg::RA, Reg::Z, 0),
-            Inst::IRET => Op::CTRL(Reg::Z, Reg::IRA, Reg::Z, 0),
+            Inst::RET() => Op::CTRL(Reg::Z, Reg::RA, Reg::Z, 0),
+            Inst::IRET() => Op::CTRL(Reg::Z, Reg::IRA, Reg::Z, 0),
         }
     }
 
@@ -96,7 +98,7 @@ impl Inst {
         match op {
             Op::CALC(alu, rd, rs1, rs2) => match alu {
                 ALU::ADD => match (rs1, rs2) {
-                    (Reg::Z, Reg::Z) => Inst::NOP,
+                    (Reg::Z, Reg::Z) => Inst::NOP(),
                     (_, Reg::Z) => Inst::MOV(rd, rs1),
                     (_, _) => Inst::ADD(rd, rs1, rs2),
                 },
@@ -144,10 +146,71 @@ impl Inst {
                 (Reg::Z, Reg::Z, rs2) => Inst::IF(rs2, imm),
                 (Reg::Z, Reg::PC, rs2) => Inst::IFR(rs2, imm),
                 (Reg::RA, _, _) => Inst::CALL(imm),
-                (Reg::Z, Reg::RA, Reg::Z) => Inst::RET,
-                (Reg::Z, Reg::IRA, Reg::Z) => Inst::IRET,
+                (Reg::Z, Reg::RA, Reg::Z) => Inst::RET(),
+                (Reg::Z, Reg::IRA, Reg::Z) => Inst::IRET(),
                 _ => panic!("Undefined Inst: {:?}", op),
             },
+        }
+    }
+}
+
+impl Inst {
+    pub fn cformat(&self) -> String {
+        macro_rules! rrr {
+            ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {
+                cformat!("<r>{:<6}</><b>{:<2} {:<2} {:<2}</>", $name, $rd, $rs1, $rs2)
+            };
+        }
+
+        macro_rules! rri {
+            ($name:expr, $rd:expr, $rs1:expr, $imm:expr) => {
+                cformat!(
+                    "<r>{:<6}</><b>{:<2} {:<2} <y>0x{:0>4X}</></>",
+                    $name,
+                    $rd,
+                    $rs1,
+                    $imm
+                )
+            };
+        }
+
+        match self {
+            Inst::ADD(rd, rs1, rs2) => rrr!("add", rd, rs1, rs2),
+            Inst::SUB(rd, rs1, rs2) => rrr!("sub", rd, rs1, rs2),
+            Inst::AND(rd, rs1, rs2) => rrr!("and", rd, rs1, rs2),
+            Inst::OR(rd, rs1, rs2) => rrr!("or", rd, rs1, rs2),
+            Inst::XOR(rd, rs1, rs2) => rrr!("xor", rd, rs1, rs2),
+            Inst::EQ(rd, rs1, rs2) => rrr!("eq", rd, rs1, rs2),
+            Inst::NEQ(rd, rs1, rs2) => rrr!("neq", rd, rs1, rs2),
+            Inst::LT(rd, rs1, rs2) => rrr!("lt", rd, rs1, rs2),
+            Inst::LTS(rd, rs1, rs2) => rrr!("lts", rd, rs1, rs2),
+            Inst::SR(rd, rs1) => rrr!("sr", rd, rs1, ""),
+            Inst::SRS(rd, rs1) => rrr!("srs", rd, rs1, ""),
+            Inst::SRR(rd, rs1) => rrr!("srr", rd, rs1, ""),
+            Inst::SL(rd, rs1) => rrr!("sl", rd, rs1, ""),
+            Inst::SLR(rd, rs1) => rrr!("slr", rd, rs1, ""),
+            Inst::NOP() => rrr!("nop", "", "", ""),
+            Inst::MOV(rd, rs1) => rrr!("mov", rd, rs1, ""),
+            Inst::ADDI(rd, rs1, imm) => rri!("addi", rd, rs1, imm),
+            Inst::SUBI(rd, rs1, imm) => rri!("subi", rd, rs1, imm),
+            Inst::ANDI(rd, rs1, imm) => rri!("andi", rd, rs1, imm),
+            Inst::ORI(rd, rs1, imm) => rri!("ori", rd, rs1, imm),
+            Inst::XORI(rd, rs1, imm) => rri!("xori", rd, rs1, imm),
+            Inst::EQI(rd, rs1, imm) => rri!("eqi", rd, rs1, imm),
+            Inst::NEQI(rd, rs1, imm) => rri!("neqi", rd, rs1, imm),
+            Inst::LTI(rd, rs1, imm) => rri!("lti", rd, rs1, imm),
+            Inst::LTSI(rd, rs1, imm) => rri!("ltsi", rd, rs1, imm),
+            Inst::NOT(rd, rs1) => rrr!("not", rd, rs1, ""),
+            Inst::LOADI(rd, imm) => rri!("loadi", rd, "", imm),
+            Inst::LOAD(rd, rs1, imm) => rri!("load", rd, rs1, imm),
+            Inst::STORE(rs2, rs1, imm) => rri!("store", rs2, rs1, imm),
+            Inst::IF(rs2, imm) => rri!("if", rs2, "", imm),
+            Inst::IFR(rs2, imm) => rri!("ifr", rs2, "", imm),
+            Inst::JUMP(imm) => rri!("jump", "", "", imm),
+            Inst::JUMPR(imm) => rri!("jumpr", "", "", imm),
+            Inst::CALL(imm) => rri!("call", "", "", imm),
+            Inst::RET() => rrr!("ret", "", "", ""),
+            Inst::IRET() => rrr!("iret", "", "", ""),
         }
     }
 }
@@ -199,13 +262,13 @@ mod tests {
         test_load: Inst::LOAD(Reg::T0, Reg::T1, 0x0123),
         test_loadi: Inst::LOADI(Reg::T0, 0x0123),
         test_store: Inst::STORE(Reg::T0, Reg::T1, 0x0123),
-        test_nop: Inst::NOP,
+        test_nop: Inst::NOP(),
         test_if: Inst::IF(Reg::T0, 0x0123),
         test_ifr: Inst::IFR(Reg::T0, 0x0123),
         test_jump: Inst::JUMP(0x0123),
         test_jumpr: Inst::JUMPR(0x0123),
         test_call: Inst::CALL(0x0123),
-        test_ret: Inst::RET,
-        test_iret: Inst::IRET,
+        test_ret: Inst::RET(),
+        test_iret: Inst::IRET(),
     }
 }
