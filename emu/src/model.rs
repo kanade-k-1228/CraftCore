@@ -33,6 +33,7 @@ impl State {
     }
 }
 
+// Interrupt
 impl State {
     const INTR_ADDR: u16 = 0x0001;
     pub fn interrupt(&mut self) {
@@ -40,16 +41,28 @@ impl State {
     }
 }
 
+// Control
+impl State {
+    const HALT: u16 = 0x0010;
+
+    pub fn halt(&self) -> bool {
+        self.ram[Self::HALT as usize] == 0x0001
+    }
+}
+
+// const WAIT: u16 = 0x0011;
+// const MODE: u16 = 0x0012;
+// const IEN: u16 = 0x0013;
+// const IMASK: u16 = 0x0014;
+// const IRQ: u16 = 0x0015;
+// const TRAP: u16 = 0x0016;
+
 impl State {
     pub fn new() -> Self {
         State {
             rom: vec![0; 65536],
             ram: vec![0; 65536],
         }
-    }
-
-    pub fn is_terminated(&self) -> bool {
-        false
     }
 
     pub fn load_rom_file(&mut self, fname: &str) -> io::Result<()> {
@@ -64,22 +77,20 @@ impl State {
         Ok(())
     }
 
-    pub fn exec(&mut self, time: u64) -> (u16, u32) {
+    pub fn exec(&mut self) -> (u16, u32, Op, Inst) {
         let pc = self.ram[Reg::PC as usize];
         let bin = self.rom[pc as usize];
         let op = Op::from_bin(bin);
         let inst = Inst::from_op(op.clone());
 
-        println!("[{:0>4}] {:?}", time, inst);
-
         match op {
             Op::CALC(alu, rd, rs1, rs2) => self.calc(alu, rd, rs1, rs2),
             Op::CALCI(alu, rd, rs1, imm) => self.calci(alu, rd, rs1, imm),
             Op::LOAD(rd, rs1, imm) => self.load(rd, rs1, imm),
-            Op::STORE(rs1, rs2, imm) => self.store(rs1, rs2, imm),
+            Op::STORE(rs2, rs1, imm) => self.store(rs2, rs1, imm),
             Op::CTRL(rd, rs1, rs2, imm) => self.ctrl(rd, rs1, rs2, imm),
         };
-        return (pc, bin);
+        return (pc, bin, op, inst);
     }
 
     fn calc(&mut self, alu: ALU, rd: Reg, rs1: Reg, rs2: Reg) {
@@ -99,7 +110,7 @@ impl State {
         self.inc_pc();
     }
 
-    fn store(&mut self, rs1: Reg, rs2: Reg, imm: u16) {
+    fn store(&mut self, rs2: Reg, rs1: Reg, imm: u16) {
         self.set(self.get(rs1) + imm, self.get(rs2));
         self.inc_pc();
     }

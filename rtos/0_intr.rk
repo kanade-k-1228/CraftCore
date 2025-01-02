@@ -3,7 +3,7 @@
 
 zero:
 _reset:
-    jump zero zero _main
+    jump _main
 
 ; CSR Bits
 
@@ -37,7 +37,7 @@ _intr:
     store fp sp 2
     store ra sp 1
     ; 実行中のタスクのTCBに保存
-    load  t0 zero task_running
+    load  t0 z task_running
     store ira t0 .ra ; 戻りアドレスの保存
     store sp  t0 .sp ; スタックポインタの保存
     ; 割り込みフラグが立っている場合
