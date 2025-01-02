@@ -65,7 +65,18 @@ impl Hook for Serial {
             }
             self.write_buf.write_all(&[c as u8]).unwrap();
         }
+        if let Some(c) = self.read_buf.pop() {
+            state.set(Serial::RX, c as u16);
+        } else {
+            state.set(Serial::RX, Serial::NONE);
+        }
         state.set(Serial::TX, Serial::NONE);
         state
+    }
+}
+
+impl Drop for Serial {
+    fn drop(&mut self) {
+        self.write_buf.flush().unwrap();
     }
 }

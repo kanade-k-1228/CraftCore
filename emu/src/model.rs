@@ -33,6 +33,7 @@ impl State {
     }
 }
 
+// Interrupt
 impl State {
     const INTR_ADDR: u16 = 0x0001;
     pub fn interrupt(&mut self) {
@@ -40,16 +41,28 @@ impl State {
     }
 }
 
+// Control
+impl State {
+    const HALT: u16 = 0x0010;
+
+    pub fn halt(&self) -> bool {
+        self.ram[Self::HALT as usize] == 0x0001
+    }
+}
+
+// const WAIT: u16 = 0x0011;
+// const MODE: u16 = 0x0012;
+// const IEN: u16 = 0x0013;
+// const IMASK: u16 = 0x0014;
+// const IRQ: u16 = 0x0015;
+// const TRAP: u16 = 0x0016;
+
 impl State {
     pub fn new() -> Self {
         State {
             rom: vec![0; 65536],
             ram: vec![0; 65536],
         }
-    }
-
-    pub fn is_terminated(&self) -> bool {
-        false
     }
 
     pub fn load_rom_file(&mut self, fname: &str) -> io::Result<()> {

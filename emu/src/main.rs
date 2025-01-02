@@ -86,7 +86,7 @@ fn main() {
             state = hook.exec(time, addr, code, state);
         }
 
-        if state.is_terminated() {
+        if state.halt() {
             break;
         }
     }
