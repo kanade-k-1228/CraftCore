@@ -65,6 +65,6 @@ pub enum Kind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pos {
     pub file: usize,
-    pub line: usize,
     pub col: usize,
+    pub row: usize,
 }

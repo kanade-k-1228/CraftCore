@@ -1,15 +1,24 @@
 // lexer.rs
 
 use crate::token::{Kind, Pos, Token};
+use std::iter::{Enumerate, Peekable};
+use std::str::CharIndices;
 
-pub struct LineLexer {
-    line: String, // ソースコードの1行
-    pos: Pos,     // 現在位置 (file_id, line_number, column_index)
+pub struct LineLexer<'a> {
+    line: &'a str,
+    iter: Peekable<Enumerate<CharIndices<'a>>>,
+    file_idx: usize,
+    line_idx: usize,
 }
 
-impl LineLexer {
-    pub fn new(line: String, pos: Pos) -> Self {
-        LineLexer { line, pos }
+impl<'a> LineLexer<'a> {
+    pub fn new(line: &'a str, file_idx: usize, line_idx: usize) -> Self {
+        Self {
+            line,
+            iter: line.char_indices().enumerate().peekable(),
+            file_idx,
+            line_idx,
+        }
     }
 
     pub fn parse(mut self) -> Vec<Token> {
@@ -20,92 +29,87 @@ impl LineLexer {
         tokens
     }
 
-    pub fn next_token(&mut self) -> Option<Token> {
-        // 0. Consume whitespace
-        loop {
-            match self.line[self.pos.col..].chars().nth(0) {
-                Some(ch) if ch.is_whitespace() => {
-                    self.increment(1);
-                }
-                _ => break,
-            }
-        }
-
-        let slice = &self.line[self.pos.col..];
+    fn next_token(&mut self) -> Option<Token> {
+        // 0. Skip whitespaces
+        while self
+            .iter
+            .next_if(|(_, (_, ch))| ch.is_whitespace())
+            .is_some()
+        {}
 
         // 1. End of line
-        let ch = match slice.chars().nth(0) {
-            None => return None,
-            Some(ch) => ch,
-        };
+        let (idx, (start, c)) = self.iter.next()?;
 
-        // 2. Double character tokens
-        if let Some(ch1) = slice.chars().nth(1) {
-            // Comment line
-            if ch == '/' && ch1 == '/' {
-                self.pos.col += slice.len();
-                return Some(self.token(Kind::Comment("".to_string())));
-            }
-
-            // 2. Double character tokens
-            if let Some(kind) = double_char_token(ch, ch1) {
-                self.increment(2);
-                return Some(self.token(kind));
+        // 2. Comment
+        if c == '/' {
+            if let Some(_) = self.iter.next_if(|(_, (_, ch))| *ch == '/') {
+                let comment = self.line[start..].to_string();
+                return self.token(Kind::Comment(comment), idx);
             }
         }
 
-        // 3. Single character tokens
-        if let Some(kind) = single_char_token(ch) {
-            self.increment(1);
-            return Some(self.token(kind));
+        // 3. Double character token
+        if let Some(&(_, (_, c2))) = self.iter.peek() {
+            if let Some(kind) = double_char_token(c, c2) {
+                self.iter.next();
+                return self.token(kind, idx);
+            }
         }
 
-        // 4. Identifier or Keyword
-        if ch.is_ascii_alphabetic() || ch == '_' {
-            let start_idx = self.pos.col;
-            while self.pos.col < self.line.len() {
-                let c = self.line.as_bytes()[self.pos.col] as char;
-                if c.is_ascii_alphanumeric() || c == '_' {
-                    self.pos.col += 1;
+        // 4. Single character token
+        if let Some(kind) = single_char_token(c) {
+            return self.token(kind, idx);
+        }
+
+        // 5. Identifier or keyword
+        if c.is_ascii_alphabetic() || c == '_' {
+            let mut end = start + c.len_utf8();
+            while let Some(&(_, (ptr, next_ch))) = self.iter.peek() {
+                if next_ch.is_ascii_alphanumeric() || next_ch == '_' {
+                    self.iter.next();
+                    end = ptr + next_ch.len_utf8();
                 } else {
+                    end = ptr;
                     break;
                 }
             }
-            let lexeme = &self.line[start_idx..self.pos.col];
-            match keyword(lexeme) {
-                Some(kind) => return Some(self.token(kind)),
-                None => return Some(self.token(Kind::Ident(lexeme.to_string()))),
+            let lexeme = &self.line[start..end];
+            if let Some(kind) = keyword(lexeme) {
+                return self.token(kind, idx);
+            } else {
+                return self.token(Kind::Ident(lexeme.to_string()), idx);
             }
         }
 
-        // 5. Number literal
-        if ch.is_ascii_digit() {
-            let start_idx = self.pos.col;
-            while self.pos.col < self.line.len() {
-                let c = self.line.as_bytes()[self.pos.col] as char;
-                if c.is_ascii_digit() || c == '_' {
-                    self.increment(1);
+        // 6. Number literal
+        if c.is_ascii_digit() {
+            let mut end = start + c.len_utf8();
+            while let Some(&(_, (ptr, next_ch))) = self.iter.peek() {
+                if next_ch.is_ascii_digit() || next_ch == '_' {
+                    self.iter.next();
                 } else {
+                    end = ptr;
                     break;
                 }
             }
-            let lexeme = &self.line[start_idx..self.pos.col];
-            let value = lexeme.parse::<i64>().unwrap_or(0);
-            return Some(self.token(Kind::NumberLit(value)));
+            let lexeme = &self.line[start..end];
+            let value = lexeme.replace("_", "").parse::<i64>().unwrap_or(0);
+            return self.token(Kind::NumberLit(value), idx);
         }
 
-        // 6. If none of the above matched, mark as error
-        self.increment(1); // consume the unknown character
-        let err_text = ch.to_string();
-        return Some(self.token(Kind::Error(err_text)));
+        // 7. Error
+        return self.token(Kind::Error(c.to_string()), idx);
     }
 
-    fn token(&self, kind: Kind) -> Token {
-        Token(kind, self.pos.clone())
-    }
-
-    fn increment(&mut self, n: usize) {
-        self.pos.col += n;
+    fn token(&self, kind: Kind, idx: usize) -> Option<Token> {
+        Some(Token(
+            kind,
+            Pos {
+                file: self.file_idx,
+                col: self.line_idx,
+                row: idx,
+            },
+        ))
     }
 }
 
