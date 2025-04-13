@@ -1,17 +1,17 @@
 // parser.rs
 
 use crate::ast::{Def, Expr, Program, Stmt, Type};
-use crate::token::{Pos, Token, TokenKind};
+use crate::token::{Token, TokenKind};
 use std::iter::Peekable;
-
-struct ParseError {
-    token: Token,
-    msg: String,
-}
 
 pub struct Parser<I: Iterator<Item = Token>> {
     tokens: Peekable<I>,
     errors: Vec<ParseError>,
+}
+
+pub struct ParseError {
+    token: Token,
+    msg: String,
 }
 
 impl<I: Iterator<Item = Token>> Parser<I> {
@@ -19,6 +19,15 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Parser {
             tokens: tokens.peekable(),
             errors: Vec::new(),
+        }
+    }
+
+    pub fn parse(mut self) -> Result<Program, Vec<ParseError>> {
+        let program = self.parse_program();
+        if self.errors.is_empty() {
+            Ok(program)
+        } else {
+            Err(self.errors)
         }
     }
 
