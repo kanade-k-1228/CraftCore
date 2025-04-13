@@ -1,7 +1,5 @@
 use std::io::Read;
 
-use color_print::cprintln;
-
 use super::Hook;
 use crate::model::State;
 
@@ -10,6 +8,8 @@ pub struct Serial {
     read_buf: Vec<char>,
     write_buf: Option<Box<dyn std::io::Write>>,
 }
+
+const INDENT: usize = 26;
 
 impl Serial {
     const TX: u16 = 0x1000;
@@ -52,19 +52,18 @@ impl Hook for Serial {
         );
         state
     }
+
     fn exec(&mut self, _time: u64, _addr: u16, _code: u32, mut state: State) -> State {
-        let stdout = state.get(Serial::TX);
-        if stdout != Serial::NONE {
-            let c = stdout as u8 as char;
+        let out = state.get(Serial::TX);
+        if out != Serial::NONE {
+            let c = out as u8 as char;
             match self.style {
-                true => cprintln!(" > <r,s>{}</>", c),
+                true => println!("\x1b[1A\x1b[{}C>{:?}", INDENT, c),
                 false => print!("{}", c),
             }
             if let Some(buf) = self.write_buf.as_mut() {
                 buf.write_all(&[c as u8]).unwrap();
             }
-        } else {
-            println!();
         }
         if let Some(c) = self.read_buf.pop() {
             state.set(Serial::RX, c as u16);

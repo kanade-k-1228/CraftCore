@@ -53,10 +53,10 @@ impl Dump {
 impl Hook for Dump {
     fn init(&mut self, state: State) -> State {
         if self.all {
-            println!(" * Dump: all");
+            println!(" * Dump all");
         }
         if let Some(fname) = &self.file {
-            println!(" * Dump: #{:?} {:?}", self.list.0.len(), fname);
+            println!(" * Dump[{}] {:?}", self.list.0.len(), fname);
         }
         state
     }
