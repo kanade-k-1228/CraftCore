@@ -66,6 +66,12 @@ impl<'a> LineLexer<'a> {
                 continue;
             }
 
+            // 6. String literal
+            if ch == '"' {
+                tokens.push(Token(self.parse_string(ch, idx), pos));
+                continue;
+            }
+
             // 6. Number literal
             if ch.is_ascii_digit() {
                 tokens.push(Token(self.parse_number(ch, idx), pos));
@@ -83,7 +89,6 @@ impl<'a> LineLexer<'a> {
         while let Some(&(ptr, next_ch)) = self.iter.peek() {
             if next_ch.is_ascii_alphanumeric() || next_ch == '_' {
                 self.iter.next();
-                end = ptr + next_ch.len_utf8();
             } else {
                 end = ptr;
                 break;
@@ -96,14 +101,29 @@ impl<'a> LineLexer<'a> {
         }
     }
 
+    fn parse_string(&mut self, ch: char, idx: usize) -> Kind {
+        let start = idx + ch.len_utf8();
+        let mut end = start;
+        while let Some(&(ptr, next_ch)) = self.iter.peek() {
+            if next_ch != '"' {
+                self.iter.next();
+            } else {
+                self.iter.next();
+                end = ptr;
+                break;
+            }
+        }
+        let lexeme = &self.line[start..end];
+        Kind::StringLit(lexeme.to_string())
+    }
+
     fn parse_number(&mut self, ch: char, idx: usize) -> Kind {
         let mut end = idx + ch.len_utf8();
         while let Some(&(ptr, next_ch)) = self.iter.peek() {
             if next_ch.is_ascii_digit() || next_ch == '_' {
                 self.iter.next();
-                end = ptr + next_ch.len_utf8();
             } else {
-                end = ptr;
+                end = ptr + next_ch.len_utf8();
                 break;
             }
         }

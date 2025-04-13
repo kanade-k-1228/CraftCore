@@ -4,7 +4,7 @@ fn test_case(code: &str, expects: Vec<Kind>) {
     use tasm::lexer::LineLexer;
     let toks = LineLexer::new(code, 0, 0).parse();
 
-    println!("{:?}", code);
+    println!(" {code}");
     for Token(_, pos) in &toks {
         print!("\r\x1b[{}C^", pos.row + 1);
     }
@@ -23,7 +23,7 @@ fn test_case(code: &str, expects: Vec<Kind>) {
 fn test_lexer() {
     use Kind::*;
     test_case(
-        "type t: int; fn main() { return 0; } // sample comment",
+        "type t: int; fn main() { return \"ABC\"; } // sample comment",
         vec![
             KwType,
             Ident(format!("t")),
@@ -36,7 +36,7 @@ fn test_lexer() {
             RParen,
             LBrace,
             KwReturn,
-            NumberLit(0),
+            StringLit(format!("ABC")),
             Semicolon,
             RBrace,
             Comment(format!("sample comment")),
