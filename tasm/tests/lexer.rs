@@ -8,6 +8,10 @@ fn test_case(code: &str, expects: Vec<Kind>) {
     for Token(_, pos) in &toks {
         print!("\r\x1b[{}C^", pos.row + 1);
     }
+    println!();
+    for (i, Token(kind, _)) in toks.iter().enumerate() {
+        println!("{:>2}: {:?}", i, kind);
+    }
 
     assert_eq!(toks.len(), expects.len());
     for (i, expect) in expects.iter().enumerate() {
@@ -19,15 +23,15 @@ fn test_case(code: &str, expects: Vec<Kind>) {
 fn test_lexer() {
     use Kind::*;
     test_case(
-        "type t: int; fn main() { return 0; }",
+        "type t: int; fn main() { return 0; } // sample comment",
         vec![
             KwType,
-            Ident("t".to_string()),
+            Ident(format!("t")),
             Colon,
             KwInt,
             Semicolon,
             KwFunc,
-            Ident("main".to_string()),
+            Ident(format!("main")),
             LParen,
             RParen,
             LBrace,
@@ -35,6 +39,7 @@ fn test_lexer() {
             NumberLit(0),
             Semicolon,
             RBrace,
+            Comment(format!("sample comment")),
         ],
     );
 }

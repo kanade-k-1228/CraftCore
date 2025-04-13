@@ -1,12 +1,12 @@
 // lexer.rs
 
 use crate::token::{Kind, Pos, Token};
-use std::iter::{Enumerate, Peekable};
+use std::iter::Peekable;
 use std::str::CharIndices;
 
 pub struct LineLexer<'a> {
     line: &'a str,
-    iter: Peekable<Enumerate<CharIndices<'a>>>,
+    iter: Peekable<CharIndices<'a>>,
     file_idx: usize,
     line_idx: usize,
 }
@@ -15,7 +15,7 @@ impl<'a> LineLexer<'a> {
     pub fn new(line: &'a str, file_idx: usize, line_idx: usize) -> Self {
         Self {
             line,
-            iter: line.char_indices().enumerate().peekable(),
+            iter: line.char_indices().peekable(),
             file_idx,
             line_idx,
         }
@@ -23,93 +23,95 @@ impl<'a> LineLexer<'a> {
 
     pub fn parse(mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
-        while let Some(token) = self.next_token() {
-            tokens.push(token);
+        while let Some((idx, ch)) = self.iter.next() {
+            let pos = Pos {
+                file: self.file_idx,
+                col: self.line_idx,
+                row: idx,
+            };
+
+            // 0. Skip whitespaces
+            if ch.is_whitespace() {
+                continue;
+            }
+
+            // 2. Comment
+            if ch == '/' {
+                if let Some(_) = self.iter.next_if(|&(_, ch2)| ch2 == '/') {
+                    while let Some(_) = self.iter.next_if(|(_, c)| c.is_whitespace()) {}
+                    let comment = self.iter.map(|(_, ch)| ch).collect::<String>();
+                    tokens.push(Token(Kind::Comment(comment), pos));
+                    break;
+                }
+            }
+
+            // 3. Double character token
+            if let Some(&(_, ch2)) = self.iter.peek() {
+                if let Some(kind) = double_char_token(ch, ch2) {
+                    self.iter.next();
+                    tokens.push(Token(kind, pos));
+                    continue;
+                }
+            }
+
+            // 4. Single character token
+            if let Some(kind) = single_char_token(ch) {
+                tokens.push(Token(kind, pos));
+                continue;
+            }
+
+            // 5. Identifier or keyword
+            if ch.is_ascii_alphabetic() || ch == '_' {
+                tokens.push(Token(self.parse_ident(ch, idx), pos));
+                continue;
+            }
+
+            // 6. Number literal
+            if ch.is_ascii_digit() {
+                tokens.push(Token(self.parse_number(ch, idx), pos));
+                continue;
+            }
+
+            // 7. Error
+            tokens.push(Token(Kind::Error(format!("{ch}")), pos));
         }
         tokens
     }
 
-    fn next_token(&mut self) -> Option<Token> {
-        // 0. Skip whitespaces
-        while self
-            .iter
-            .next_if(|(_, (_, ch))| ch.is_whitespace())
-            .is_some()
-        {}
-
-        // 1. End of line
-        let (idx, (start, c)) = self.iter.next()?;
-
-        // 2. Comment
-        if c == '/' {
-            if let Some(_) = self.iter.next_if(|(_, (_, ch))| *ch == '/') {
-                let comment = self.line[start..].to_string();
-                return self.token(Kind::Comment(comment), idx);
-            }
-        }
-
-        // 3. Double character token
-        if let Some(&(_, (_, c2))) = self.iter.peek() {
-            if let Some(kind) = double_char_token(c, c2) {
+    fn parse_ident(&mut self, ch: char, idx: usize) -> Kind {
+        let mut end = idx + ch.len_utf8();
+        while let Some(&(ptr, next_ch)) = self.iter.peek() {
+            if next_ch.is_ascii_alphanumeric() || next_ch == '_' {
                 self.iter.next();
-                return self.token(kind, idx);
-            }
-        }
-
-        // 4. Single character token
-        if let Some(kind) = single_char_token(c) {
-            return self.token(kind, idx);
-        }
-
-        // 5. Identifier or keyword
-        if c.is_ascii_alphabetic() || c == '_' {
-            let mut end = start + c.len_utf8();
-            while let Some(&(_, (ptr, next_ch))) = self.iter.peek() {
-                if next_ch.is_ascii_alphanumeric() || next_ch == '_' {
-                    self.iter.next();
-                    end = ptr + next_ch.len_utf8();
-                } else {
-                    end = ptr;
-                    break;
-                }
-            }
-            let lexeme = &self.line[start..end];
-            if let Some(kind) = keyword(lexeme) {
-                return self.token(kind, idx);
+                end = ptr + next_ch.len_utf8();
             } else {
-                return self.token(Kind::Ident(lexeme.to_string()), idx);
+                end = ptr;
+                break;
             }
         }
-
-        // 6. Number literal
-        if c.is_ascii_digit() {
-            let mut end = start + c.len_utf8();
-            while let Some(&(_, (ptr, next_ch))) = self.iter.peek() {
-                if next_ch.is_ascii_digit() || next_ch == '_' {
-                    self.iter.next();
-                } else {
-                    end = ptr;
-                    break;
-                }
-            }
-            let lexeme = &self.line[start..end];
-            let value = lexeme.replace("_", "").parse::<i64>().unwrap_or(0);
-            return self.token(Kind::NumberLit(value), idx);
+        let lexeme = &self.line[idx..end];
+        match keyword(lexeme) {
+            Some(kind) => kind,
+            None => Kind::Ident(lexeme.to_string()),
         }
-
-        // 7. Error
-        return self.token(Kind::Error(c.to_string()), idx);
     }
 
-    fn token(&self, kind: Kind, idx: usize) -> Option<Token> {
-        Some(Token(
-            kind,
-            Pos {
-                file: self.file_idx,
-                col: self.line_idx,
-                row: idx,
-            },
-        ))
+    fn parse_number(&mut self, ch: char, idx: usize) -> Kind {
+        let mut end = idx + ch.len_utf8();
+        while let Some(&(ptr, next_ch)) = self.iter.peek() {
+            if next_ch.is_ascii_digit() || next_ch == '_' {
+                self.iter.next();
+                end = ptr + next_ch.len_utf8();
+            } else {
+                end = ptr;
+                break;
+            }
+        }
+        let lexeme = &self.line[idx..end];
+        match lexeme.replace("_", "").parse::<i64>() {
+            Ok(value) => Kind::NumberLit(value),
+            Err(_) => Kind::Error(lexeme.to_string()),
+        }
     }
 }
 
