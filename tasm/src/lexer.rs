@@ -1,183 +1,161 @@
 // lexer.rs
 
-use crate::token::{Kind, Token};
+use crate::token::{Kind, Pos, Token};
 
-pub struct Lexer {
-    input: Vec<char>,
-    pos: usize,
-    line: usize,
-    col: usize,
+pub struct LineLexer {
+    line: String, // ソースコードの1行
+    pos: Pos,     // 現在位置 (file_id, line_number, column_index)
 }
 
-impl Lexer {
-    pub fn new(source: &str) -> Self {
-        Lexer {
-            input: source.chars().collect(),
-            pos: 0,
-            line: 1,
-            col: 0,
-        }
+impl LineLexer {
+    pub fn new(line: String, pos: Pos) -> Self {
+        LineLexer { line, pos }
     }
 
-    fn current_char(&self) -> char {
-        self.input.get(self.pos).copied().unwrap_or('\0')
+    pub fn parse(mut self) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        while let Some(token) = self.next_token() {
+            tokens.push(token);
+        }
+        tokens
     }
 
-    fn advance(&mut self) {
-        if self.pos < self.input.len() {
-            let ch = self.input[self.pos];
-            self.pos += 1;
-            if ch == '\n' {
-                // new line: increment line counter and reset column
-                self.line += 1;
-                self.col = 0;
-            } else {
-                self.col += 1;
-            }
-        }
-    }
-
-    pub fn next_token(&mut self) -> Token {
-        // Skip whitespace and comments
-        self.skip_whitespace();
-        let ch = self.current_char();
-
-        if ch == '\0' {
-            return Token(Kind::EOF, (self.line, self.col));
-        }
-
-        match ch {
-            '=' => {
-                if self.current_char() == '=' {
-                    Token(Kind::Equal, (self.line, self.col))
-                } else {
-                    Token(Kind::Assign, (self.line, self.col))
-                }
-            }
-            '!' => {
-                if self.current_char() == '=' {
-                    Token(Kind::NotEqual, (self.line, self.col))
-                } else {
-                    Token(Kind::Error("!".to_string()), (self.line, self.col))
-                }
-            }
-            '<' => {
-                let next = self.current_char();
-                if next == '=' {
-                    Token(Kind::LessEqual, (self.line, self.col))
-                } else if next == '<' {
-                    Token(Kind::ShiftLeft, (self.line, self.col))
-                } else {
-                    Token(Kind::Less, (self.line, self.col))
-                }
-            }
-            '>' => {
-                let next = self.current_char();
-                if next == '=' {
-                    Token(Kind::GreaterEqual, (self.line, self.col))
-                } else if next == '>' {
-                    Token(Kind::ShiftRight, (self.line, self.col))
-                } else {
-                    Token(Kind::Greater, (self.line, self.col))
-                }
-            }
-            '+' => Token(Kind::Plus, (self.line, self.col)),
-            '-' => Token(Kind::Minus, (self.line, self.col)),
-            '*' => Token(Kind::Asterisk, (self.line, self.col)),
-            '/' => Token(Kind::Slash, (self.line, self.col)),
-            '%' => Token(Kind::Percent, (self.line, self.col)),
-            '&' => Token(Kind::Ampersand, (self.line, self.col)),
-            '|' => Token(Kind::Pipe, (self.line, self.col)),
-            '^' => Token(Kind::Caret, (self.line, self.col)),
-            ':' => Token(Kind::Colon, (self.line, self.col)),
-            ';' => Token(Kind::Semicolon, (self.line, self.col)),
-            ',' => Token(Kind::Comma, (self.line, self.col)),
-            '.' => Token(Kind::Dot, (self.line, self.col)),
-            '@' => Token(Kind::AtSign, (self.line, self.col)),
-            '(' => Token(Kind::LParen, (self.line, self.col)),
-            ')' => Token(Kind::RParen, (self.line, self.col)),
-            '[' => Token(Kind::LBracket, (self.line, self.col)),
-            ']' => Token(Kind::RBracket, (self.line, self.col)),
-            '{' => Token(Kind::LBrace, (self.line, self.col)),
-            '}' => Token(Kind::RBrace, (self.line, self.col)),
-
-            // Identifier or keyword
-            c if c.is_ascii_alphabetic() || c == '_' => {
-                let ident = self.read_identifier();
-                match ident.as_str() {
-                    "func" => Token(Kind::Func, (self.line, self.col)),
-                    "var" => Token(Kind::Var, (self.line, self.col)),
-                    "type" => Token(Kind::Type, (self.line, self.col)),
-                    "return" => Token(Kind::Return, (self.line, self.col)),
-                    "if" => Token(Kind::If, (self.line, self.col)),
-                    "else" => Token(Kind::Else, (self.line, self.col)),
-                    "while" => Token(Kind::While, (self.line, self.col)),
-                    _ => Token(Kind::Ident(ident), (self.line, self.col)),
-                }
-            }
-
-            // Number literal
-            c if c.is_ascii_digit() => {
-                let number_text = self.read_number();
-                if let Ok(value) = number_text.parse::<i64>() {
-                    Token(Kind::Number(value), (self.line, self.col))
-                } else {
-                    Token(
-                        Kind::Error(format!("Invalid number: {}", number_text)),
-                        (self.line, self.col),
-                    )
-                }
-            }
-
-            // Anything else is illegal
-            other => Token(Kind::Error(other.to_string()), (self.line, self.col)),
-        }
-    }
-
-    /// Helper: skip whitespace and comments.
-    fn skip_whitespace(&mut self) {
+    pub fn next_token(&mut self) -> Option<Token> {
+        // 0. Consume whitespace
         loop {
-            match self.current_char() {
-                // whitespace characters to skip
-                ' ' | '\t' | '\r' | '\n' => {
-                    self.advance();
-                }
-                // handle '//' comments: skip until newline or EOF
-                '/' => {
-                    // Peek next char to see if it's a comment
-                    if self.input.get(self.pos + 1).copied().unwrap_or('\0') == '/' {
-                        // skip the '//' and everything until end of line
-                        self.advance();
-                        self.advance();
-                        while self.current_char() != '\n' && self.current_char() != '\0' {
-                            self.advance();
-                        }
-                        continue; // after newline, loop will handle skipping it
-                    } else {
-                        // not a comment, just a division operator or something, break (don't skip)
-                        break;
-                    }
+            match self.line[self.pos.col..].chars().nth(0) {
+                Some(ch) if ch.is_whitespace() => {
+                    self.increment(1);
                 }
                 _ => break,
             }
         }
+
+        let slice = &self.line[self.pos.col..];
+
+        // 1. End of line
+        let ch = match slice.chars().nth(0) {
+            None => return None,
+            Some(ch) => ch,
+        };
+
+        // 2. Double character tokens
+        if let Some(ch1) = slice.chars().nth(1) {
+            // Comment line
+            if ch == '/' && ch1 == '/' {
+                self.pos.col += slice.len();
+                return Some(self.token(Kind::Comment("".to_string())));
+            }
+
+            // 2. Double character tokens
+            if let Some(kind) = double_char_token(ch, ch1) {
+                self.increment(2);
+                return Some(self.token(kind));
+            }
+        }
+
+        // 3. Single character tokens
+        if let Some(kind) = single_char_token(ch) {
+            self.increment(1);
+            return Some(self.token(kind));
+        }
+
+        // 4. Identifier or Keyword
+        if ch.is_ascii_alphabetic() || ch == '_' {
+            let start_idx = self.pos.col;
+            while self.pos.col < self.line.len() {
+                let c = self.line.as_bytes()[self.pos.col] as char;
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    self.pos.col += 1;
+                } else {
+                    break;
+                }
+            }
+            let lexeme = &self.line[start_idx..self.pos.col];
+            let kind = match lexeme {
+                "fn" => Kind::KwFunc,
+                "var" => Kind::KwVar,
+                "type" => Kind::KwType,
+                "return" => Kind::KwReturn,
+                "if" => Kind::KwIf,
+                "else" => Kind::KwElse,
+                "while" => Kind::KwWhile,
+                "struct" => Kind::KwStruct,
+                "int" => Kind::KwInt,
+                _ => Kind::Ident(lexeme.to_string()),
+            };
+            return Some(self.token(kind));
+        }
+
+        // 5. Number literal
+        if ch.is_ascii_digit() {
+            let start_idx = self.pos.col;
+            while self.pos.col < self.line.len() {
+                let c = self.line.as_bytes()[self.pos.col] as char;
+                if c.is_ascii_digit() || c == '_' {
+                    self.increment(1);
+                } else {
+                    break;
+                }
+            }
+            let lexeme = &self.line[start_idx..self.pos.col];
+            let value = lexeme.parse::<i64>().unwrap_or(0);
+            return Some(self.token(Kind::NumberLit(value)));
+        }
+
+        // 6. If none of the above matched, mark as error
+        self.increment(1); // consume the unknown character
+        let err_text = ch.to_string();
+        return Some(self.token(Kind::Error(err_text)));
     }
 
-    /// Helper: read a sequence of identifier characters (letters, digits, underscores).
-    fn read_identifier(&mut self) -> String {
-        let start = self.pos;
-        while self.current_char().is_ascii_alphanumeric() || self.current_char() == '_' {
-            self.advance();
-        }
-        self.input[start..self.pos].iter().collect()
+    fn token(&self, kind: Kind) -> Token {
+        Token(kind, self.pos.clone())
     }
 
-    /// Helper: read a sequence of digits (for integer literals).
-    fn read_number(&mut self) -> String {
-        let start = self.pos;
-        while self.current_char().is_ascii_digit() {
-            self.advance();
-        }
-        self.input[start..self.pos].iter().collect()
+    fn increment(&mut self, n: usize) {
+        self.pos.col += n;
+    }
+}
+
+fn double_char_token(c1: char, c2: char) -> Option<Kind> {
+    match (c1, c2) {
+        ('=', '=') => Some(Kind::EqualEqual),
+        ('!', '=') => Some(Kind::ExclEqual),
+        ('<', '=') => Some(Kind::LAngleEqual),
+        ('>', '=') => Some(Kind::RAngleEqual),
+        ('<', '<') => Some(Kind::LAngleLAngle),
+        ('>', '>') => Some(Kind::RAngleRAngle),
+        ('-', '>') => Some(Kind::Arrow),
+        _ => None,
+    }
+}
+
+fn single_char_token(c: char) -> Option<Kind> {
+    match c {
+        '=' => Some(Kind::Equal),
+        '+' => Some(Kind::Plus),
+        '-' => Some(Kind::Minus),
+        '*' => Some(Kind::Star),
+        '@' => Some(Kind::Atmark),
+        '/' => Some(Kind::Slash),
+        '%' => Some(Kind::Percent),
+        '&' => Some(Kind::Ampasand),
+        '|' => Some(Kind::Pipe),
+        '^' => Some(Kind::Caret),
+        '!' => Some(Kind::Excl),
+        ':' => Some(Kind::Colon),
+        ';' => Some(Kind::Semicolon),
+        ',' => Some(Kind::Comma),
+        '.' => Some(Kind::Period),
+        '(' => Some(Kind::LParen),
+        ')' => Some(Kind::RParen),
+        '[' => Some(Kind::LBracket),
+        ']' => Some(Kind::RBracket),
+        '{' => Some(Kind::LBrace),
+        '}' => Some(Kind::RBrace),
+        '<' => Some(Kind::LAngle),
+        '>' => Some(Kind::RAngle),
+        _ => None,
     }
 }

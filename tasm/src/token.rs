@@ -1,63 +1,70 @@
 // token.rs
 
 #[derive(Debug, Clone)]
-pub struct Token(pub Kind, pub Pos); // (line, column)
+pub struct Token(pub Kind, pub Pos);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
-    // Keywords
-    Func,   // "func"
-    Var,    // "var"
-    Type,   // "type"
-    Return, // "return"
-    If,     // "if"
-    Else,   // "else"
-    While,  // "while"
-    Struct, // "struct"
-    Int,    // "int"
+    // Double character tokens
+    EqualEqual,   // '=='
+    ExclEqual,    // '!='
+    RAngleEqual,  // '>='
+    LAngleEqual,  // '<='
+    LAngleLAngle, // '<<'
+    RAngleRAngle, // '>>'
+    Arrow,        // '->'
 
-    // Operators
-    Assign,    // '='
+    // Single character tokens
+    Equal,     // '='
     Plus,      // '+'
     Minus,     // '-'
-    Asterisk,  // '*'
-    AtSign,    // '@'
+    Star,      // '*'
+    Atmark,    // '@'
     Slash,     // '/'
     Percent,   // '%'
-    Ampersand, // '&'
+    Ampasand,  // '&'
     Pipe,      // '|'
     Caret,     // '^'
-
-    Equal,        // '=='
-    NotEqual,     // '!='
-    Less,         // '<'
-    LessEqual,    // '<='
-    Greater,      // '>'
-    GreaterEqual, // '>='
-    ShiftLeft,    // '<<'
-    ShiftRight,   // '>>'
-
-    // Delimiters and punctuation
+    Excl,      // '!'
     Colon,     // ':'
     Semicolon, // ';'
     Comma,     // ','
-    Dot,       // '.'
+    Period,    // '.'
     LParen,    // '('
     RParen,    // ')'
     LBracket,  // '['
     RBracket,  // ']'
     LBrace,    // '{'
     RBrace,    // '}'
+    LAngle,    // '<'
+    RAngle,    // '>'
 
-    // Identifiers
+    // Keywords
+    KwFunc,   // "fn"
+    KwVar,    // "var"
+    KwType,   // "type"
+    KwReturn, // "return"
+    KwIf,     // "if"
+    KwElse,   // "else"
+    KwWhile,  // "while"
+    KwStruct, // "struct"
+    KwInt,    // "int"
+
+    // Identifier
     Ident(String),
-    Number(i64),
+
+    // Literals
+    NumberLit(i64),
+    StringLit(String),
 
     // Special
     Comment(String), // Comment
-    EOF,             // End-of-file (no more input)
     Error(String),   // Error
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Pos(pub usize, pub usize, pub usize); // (file, line, column)
+pub struct Pos {
+    pub file: usize,
+    pub line: usize,
+    pub col: usize,
+}
