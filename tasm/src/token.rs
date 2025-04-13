@@ -1,10 +1,19 @@
 // token.rs
 
 #[derive(Debug, Clone)]
-pub struct Token(pub Kind, pub Pos);
+pub struct Token {
+    pub kind: TokenKind,
+    pub pos: Pos,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, pos: Pos) -> Self {
+        Token { kind, pos }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Kind {
+pub enum TokenKind {
     // Double character tokens
     EqualEqual,   // '=='
     ExclEqual,    // '!='
@@ -54,8 +63,8 @@ pub enum Kind {
     Ident(String),
 
     // Literals
-    NumberLit(i64),
-    StringLit(String),
+    LitNumber(i64),
+    LitString(String),
 
     // Special
     Comment(String), // Comment

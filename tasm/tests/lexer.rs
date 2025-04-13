@@ -1,27 +1,27 @@
-use tasm::token::{Kind, Token};
+use tasm::token::TokenKind;
 
-fn test_case(code: &str, expects: Vec<Kind>) {
+fn test_case(code: &str, expects: Vec<TokenKind>) {
     use tasm::lexer::LineLexer;
     let toks = LineLexer::new(code, 0, 0).parse();
 
     println!(" {code}");
-    for Token(_, pos) in &toks {
-        print!("\r\x1b[{}C^", pos.row + 1);
+    for tok in &toks {
+        print!("\r\x1b[{}C^", tok.pos.row + 1);
     }
     println!();
-    for (i, Token(kind, _)) in toks.iter().enumerate() {
-        println!("{:>2}: {:?}", i, kind);
+    for (i, tok) in toks.iter().enumerate() {
+        println!("{:>2}: {:?}", i, tok.kind);
     }
 
     assert_eq!(toks.len(), expects.len());
     for (i, expect) in expects.iter().enumerate() {
-        assert_eq!(toks[i].0, *expect);
+        assert_eq!(toks[i].kind, *expect);
     }
 }
 
 #[test]
 fn test_lexer() {
-    use Kind::*;
+    use TokenKind::*;
     test_case(
         "type t: int; fn main() { return \"ABC\"; } // sample comment",
         vec![
@@ -36,7 +36,7 @@ fn test_lexer() {
             RParen,
             LBrace,
             KwReturn,
-            StringLit(format!("ABC")),
+            LitString(format!("ABC")),
             Semicolon,
             RBrace,
             Comment(format!("sample comment")),

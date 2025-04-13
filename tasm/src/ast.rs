@@ -1,17 +1,17 @@
 // ast.rs
 
 #[derive(Debug, Clone)]
-struct Program(Vec<Def>); // Program is collection of definitions
+pub struct Program(pub Vec<Def>); // Program is collection of definitions
 
 #[derive(Debug, Clone)]
-enum Def {
+pub enum Def {
     Type(String, Type),                            // name, type
     Var(String, Type, Option<Expr>),               // name, type, initializer
     Func(String, Vec<(String, Type)>, Type, Stmt), // name, args, return type, body
 }
 
 #[derive(Debug, Clone)]
-enum Type {
+pub enum Type {
     Word,                        // 16-bit data    | type sample: int;
     Addr(Box<Type>),             // 16-bit address | type sample: *Type;
     Name(String),                // user-defined   | type sample: Type;
@@ -21,7 +21,7 @@ enum Type {
 }
 
 #[derive(Debug, Clone)]
-enum Stmt {
+pub enum Stmt {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>), // if (condition) then_stmt [else else_stmt]
     While(Expr, Box<Stmt>),                 // while (condition) body_stmt
     Return(Option<Expr>),                   // return [expression] ;
@@ -32,7 +32,7 @@ enum Stmt {
 }
 
 #[derive(Debug, Clone)]
-enum Expr {
+pub enum Expr {
     IntLit(i64),                               // integer literal
     Var(String),                               // variable (identifier) reference
     UnaryOp(UnaryOpKind, Box<Expr>),           // unary operation
