@@ -72,19 +72,10 @@ impl LineLexer {
                 }
             }
             let lexeme = &self.line[start_idx..self.pos.col];
-            let kind = match lexeme {
-                "fn" => Kind::KwFunc,
-                "var" => Kind::KwVar,
-                "type" => Kind::KwType,
-                "return" => Kind::KwReturn,
-                "if" => Kind::KwIf,
-                "else" => Kind::KwElse,
-                "while" => Kind::KwWhile,
-                "struct" => Kind::KwStruct,
-                "int" => Kind::KwInt,
-                _ => Kind::Ident(lexeme.to_string()),
-            };
-            return Some(self.token(kind));
+            match keyword(lexeme) {
+                Some(kind) => return Some(self.token(kind)),
+                None => return Some(self.token(Kind::Ident(lexeme.to_string()))),
+            }
         }
 
         // 5. Number literal
@@ -156,6 +147,21 @@ fn single_char_token(c: char) -> Option<Kind> {
         '}' => Some(Kind::RBrace),
         '<' => Some(Kind::LAngle),
         '>' => Some(Kind::RAngle),
+        _ => None,
+    }
+}
+
+fn keyword(s: &str) -> Option<Kind> {
+    match s {
+        "fn" => Some(Kind::KwFunc),
+        "var" => Some(Kind::KwVar),
+        "type" => Some(Kind::KwType),
+        "return" => Some(Kind::KwReturn),
+        "if" => Some(Kind::KwIf),
+        "else" => Some(Kind::KwElse),
+        "while" => Some(Kind::KwWhile),
+        "struct" => Some(Kind::KwStruct),
+        "int" => Some(Kind::KwInt),
         _ => None,
     }
 }
