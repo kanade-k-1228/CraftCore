@@ -46,7 +46,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let mut program = Vec::new();
         while let Some(token) = self.tokens.peek() {
             match token.kind {
-                TokenKind::KwType => match self.parse_type_def() {
+                TokenKind::KwType => match self.parse_typedef() {
                     Ok(def) => program.push(def),
                     Err(err) => {
                         self.errors.push(err);
@@ -62,7 +62,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     }
                 },
 
-                TokenKind::KwFunc => match self.parse_func_def() {
+                TokenKind::KwFunc => match self.parse_func() {
                     Ok((name, args, ret, body)) => program.push(Def::Func(name, args, ret, body)),
                     Err(err) => {
                         self.errors.push(err);
@@ -104,9 +104,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Program(program)
     }
 
-    // Type definition
-    // 'type' ident ':' type ?(';')
-    fn parse_type_def(&mut self) -> Result<Def, ParseError> {
+    /// Type definition
+    /// `type <ident> : <type> ;`
+    fn parse_typedef(&mut self) -> Result<Def, ParseError> {
         self.expect(TokenKind::KwType)?;
         let name = self.parse_ident()?;
         self.expect(TokenKind::Colon)?;
@@ -115,6 +115,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(Def::Type(name, typ))
     }
 
+    /// Type
+    /// `int` | `<ident>` | `*<type>` | `<type>[<expr>]` | `{ <ident> : <type> , ... }` | `<args> -> <type>`
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         if let Some(token) = &self.tokens.peek() {
             match &token.kind {
@@ -148,9 +150,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
                 // Struct
                 TokenKind::LCurly => {
-                    self.expect(TokenKind::LCurly)?;
-                    let fields = self.parse_args()?;
-                    self.expect(TokenKind::RCurly)?;
+                    let fields = self.parse_struct()?;
                     Ok(Type::Struct(fields))
                 }
 
@@ -172,7 +172,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// List of expressions
-    /// ```( <expr> , <expr> , ... )```
+    /// `( <expr> , <expr> , ... )`
     fn parse_list(&mut self) -> Result<Vec<Expr>, ParseError> {
         let mut exprs = Vec::new();
         self.expect(TokenKind::LParen)?;
@@ -195,11 +195,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(exprs)
     }
 
-    // Function definition
-    // 'fn' ident args '->' type block
-    fn parse_func_def(&mut self) -> Result<(String, Vec<(String, Type)>, Type, Stmt), ParseError> {
+    /// Function
+    /// `fn <ident> <args> -> <type> <block>`
+    fn parse_func(&mut self) -> Result<(String, Vec<(String, Type)>, Type, Stmt), ParseError> {
         self.expect(TokenKind::KwFunc)?;
-        println!("parse_func_def");
         let name = self.parse_ident()?;
         let args = self.parse_args()?;
         self.expect(TokenKind::Arrow)?;
@@ -208,8 +207,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok((name, args, ret, body))
     }
 
-    // Function arguments
-    // '(' (ident ':' type) % ',' ')'
+    /// Arguments
+    /// `( <ident> : <type> , <ident> : <type> , ... )`
     fn parse_args(&mut self) -> Result<Vec<(String, Type)>, ParseError> {
         let mut args = Vec::new();
         self.expect(TokenKind::LParen)?;
@@ -239,7 +238,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Struct type
-    /// ```{ <ident> : <type> , <ident> : <type> , ... }```
+    /// `{ <ident> : <type> , ... }`
     fn parse_struct(&mut self) -> Result<Vec<(String, Type)>, ParseError> {
         let mut fields = Vec::new();
         self.expect(TokenKind::LCurly)?;
@@ -286,17 +285,22 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok((name, typ, init))
     }
 
+    /// Block statement
+    /// `{ <stmt> <stmt> ... }`
     fn parse_block(&mut self) -> Result<Stmt, ParseError> {
-        self.expect(TokenKind::LCurly)?; // '{'
+        self.expect(TokenKind::LCurly)?;
         let mut stmts = Vec::new();
         while !self.check(TokenKind::RCurly) {
             let stmt = self.parse_stmt()?;
             stmts.push(stmt);
         }
-        self.expect(TokenKind::RCurly)?; // '}'
+        self.expect(TokenKind::RCurly)?;
         Ok(Stmt::Block(stmts))
     }
 
+    /// Statement
+    /// `;` | `var <ident> : <type> = <expr> ;` | `if ( <expr> ) <stmt> [ else <stmt> ]` |
+    /// `while ( <expr> ) <stmt>` | `return [ <expr> ] ;` | `{ <stmt> ... }` | `<expr> ;`
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         if let Some(token) = &self.tokens.peek() {
             match &token.kind {
@@ -374,23 +378,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         return Err(ParseError::TODO);
     }
 
+    /// Expression
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        self.parse_cond()
+        self.parse_or()
     }
 
-    fn parse_cond(&mut self) -> Result<Expr, ParseError> {
-        let cond = self.parse_or()?;
-        if self.check(TokenKind::Question) {
-            self.expect(TokenKind::Question)?;
-            let lhs = self.parse_or()?;
-            self.expect(TokenKind::Colon)?;
-            let rhs = self.parse_cond()?;
-            Ok(Expr::Cond(Box::new(cond), Box::new(lhs), Box::new(rhs)))
-        } else {
-            Ok(cond)
-        }
-    }
-
+    /// Logical OR expression
+    /// `<expr> | <expr> | ...`
     fn parse_or(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_xor()?;
         while self.check(TokenKind::Pipe) {
@@ -401,6 +395,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(lhs)
     }
 
+    /// Logical XOR expression
+    /// `<expr> ^ <expr> ^ ...`
     fn parse_xor(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_and()?;
         while self.check(TokenKind::Caret) {
@@ -411,6 +407,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(lhs)
     }
 
+    /// Logical AND expression
+    /// `<expr> & <expr> & ...`
     fn parse_and(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_eq()?;
         while self.check(TokenKind::Ampasand) {
@@ -421,6 +419,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(lhs)
     }
 
+    /// Equality expression
+    /// `<expr> == <expr>` | `<expr> != <expr>`
     fn parse_eq(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_relat()?;
         loop {
@@ -439,6 +439,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(lhs)
     }
 
+    /// Relational expression
+    /// `<expr> < <expr>` | `<expr> <= <expr>` | `<expr> > <expr>` | `<expr> >= <expr>`
     fn parse_relat(&mut self) -> Result<Expr, ParseError> {
         let lhs = self.parse_shift()?;
         if let Some(token) = self.tokens.peek() {
@@ -470,6 +472,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
+    /// Shift expression
+    /// `<expr> << <expr>` | `<expr> >> <expr>`
     fn parse_shift(&mut self) -> Result<Expr, ParseError> {
         let lhs = self.parse_add()?;
         if let Some(token) = self.tokens.peek() {
@@ -491,6 +495,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
+    /// Additive expression
+    /// `<expr> + <expr>` | `<expr> - <expr>`
     fn parse_add(&mut self) -> Result<Expr, ParseError> {
         let lhs = self.parse_mul()?;
         if let Some(token) = self.tokens.peek() {
@@ -512,6 +518,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
+    /// Multiplicative expression
+    /// `<expr> * <expr>` | `<expr> / <expr>` | `<expr> % <expr>`
     fn parse_mul(&mut self) -> Result<Expr, ParseError> {
         let lhs = self.parse_cast()?;
         if let Some(token) = self.tokens.peek() {
@@ -538,9 +546,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
+    /// Cast expression
+    /// `<expr> : <type>`
     fn parse_cast(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_unary()?;
-        while self.check(TokenKind::Colon) {
+        if self.check(TokenKind::Colon) {
             self.expect(TokenKind::Colon)?;
             let typ = self.parse_type()?;
             expr = Expr::Cast(Box::new(expr), Box::new(typ));
@@ -548,6 +558,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(expr)
     }
 
+    /// Unary expression
+    /// `+ <expr>` | `- <expr>` | `* <expr>` | `& <expr>` | `@ <expr>` | `! <expr>`
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if let Some(token) = self.tokens.peek() {
             match token.kind {
@@ -579,9 +591,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 _ => {}
             }
         }
-        self.parse_prim()
+        self.parse_post()
     }
 
+    /// Postfix expression
+    /// `<expr> ( <expr> , <expr> , ... )` | `<expr> [ <expr> ]` | `<expr> . <ident>`
     fn parse_post(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_prim()?;
         loop {
@@ -600,7 +614,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             }
 
             // Member access
-            // <expr> . <ident>
             if self.check(TokenKind::Period) {
                 self.expect(TokenKind::Period)?;
                 let field = self.parse_ident()?;
@@ -612,12 +625,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(expr)
     }
 
-    // Parse primary expression
+    /// Primary expression
+    /// `( <expr> )` | `<ident>` | `<number>` | `<string>`
     fn parse_prim(&mut self) -> Result<Expr, ParseError> {
         if let Some(token) = self.tokens.peek() {
             match token.kind {
                 // Nested expression:
-                // '(' expr ')'
                 TokenKind::LParen => {
                     self.expect(TokenKind::LParen)?;
                     let inner = self.parse_expr()?;
@@ -647,6 +660,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
+    /// Identifier
+    /// `<ident>`
     fn parse_ident(&mut self) -> Result<String, ParseError> {
         if let Some(Token {
             kind: TokenKind::Ident(s),
