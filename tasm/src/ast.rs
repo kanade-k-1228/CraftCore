@@ -23,32 +23,34 @@ pub enum Type {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    If(Expr, Box<Stmt>, Option<Box<Stmt>>), // if (condition) then_stmt [else else_stmt]
-    While(Expr, Box<Stmt>),                 // while (condition) body_stmt
-    Return(Option<Expr>),                   // return [expression] ;
-    ExprStmt(Expr),                         // expression statement (expr;)
-    VarDecl(String, Type, Option<Expr>),    // local variable declaration: var name: Type [= init] ;
-    Block(Vec<Stmt>),                       // block of statements { ... }
-    Error,                                  // placeholder for a statement that failed to parse
+    Block(Vec<Stmt>),                         // block       | { ... }
+    Expr(Expr),                               // expression  | expr
+    Assign(Expr, Expr),                       // assignment  | left-expr = expr ;
+    Cond(Expr, Box<Stmt>, Option<Box<Stmt>>), // conditional | 'if' '(' expr ')' stmt ?('else' stmt)
+    Loop(Expr, Box<Stmt>),                    // loop        | 'while' '(' expr ')' stmt
+    Return(Option<Expr>),                     // return      | 'return' ?( expr ) ';'
+    Var(String, Type, Option<Expr>),          // variable    | 'var' name ':' type ?('=' init) ';'
+    Error,                                    // placeholder for a statement that failed to parse
 }
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLit(i64),                               // integer literal | 42
-    ArrayLit(Vec<Expr>),                       // array literal   | [expr1, expr2, ...]
-    Var(String, Box<Type>, Option<Box<Expr>>), // variable        | var name: Type [= init]
-    UnaryOp(UnaryOpKind, Box<Expr>),           // unary op        | -expr, !expr, *expr, &expr
-    BinaryOp(Box<Expr>, BinOpKind, Box<Expr>), // bin op          | expr1 + expr2, expr1 - expr2, ...
-    Assign(Box<Expr>, Box<Expr>),              // assignment      | lhs = rhs
-    Call(Box<Expr>, Vec<Expr>),                // function call   | func(expr1, expr2, ...)
-    Cast(Box<Expr>, Box<Type>),                // cast            | expr : Type
-    ArrayAccess(Box<Expr>, Box<Expr>),         // array access    | expr[expr]
-    Member(Box<Expr>, String),                 // member access   | expr.field
-    Error,                                     // placeholder for an expression that failed to parse
+    IntLit(i64),                           // integer literal | 42
+    ArrayLit(Vec<Expr>),                   // array literal   | [expr1, expr2, ...]
+    Ident(String),                         // variable        | var name: Type [= init]
+    Cond(Box<Expr>, Box<Expr>, Box<Expr>), // conditional     | expr ? expr : expr
+    Unary(UnaryOp, Box<Expr>),             // unary op        | -expr, !expr, *expr, &expr
+    Binary(Box<Expr>, BinOp, Box<Expr>),   // bin op          | expr1 + expr2
+    Call(Box<Expr>, Vec<Expr>),            // function call   | func(expr1, expr2, ...)
+    Cast(Box<Expr>, Box<Type>),            // cast            | expr : Type
+    ArrayAccess(Box<Expr>, Box<Expr>),     // array access    | expr[expr]
+    Member(Box<Expr>, String),             // member access   | expr.field
+    Error,                                 // placeholder for an expression that failed to parse
 }
 
 #[derive(Debug, Clone)]
-pub enum UnaryOpKind {
+pub enum UnaryOp {
+    Pos,   // unary plus (+expr)
     Neg,   // unary minus (-expr)
     Not,   // logical not (!expr)
     Deref, // pointer dereference (*expr)
@@ -56,7 +58,7 @@ pub enum UnaryOpKind {
 }
 
 #[derive(Debug, Clone)]
-pub enum BinOpKind {
+pub enum BinOp {
     Add, // +  arithmetic addition
     Sub, // -  arithmetic subtraction
     Mul, // *  arithmetic multiplication

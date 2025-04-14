@@ -164,6 +164,7 @@ fn single_char_token(c: char) -> Option<TokenKind> {
         '|' => Some(TokenKind::Pipe),
         '^' => Some(TokenKind::Caret),
         '!' => Some(TokenKind::Excl),
+        '?' => Some(TokenKind::Question),
         ':' => Some(TokenKind::Colon),
         ';' => Some(TokenKind::Semicolon),
         ',' => Some(TokenKind::Comma),

@@ -1,6 +1,6 @@
 // parser.rs
 
-use crate::ast::{BinOpKind, Def, Expr, Program, Stmt, Type};
+use crate::ast::{BinOp, Def, Expr, Program, Stmt, Type, UnaryOp};
 use crate::token::{self, Token, TokenKind};
 use std::iter::Peekable;
 
@@ -59,8 +59,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     }
                 },
 
-                TokenKind::KwFunc => match self.parse_function_def() {
-                    Ok(func) => program.push(func),
+                TokenKind::KwFunc => match self.parse_func_def() {
+                    Ok((name, args, ret, body)) => program.push(Def::Func(name, args, ret, body)),
                     Err(err) => {
                         self.errors.push(err);
                         self.recover_to(|t| {
@@ -75,8 +75,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     }
                 },
 
-                TokenKind::KwVar => match self.parse_var() {
-                    Ok(var) => program.push(var),
+                TokenKind::KwVar => match self.parse_var_def() {
+                    Ok((name, typ, init)) => program.push(Def::Var(name, typ, init)),
                     Err(err) => {
                         self.errors.push(err);
                         self.recover_to(|t| {
@@ -101,41 +101,76 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Program(program)
     }
 
+    // Type definition
+    // 'type' ident ':' type ?(';')
     fn parse_type_def(&mut self) -> Result<Def, ParseError> {
-        self.expect(TokenKind::KwType)?; // 'type'
-        let name = self.parse_ident()?; // ident
-        self.expect(TokenKind::Colon)?; // ':'
-        let typ = self.parse_type()?; // type
-        self.optional(TokenKind::Semicolon); // ';'
+        self.expect(TokenKind::KwType)?;
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::Colon)?;
+        let typ = self.parse_type()?;
+        self.optional(TokenKind::Semicolon);
         Ok(Def::Type(name, typ))
     }
 
-    fn parse_function_def(&mut self) -> Result<Def, ParseError> {
-        self.expect(TokenKind::KwFunc)?; // 'fn'
-        let name = self.parse_ident()?; // name
-        self.expect(TokenKind::Colon)?; // '('
-        let args = self.parse_arg_def()?; // args
-        self.expect(TokenKind::RParen)?; // ')'
-        self.expect(TokenKind::Arrow)?; // '->'
-        let ret = self.parse_type()?; // type
-        let body = self.parse_block()?; // body
-        Ok(Def::Func(name, args, ret, body))
+    // Function definition
+    // 'fn' ident args '->' type block
+    fn parse_func_def(&mut self) -> Result<(String, Vec<(String, Type)>, Type, Stmt), ParseError> {
+        self.expect(TokenKind::KwFunc)?;
+        let name = self.parse_ident()?;
+        let args = self.parse_args()?;
+        self.expect(TokenKind::RParen)?;
+        self.expect(TokenKind::Arrow)?;
+        let ret = self.parse_type()?;
+        let body = self.parse_block()?;
+        Ok((name, args, ret, body))
     }
 
-    fn parse_var(&mut self) -> Result<Def, ParseError> {
-        self.expect(TokenKind::KwVar)?; // 'var'
-        let name = self.parse_ident()?; // ident
-        self.expect(TokenKind::Colon)?; // ':'
-        let typ = self.parse_type()?; // type
+    // Function arguments
+    // '(' (ident ':' type) % ',' ')'
+    fn parse_args(&mut self) -> Result<Vec<(String, Type)>, ParseError> {
+        let mut args = Vec::new();
+        self.expect(TokenKind::LParen)?;
+        while let Some(token) = self.tokens.peek() {
+            match token.kind {
+                TokenKind::Ident(_) => {
+                    let name = self.parse_ident()?;
+                    self.expect(TokenKind::Colon)?;
+                    let typ = self.parse_type()?;
+                    args.push((name.clone(), typ));
+                    continue;
+                }
+                TokenKind::Comma => {
+                    self.expect(TokenKind::Comma)?;
+                    continue;
+                }
+                TokenKind::RParen => {
+                    self.expect(TokenKind::RParen)?;
+                    return Ok(args);
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken(token.clone()))?;
+                }
+            }
+        }
+        Err(ParseError::UnexpectedEOF)
+    }
+
+    // Variable definition
+    // 'var' ident ':' type ?('=' expr) ';'
+    fn parse_var_def(&mut self) -> Result<(String, Type, Option<Expr>), ParseError> {
+        self.expect(TokenKind::KwVar)?;
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::Colon)?;
+        let typ = self.parse_type()?;
         let init = if self.check(TokenKind::Equal) {
-            self.expect(TokenKind::Equal)?; // '='
-            let expr = self.parse_expr()?; // expr
+            self.expect(TokenKind::Equal)?;
+            let expr = self.parse_expr()?;
             Some(expr)
         } else {
             None
         };
-        self.expect(TokenKind::Semicolon)?; // ';'
-        Ok(Def::Var(name, typ, init))
+        self.expect(TokenKind::Semicolon)?;
+        Ok((name, typ, init))
     }
 
     fn parse_block(&mut self) -> Result<Stmt, ParseError> {
@@ -155,7 +190,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 TokenKind::Semicolon => {
                     // 空文
                     self.expect(TokenKind::Semicolon)?;
-                    return Ok(Stmt::ExprStmt(Expr::Error));
+                    return Ok(Stmt::Expr(Expr::Error));
                 }
                 TokenKind::KwVar => {
                     // ローカル変数定義 'var' ident ':' type ?('=' expr) ';'
@@ -170,7 +205,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                         None
                     };
                     self.expect(TokenKind::Semicolon)?;
-                    return Ok(Stmt::VarDecl(name, typ, init));
+                    return Ok(Stmt::Var(name, typ, init));
                 }
                 TokenKind::KwIf => {
                     // If 文 'if' '(' expr ')' stmt ?('else' stmt)
@@ -185,7 +220,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     } else {
                         None
                     };
-                    return Ok(Stmt::If(cond, then_stmt, else_stmt));
+                    return Ok(Stmt::Cond(cond, then_stmt, else_stmt));
                 }
                 TokenKind::KwWhile => {
                     // While 文: 'while' '(' expr ')' stmt
@@ -194,7 +229,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     let cond = self.parse_expr()?;
                     self.expect(TokenKind::RParen)?;
                     let body = Box::new(self.parse_stmt()?);
-                    return Ok(Stmt::While(cond, body));
+                    return Ok(Stmt::Loop(cond, body));
                 }
                 TokenKind::KwReturn => {
                     // return 文: 'return' ?( expr ) ';'
@@ -218,11 +253,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                         self.expect(TokenKind::Equal)?;
                         let rhs = self.parse_expr()?;
                         self.expect(TokenKind::Semicolon)?;
-                        return Ok(Stmt::ExprStmt(Expr::Assign(Box::new(expr), Box::new(rhs))));
+                        return Ok(Stmt::Expr(Expr::Assign(Box::new(expr), Box::new(rhs))));
                     } else {
                         // 式文: expr ';'
                         self.expect(TokenKind::Semicolon)?;
-                        return Ok(Stmt::ExprStmt(expr));
+                        return Ok(Stmt::Expr(expr));
                     }
                 }
             }
@@ -230,21 +265,64 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         return Err(ParseError::TODO);
     }
 
-    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        self.parse_precedence(0)
+    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+        self.parse_conditional()
     }
 
-    fn parse_precedence(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
-        let mut lhs = self.parse_postfix()?;
-        while let Some(token) = self.tokens.peek() {
-            if let Some((bin_op, prec, _right_assoc)) = token_to_op(&token.kind) {
-                if prec < min_prec {
-                    break;
-                }
-                self.expect(token.kind.clone())?;
-                // 左結合とするため右側は (prec + 1) を下限とする
-                let rhs = self.parse_precedence(prec + 1)?;
-                lhs = Expr::BinaryOp(Box::new(lhs), bin_op, Box::new(rhs));
+    fn parse_conditional(&mut self) -> Result<Expr, ParseError> {
+        let cond = self.parse_or()?;
+        if self.check(TokenKind::Question) {
+            self.expect(TokenKind::Question)?;
+            let lhs = self.parse_or()?;
+            self.expect(TokenKind::Colon)?;
+            let rhs = self.parse_conditional()?;
+            Ok(Expr::Cond(Box::new(cond), Box::new(lhs), Box::new(rhs)))
+        } else {
+            Ok(cond)
+        }
+    }
+
+    fn parse_or(&mut self) -> Result<Expr, ParseError> {
+        let mut lhs = self.parse_xor()?;
+        while self.check(TokenKind::Pipe) {
+            self.expect(TokenKind::Pipe)?;
+            let rhs = self.parse_xor()?;
+            lhs = Expr::Binary(Box::new(lhs), BinOp::Or, Box::new(rhs))
+        }
+        Ok(lhs)
+    }
+
+    fn parse_xor(&mut self) -> Result<Expr, ParseError> {
+        let mut lhs = self.parse_and()?;
+        while self.check(TokenKind::Caret) {
+            self.expect(TokenKind::Caret)?;
+            let rhs = self.parse_and()?;
+            lhs = Expr::Binary(Box::new(lhs), BinOp::Xor, Box::new(rhs))
+        }
+        Ok(lhs)
+    }
+
+    fn parse_and(&mut self) -> Result<Expr, ParseError> {
+        let mut lhs = self.parse_eq()?;
+        while self.check(TokenKind::Ampasand) {
+            self.expect(TokenKind::Ampasand)?;
+            let rhs = self.parse_eq()?;
+            lhs = Expr::Binary(Box::new(lhs), BinOp::And, Box::new(rhs))
+        }
+        Ok(lhs)
+    }
+
+    fn parse_eq(&mut self) -> Result<Expr, ParseError> {
+        let mut lhs = self.parse_relat()?;
+        loop {
+            if self.check(TokenKind::EqualEqual) {
+                self.expect(TokenKind::EqualEqual)?;
+                let rhs = self.parse_relat()?;
+                lhs = Expr::Binary(Box::new(lhs), BinOp::Eq, Box::new(rhs));
+            } else if self.check(TokenKind::ExclEqual) {
+                self.expect(TokenKind::ExclEqual)?;
+                let rhs = self.parse_relat()?;
+                lhs = Expr::Binary(Box::new(lhs), BinOp::Ne, Box::new(rhs));
             } else {
                 break;
             }
@@ -252,55 +330,216 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(lhs)
     }
 
-    fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
-        let expr = self.parse_expr()?;
-        while let Some(token) = self.tokens.peek() {
+    fn parse_relat(&mut self) -> Result<Expr, ParseError> {
+        let mut lhs = self.parse_shift()?;
+        loop {
+            let op_kind = match self.peek_kind() {
+                Some(TokenKind::Lt) => BinOp::Lt, // '<'
+                Some(TokenKind::Le) => BinOp::Le, // '<='
+                Some(TokenKind::Gt) => BinOp::Gt, // '>'
+                Some(TokenKind::Ge) => BinOp::Ge, // '>='
+                _ => break,
+            };
+            self.next_token()?; // consume the operator token
+            let right = self.parse_shift()?;
+            lhs = Expr::Binary {
+                op: op_kind,
+                left: Box::new(lhs),
+                right: Box::new(right),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_add()?;
+        loop {
+            let op_kind = match self.peek_kind() {
+                Some(TokenKind::LShift) => BinOp::LShift, // '<<'
+                Some(TokenKind::RShift) => BinOp::RShift, // '>>'
+                _ => break,
+            };
+            self.next_token()?; // consume the shift operator
+            let right = self.parse_add()?;
+            expr = Expr::Binary {
+                op: op_kind,
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_add(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_mul()?;
+        loop {
+            let op_kind = match self.peek_kind() {
+                Some(TokenKind::Plus) => BinOp::Add,
+                Some(TokenKind::Minus) => BinOp::Sub,
+                _ => break,
+            };
+            self.next_token()?; // consume '+' or '-'
+            let right = self.parse_mul()?;
+            expr = Expr::Binary {
+                op: op_kind,
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_mul(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_cast()?;
+        loop {
+            let op_kind = match self.peek_kind() {
+                Some(TokenKind::Star) => BinOp::Mul,
+                Some(TokenKind::Slash) => BinOp::Div,
+                Some(TokenKind::Percent) => BinOp::Mod,
+                _ => break,
+            };
+            self.next_token()?; // consume the operator
+            let right = self.parse_cast()?;
+            expr = Expr::Binary {
+                op: op_kind,
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_cast(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_unary()?;
+        while let Some(TokenKind::Colon) = self.peek_kind() {
+            self.next_token()?; // consume ':'
+            let ty = self.parse_type()?; // parse a type after colon
+            expr = Expr::Cast {
+                expr: Box::new(expr),
+                ty,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if let Some(token) = self.tokens.peek() {
             match token.kind {
-                TokenKind::Colon => {
-                    // キャスト: expr ":" type
-                    self.expect(TokenKind::Colon)?;
-                    let typ = self.parse_type()?;
-                    return Ok(Expr::UnaryOp(
-                        crate::ast::UnaryOpKind::Cast(typ),
-                        Box::new(expr),
-                    ));
+                TokenKind::Plus => {
+                    self.expect(TokenKind::Plus)?;
+                    let expr = self.parse_unary()?;
+                    return Ok(Expr::Unary(UnaryOp::Pos, Box::new(expr)));
+                }
+                TokenKind::Minus => {
+                    self.expect(TokenKind::Minus)?;
+                    let expr = self.parse_unary()?;
+                    return Ok(Expr::Unary(UnaryOp::Neg, Box::new(expr)));
                 }
                 TokenKind::Star => {
-                    // 後置の '*' （デリファレンス）
                     self.expect(TokenKind::Star)?;
-                    return Ok(Expr::UnaryOp(
-                        crate::ast::UnaryOpKind::Deref,
-                        Box::new(expr),
-                    ));
+                    let expr = self.parse_unary()?;
+                    return Ok(Expr::Unary(UnaryOp::Deref, Box::new(expr)));
                 }
                 TokenKind::Atmark => {
-                    // 後置の '@' （アドレス演算子）
                     self.expect(TokenKind::Atmark)?;
-                    return Ok(Expr::UnaryOp(crate::ast::UnaryOpKind::Ref, Box::new(expr)));
+                    let expr = self.parse_unary()?;
+                    return Ok(Expr::Unary(UnaryOp::Ref, Box::new(expr)));
                 }
-                TokenKind::LBracket => {
-                    // 配列添字: expr "[" expr "]"
-                    self.expect(TokenKind::LBracket)?;
-                    let index_expr = self.parse_expr()?;
-                    self.expect(TokenKind::RBracket)?;
-                    return Ok(Expr::ArrayAccess(Box::new(expr), Box::new(index_expr)));
+                TokenKind::Excl => {
+                    self.expect(TokenKind::Excl)?;
+                    let expr = self.parse_unary()?;
+                    return Ok(Expr::Unary(UnaryOp::Not, Box::new(expr)));
                 }
-                TokenKind::Period => {
-                    // メンバアクセス: expr "." ident
-                    self.expect(TokenKind::Period)?;
-                    let member_name = self.parse_ident()?;
-                    return Ok(Expr::Member(Box::new(expr), member_name));
-                }
-                TokenKind::LParen => {
-                    // 関数呼び出し: expr "(" expr* ")"
-                    self.expect(TokenKind::LParen)?;
-                    let args = self.parse_list()?;
-                    self.expect(TokenKind::RParen)?;
-                    return Ok(Expr::Call(Box::new(expr), args));
-                }
-                _ => break,
+                _ => {}
             }
         }
+        self.parse_factor()
+    }
+
+    fn parse_factor(&mut self) -> Result<Expr, ParseError> {
+        // Parse primary expression
+
+        if let Some(token) = self.tokens.peek() {
+            match token.kind {
+                TokenKind::LParen => {
+                    self.expect(TokenKind::LParen)?;
+                    let inner = self.parse_expr()?; // parse sub-expression inside '(' ... ')'
+                    self.expect(TokenKind::RParen)?; // expect matching ')'
+                    return Ok(inner); // result of parenthesized expression is the inner expression
+                }
+
+                TokenKind::LitNumber(val) => {
+                    self.expect(TokenKind::LitNumber(val))?;
+                    return Ok(Expr::IntLit(val));
+                }
+                // TokenKind::LitString(ref s) => {
+                //     self.expect(TokenKind::LitString(s))?;
+                //     return Ok(Expr::ArrayLit(s.clone()));
+                // }
+                TokenKind::Ident(ref name) => {
+                    self.expect(TokenKind::Ident(String::new()))?;
+                    return Ok(Expr::Ident(name.clone()));
+                }
+
+                _ => {
+                    return Err(ParseError::UnexpectedToken(token.clone()));
+                }
+            };
+        }
+
+        // Parse postfix
+        loop {
+            if self.consume_if(TokenKind::LParen)? {
+                // Function call: parse argument list inside ()
+                let mut args = Vec::new();
+                if !self.consume_if(TokenKind::RParen)? {
+                    // Parse first argument
+                    args.push(self.parse_expr()?);
+                    // Parse additional arguments separated by commas
+                    while self.consume_if(TokenKind::Comma)? {
+                        args.push(self.parse_expr()?);
+                    }
+                    self.expect(TokenKind::RParen)?;
+                }
+                expr = Expr::Call {
+                    func: Box::new(expr),
+                    args,
+                };
+                continue; // continue loop to handle more postfix ops after call
+            }
+
+            if self.consume_if(TokenKind::LBracket)? {
+                // Array indexing: parse the index expression inside []
+                let index_expr = self.parse_expr()?;
+                self.expect(TokenKind::RBracket)?;
+                expr = Expr::Index {
+                    base: Box::new(expr),
+                    index: Box::new(index_expr),
+                };
+                continue;
+            }
+
+            if self.consume_if(TokenKind::Dot)? {
+                // Member access: expect an identifier after the dot
+                let field_token = self.next_token()?;
+                if let TokenKind::Ident(field_name) = field_token.kind {
+                    expr = Expr::Member {
+                        base: Box::new(expr),
+                        field: field_name,
+                    };
+                } else {
+                    return Err(ParseError::new(format!(
+                        "Expected field name after '.', found {:?}",
+                        field_token.kind
+                    )));
+                }
+                continue;
+            }
+
+            // (If the language had '->' for pointers, it would be handled similarly here.)
+            break;
+        }
+
         Ok(expr)
     }
 
@@ -309,73 +548,55 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             match &token.kind {
                 // Int
                 TokenKind::KwInt => {
-                    self.expect(TokenKind::KwInt)?; // 'int'
-                    return Ok(Type::Word);
+                    self.expect(TokenKind::KwInt)?;
+                    Ok(Type::Word)
                 }
 
                 // Custom
                 TokenKind::Ident(_) => {
-                    let name = self.parse_ident()?; // ident
-                    return Ok(Type::Custom(name));
+                    let name = self.parse_ident()?;
+                    Ok(Type::Custom(name))
                 }
 
                 // Pointer
                 TokenKind::Star => {
-                    self.expect(TokenKind::Star)?; // '*'
+                    self.expect(TokenKind::Star)?;
                     let dest_type = self.parse_type()?;
-                    return Ok(Type::Addr(Box::new(dest_type)));
+                    Ok(Type::Addr(Box::new(dest_type)))
                 }
 
                 // Array
                 TokenKind::LBracket => {
-                    self.expect(TokenKind::LBracket)?; // '['
+                    self.expect(TokenKind::LBracket)?;
                     let expr = self.parse_expr()?;
-                    self.expect(TokenKind::RBracket)?; // ']'
+                    self.expect(TokenKind::RBracket)?;
                     let elem_type = self.parse_type()?;
-                    return Ok(Type::Array(expr, Box::new(elem_type)));
+                    Ok(Type::Array(expr, Box::new(elem_type)))
                 }
 
                 // Struct
                 TokenKind::LCurly => {
-                    self.expect(TokenKind::LCurly)?; // '{'
-                    let fields = self.parse_arg_def()?;
-                    self.expect(TokenKind::RCurly)?; // '}'
-                    return Ok(Type::Struct(fields));
+                    self.expect(TokenKind::LCurly)?;
+                    let fields = self.parse_args()?;
+                    self.expect(TokenKind::RCurly)?;
+                    Ok(Type::Struct(fields))
                 }
 
                 // Function
                 TokenKind::LParen => {
-                    self.expect(TokenKind::LParen)?; // '('
-                    let args = self.parse_arg_def()?;
-                    self.expect(TokenKind::RParen)?; // ')'
-                    self.expect(TokenKind::Arrow)?; // '->'
+                    self.expect(TokenKind::LParen)?;
+                    let args = self.parse_args()?;
+                    self.expect(TokenKind::RParen)?;
+                    self.expect(TokenKind::Arrow)?;
                     let ret = self.parse_type()?;
-                    return Ok(Type::Func(args, Box::new(ret)));
+                    Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => {
-                    return Err(ParseError::TODO);
-                }
+                _ => Err(ParseError::UnexpectedToken(token.clone().clone())),
             }
         } else {
-            return Err(ParseError::UnexpectedEOF);
+            Err(ParseError::UnexpectedEOF)
         }
-    }
-
-    fn parse_arg_def(&mut self) -> Result<Vec<(String, Type)>, ParseError> {
-        let mut fields = Vec::new();
-        while let Some(token) = self.tokens.peek() {
-            match token.kind {
-                TokenKind::Ident(_) => {
-                    let name = self.parse_ident()?; // ident
-                    self.expect(TokenKind::Colon)?; // ':'
-                    let typ = self.parse_type()?; // type
-                    fields.push((name.clone(), typ));
-                }
-                _ => break,
-            }
-        }
-        Ok(fields)
     }
 
     fn parse_list(&mut self) -> Result<Vec<Expr>, ParseError> {
@@ -436,9 +657,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         return Err(ParseError::TODO);
     }
 
-    fn optional(&mut self, kind: TokenKind) {
+    fn optional(&mut self, kind: TokenKind) -> Option<Token> {
         self.tokens
-            .next_if(|token| std::mem::discriminant(&token.kind) == std::mem::discriminant(&kind));
+            .next_if(|token| std::mem::discriminant(&token.kind) == std::mem::discriminant(&kind))
     }
 
     /// Check next token is match with kind
@@ -449,30 +670,5 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             }
         }
         return false;
-    }
-}
-
-fn token_to_op(kind: &TokenKind) -> Option<(BinOpKind, u8, bool)> {
-    match kind {
-        // 乗除算
-        TokenKind::Star => Some((BinOpKind::Mul, 7, false)),
-        TokenKind::Slash => Some((BinOpKind::Div, 7, false)),
-        TokenKind::Percent => Some((BinOpKind::Mod, 7, false)),
-        // 加減算
-        TokenKind::Plus => Some((BinOpKind::Add, 6, false)),
-        TokenKind::Minus => Some((BinOpKind::Sub, 6, false)),
-        // 比較演算
-        TokenKind::LAngle => Some((BinOpKind::Lt, 5, false)),
-        TokenKind::LAngleEqual => Some((BinOpKind::Le, 5, false)),
-        TokenKind::RAngle => Some((BinOpKind::Gt, 5, false)),
-        TokenKind::RAngleEqual => Some((BinOpKind::Ge, 5, false)),
-        // 等価演算
-        TokenKind::EqualEqual => Some((BinOpKind::Eq, 4, false)),
-        TokenKind::ExclEqual => Some((BinOpKind::Ne, 4, false)),
-        // 論理演算
-        TokenKind::Ampasand => Some((BinOpKind::And, 3, false)),
-        TokenKind::Caret => Some((BinOpKind::Xor, 2, false)),
-        TokenKind::Pipe => Some((BinOpKind::Or, 1, false)),
-        _ => None,
     }
 }

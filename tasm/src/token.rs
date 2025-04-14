@@ -35,6 +35,7 @@ pub enum TokenKind {
     Pipe,      // '|'
     Caret,     // '^'
     Excl,      // '!'
+    Question,  // '?'
     Colon,     // ':'
     Semicolon, // ';'
     Comma,     // ','
@@ -49,14 +50,19 @@ pub enum TokenKind {
     RAngle,    // '>'
 
     // Keywords
-    KwFunc,   // "fn"
-    KwVar,    // "var"
-    KwType,   // "type"
-    KwReturn, // "return"
-    KwIf,     // "if"
-    KwElse,   // "else"
-    KwWhile,  // "while"
-    KwInt,    // "int"
+    KwFunc,     // "fn"
+    KwReturn,   // "return"
+    KwVar,      // "var"
+    KwLet,      // "let"
+    KwStatic,   // "static"
+    KwInt,      // "int"
+    KwType,     // "type"
+    KwIf,       // "if"
+    KwElse,     // "else"
+    KwWhile,    // "while"
+    KwBreak,    // "break"
+    KwContinue, // "continue"
+    KwSizeof,   // "sizeof"
 
     // Identifier
     Ident(String),
