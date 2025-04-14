@@ -12,12 +12,13 @@ pub enum Def {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Word,                        // 16-bit data    | type sample: int;
-    Addr(Box<Type>),             // 16-bit address | type sample: *Type;
-    Name(String),                // user-defined   | type sample: Type;
-    Array(usize, Box<Type>),     // array          | type sample: Type[10];
-    Struct(Vec<(String, Type)>), // struct         | type sample: { field1: Type1, field2: Type2 };
-    Error,                       // placeholder for error
+    Word,                                 // data         | int
+    Custom(String),                       // user-defined | Type
+    Addr(Box<Type>),                      // address      | *Type
+    Array(Expr, Box<Type>),               // array        | Type[10]
+    Struct(Vec<(String, Type)>),          // struct       | {a: int, b: Type}
+    Func(Vec<(String, Type)>, Box<Type>), // function     | (a: int, b: Type) -> Type
+    Error,                                // placeholder for error
 }
 
 #[derive(Debug, Clone)]
@@ -33,19 +34,21 @@ pub enum Stmt {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLit(i64),                               // integer literal
-    Var(String),                               // variable (identifier) reference
-    UnaryOp(UnaryOpKind, Box<Expr>),           // unary operation
-    BinaryOp(Box<Expr>, BinOpKind, Box<Expr>), // binary operations
-    Assign(Box<Expr>, Box<Expr>),              // assignment expression (lhs = rhs)
-    Call(String, Vec<Expr>),                   // function call: name(expr1, expr2, ...)
-    Member(Box<Expr>, String),                 // struct member access: expr.field
-    Arrow(Box<Expr>, String),                  // pointer-to-struct member access: expr->field
+    IntLit(i64),                               // integer literal | 42
+    ArrayLit(Vec<Expr>),                       // array literal   | [expr1, expr2, ...]
+    Var(String, Box<Type>, Option<Box<Expr>>), // variable        | var name: Type [= init]
+    UnaryOp(UnaryOpKind, Box<Expr>),           // unary op        | -expr, !expr, *expr, &expr
+    BinaryOp(Box<Expr>, BinOpKind, Box<Expr>), // bin op          | expr1 + expr2, expr1 - expr2, ...
+    Assign(Box<Expr>, Box<Expr>),              // assignment      | lhs = rhs
+    Call(Box<Expr>, Vec<Expr>),                // function call   | func(expr1, expr2, ...)
+    Cast(Box<Expr>, Box<Type>),                // cast            | expr : Type
+    ArrayAccess(Box<Expr>, Box<Expr>),         // array access    | expr[expr]
+    Member(Box<Expr>, String),                 // member access   | expr.field
     Error,                                     // placeholder for an expression that failed to parse
 }
 
 #[derive(Debug, Clone)]
-enum UnaryOpKind {
+pub enum UnaryOpKind {
     Neg,   // unary minus (-expr)
     Not,   // logical not (!expr)
     Deref, // pointer dereference (*expr)
@@ -53,7 +56,7 @@ enum UnaryOpKind {
 }
 
 #[derive(Debug, Clone)]
-enum BinOpKind {
+pub enum BinOpKind {
     Add, // +  arithmetic addition
     Sub, // -  arithmetic subtraction
     Mul, // *  arithmetic multiplication

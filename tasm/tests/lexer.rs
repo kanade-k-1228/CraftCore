@@ -34,11 +34,11 @@ fn test_lexer() {
             Ident(format!("main")),
             LParen,
             RParen,
-            LBrace,
+            LCurly,
             KwReturn,
             LitString(format!("ABC")),
             Semicolon,
-            RBrace,
+            RCurly,
             Comment(format!("sample comment")),
         ],
     );

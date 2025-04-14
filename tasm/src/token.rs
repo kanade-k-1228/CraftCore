@@ -43,8 +43,8 @@ pub enum TokenKind {
     RParen,    // ')'
     LBracket,  // '['
     RBracket,  // ']'
-    LBrace,    // '{'
-    RBrace,    // '}'
+    LCurly,    // '{'
+    RCurly,    // '}'
     LAngle,    // '<'
     RAngle,    // '>'
 
@@ -56,7 +56,6 @@ pub enum TokenKind {
     KwIf,     // "if"
     KwElse,   // "else"
     KwWhile,  // "while"
-    KwStruct, // "struct"
     KwInt,    // "int"
 
     // Identifier
