@@ -3,17 +3,19 @@
 use crate::ast::{BinOp, Def, Expr, Program, Stmt, Type, UnaryOp};
 use crate::token::{Token, TokenKind};
 use std::iter::Peekable;
-use std::mem::discriminant;
 
 pub struct Parser<I: Iterator<Item = Token>> {
     tokens: Peekable<I>,
     errors: Vec<ParseError>,
 }
 
+#[derive(Debug, Clone)]
 pub enum ParseError {
     TODO,
     UnexpectedEOF,
+    ExpectedToken(TokenKind),
     UnexpectedToken(Token),
+    ExpectedBut(TokenKind, Token),
     InvalidType(Token),
     InvalidFunction(Token),
     InvalidVariable(Token),
@@ -197,9 +199,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     // 'fn' ident args '->' type block
     fn parse_func_def(&mut self) -> Result<(String, Vec<(String, Type)>, Type, Stmt), ParseError> {
         self.expect(TokenKind::KwFunc)?;
+        println!("parse_func_def");
         let name = self.parse_ident()?;
         let args = self.parse_args()?;
-        self.expect(TokenKind::RParen)?;
         self.expect(TokenKind::Arrow)?;
         let ret = self.parse_type()?;
         let body = self.parse_block()?;
@@ -372,7 +374,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         return Err(ParseError::TODO);
     }
 
-    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_cond()
     }
 
@@ -649,8 +651,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         if let Some(Token {
             kind: TokenKind::Ident(s),
             pos: _,
-        }) = &self.tokens.peek()
+        }) = &self.tokens.peek().cloned()
         {
+            self.tokens.next();
             return Ok(s.clone());
         }
         return Err(ParseError::TODO);
@@ -672,13 +675,15 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     /// Consume if next token is match with kind
     fn expect(&mut self, kind: TokenKind) -> Result<Token, ParseError> {
-        if let Some(token) = self
-            .tokens
-            .next_if(|token| discriminant(&token.kind) == discriminant(&kind))
-        {
-            return Ok(token.clone());
+        if let Some(token) = self.tokens.peek().cloned() {
+            if std::mem::discriminant(&token.kind) == std::mem::discriminant(&kind) {
+                self.tokens.next();
+                return Ok(token);
+            } else {
+                return Err(ParseError::ExpectedBut(kind, token.clone()));
+            }
         }
-        return Err(ParseError::TODO);
+        return Err(ParseError::UnexpectedEOF);
     }
 
     fn optional(&mut self, kind: TokenKind) -> Option<Token> {

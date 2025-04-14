@@ -126,7 +126,7 @@ impl<'a> LineLexer<'a> {
             if next_ch.is_ascii_digit() || next_ch == '_' {
                 self.iter.next();
             } else {
-                end = ptr + next_ch.len_utf8();
+                end = ptr;
                 break;
             }
         }
