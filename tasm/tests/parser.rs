@@ -33,4 +33,5 @@ fn test() {
     case("static@100 heap: {ptr: int, buf: [100]int}; fn main() -> int { a; return;}");
     case("type t: int; fn main() -> [3]int { return \"ABC\"; } type c: int;");
     case("fn main () -> int { if(0) { return 1; } else { return 2; } }");
+    case("const a = { a = 0, b = 1 };");
 }

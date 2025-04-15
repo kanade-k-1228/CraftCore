@@ -764,6 +764,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     let s = self.parse_string()?;
                     return Ok(Expr::StringLit(s));
                 }
+
+                // Struct literal
+                LCurly => {
+                    let fields = self.parse_struct_literal()?;
+                    return Ok(Expr::StructLit(fields));
+                }
+
                 _ => Err(ParseError::UnexpectedToken(token.clone())),
             }
         } else {
@@ -797,5 +804,23 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             return Ok(s.clone());
         }
         return Err(ParseError::TODO);
+    }
+
+    /// Struct literal
+    /// `{ <ident> = <expr> , ... }`
+    fn parse_struct_literal(&mut self) -> Result<Vec<(String, Expr)>, ParseError> {
+        expect!(self, LCurly)?;
+        let mut fields = Vec::new();
+        while !check!(self, RCurly) {
+            let name = self.parse_ident()?;
+            expect!(self, Equal)?;
+            let expr = self.parse_expr()?;
+            fields.push((name.clone(), expr));
+            if check!(self, Comma) {
+                expect!(self, Comma)?;
+            }
+        }
+        expect!(self, RCurly)?;
+        Ok(fields)
     }
 }

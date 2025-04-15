@@ -7,11 +7,11 @@ static@0x0005 s2: usize;
 static@0x001F s3: usize;
 
 const INTR = {
-    ENABLE: 0x0001,
-    MASK0: 0x0004,
-    MASK1: 0x0008,
-    MASK2: 0x0010,
-    MASK3: 0x0020,
+    ENABLE = 0x0001,
+    MASK0 = 0x0004,
+    MASK1 = 0x0008,
+    MASK2 = 0x0010,
+    MASK3 = 0x0020,
 };
 
 asm@0x0000 reset {
