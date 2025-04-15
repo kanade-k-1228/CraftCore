@@ -70,7 +70,7 @@ pub enum TokenKind {
     Ident(String),
 
     // Literals
-    Number(String, i64),
+    Number(String, usize),
     Text(String),
     Char(String),
 

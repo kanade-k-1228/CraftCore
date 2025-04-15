@@ -1,4 +1,4 @@
-use tasm::token::TokenKind;
+use tasm::token::{TokenKind, TokenKind::*};
 
 fn case(code: &str, expects: Vec<TokenKind>) {
     use tasm::lexer::LineLexer;
@@ -21,11 +21,10 @@ fn case(code: &str, expects: Vec<TokenKind>) {
 
 #[test]
 fn tests() {
-    use TokenKind::*;
+    case("0", vec![Number(format!("0"), 0)]);
     case(
         "type t: int; fn main() { return \"ABC\"; } // sample comment",
         vec![
-            KwType,
             Ident(format!("t")),
             Colon,
             KwInt,
@@ -42,4 +41,10 @@ fn tests() {
             Comment(format!("sample comment")),
         ],
     );
+}
+
+#[test]
+fn test_number() {
+    case("0", vec![Number(format!("0"), 0)]);
+    case("0x01", vec![Number(format!("01"), 1)]);
 }

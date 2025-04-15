@@ -37,10 +37,10 @@ pub enum Stmt {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLit(i64),                           // integer literal | 42
+    NumberLit(usize),                      // integer literal | 42
+    StructLit(Vec<(String, Expr)>),        // struct literal  | {a: expr1, b: expr2}
     ArrayLit(Vec<Expr>),                   // array literal   | [expr1, expr2, ...]
     StringLit(String),                     // string literal  | "ABC"
-    StructLit(Vec<(String, Expr)>),        // struct literal  | {a: expr1, b: expr2}
     Ident(String),                         // variable        | var name: Type [= init]
     Cond(Box<Expr>, Box<Expr>, Box<Expr>), // conditional     | expr ? expr : expr
     Unary(UnaryOp, Box<Expr>),             // unary op        | -expr, !expr, *expr, &expr

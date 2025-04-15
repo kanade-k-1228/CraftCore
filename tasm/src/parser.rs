@@ -759,7 +759,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 // Number literal
                 Number(_, val) => {
                     expect!(self, Number(_, _))?;
-                    Ok(Expr::IntLit(val))
+                    Ok(Expr::NumberLit(val))
                 }
 
                 // Struct literal

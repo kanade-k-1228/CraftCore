@@ -144,7 +144,52 @@ impl<'a> LineLexer<'a> {
     }
 
     fn parse_number(&mut self, ch: char, idx: usize) -> TokenKind {
+        if ch == '0' {
+            if let Some(&(_, ch2)) = self.iter.peek() {
+                if ch2 == 'x' || ch2 == 'X' {
+                    return self.parse_number_hex(ch, idx);
+                }
+            }
+        }
+        self.parse_number_dec(ch, idx)
+    }
+
+    fn parse_number_hex(&mut self, ch: char, idx: usize) -> TokenKind {
         let mut end = idx + ch.len_utf8();
+
+        if let Some(&(ptr, ch2)) = self.iter.peek() {
+            if ch2 == 'x' || ch2 == 'X' {
+                self.iter.next();
+                end = ptr + ch2.len_utf8();
+            }
+        }
+
+        while let Some(&(ptr, next_ch)) = self.iter.peek() {
+            if next_ch.is_ascii_hexdigit() || next_ch == '_' {
+                self.iter.next();
+            } else {
+                end = ptr;
+                break;
+            }
+        }
+
+        let lexeme = &self.line[idx..end];
+        let cleaned = lexeme.replace("_", "");
+        let number_result = if cleaned.len() > 2 {
+            usize::from_str_radix(&cleaned[2..], 16)
+        } else {
+            "".parse::<usize>()
+        };
+
+        match number_result {
+            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
+            Err(_) => TokenKind::Error(lexeme.to_string()),
+        }
+    }
+
+    fn parse_number_dec(&mut self, ch: char, idx: usize) -> TokenKind {
+        let mut end = idx + ch.len_utf8();
+
         while let Some(&(ptr, next_ch)) = self.iter.peek() {
             if next_ch.is_ascii_digit() || next_ch == '_' {
                 self.iter.next();
@@ -153,9 +198,12 @@ impl<'a> LineLexer<'a> {
                 break;
             }
         }
+
         let lexeme = &self.line[idx..end];
-        match lexeme.replace("_", "").parse::<i64>() {
-            Ok(value) => TokenKind::Number(lexeme.to_string(), value),
+        let number_result = lexeme.replace("_", "").parse::<usize>();
+
+        match number_result {
+            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
             Err(_) => TokenKind::Error(lexeme.to_string()),
         }
     }
