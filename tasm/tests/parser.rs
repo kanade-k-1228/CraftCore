@@ -34,4 +34,13 @@ fn test() {
     case("type t: int; fn main() -> [3]int { return \"ABC\"; } type c: int;");
     case("fn main () -> int { if(0) { return 1; } else { return 2; } }");
     case("const a = { a = 0, b = 1 };");
+    case("const a = [0, 1];");
+}
+
+#[test]
+fn test_array_literal() {
+    case("fn main() -> int { return [1, 2, 3]; }");
+    case("fn main() -> int { return [1, 2, 3][0]; }");
+    case("fn main() -> int { return [1, 2, 3][0] + [1, 2, 3][1]; }");
+    case("fn main() -> int { return [1, 2, 3][0] + [1, 2, 3][1] + [1, 2, 3][2]; }");
 }

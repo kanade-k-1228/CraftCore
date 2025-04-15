@@ -604,26 +604,27 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Additive expression
-    /// `<expr> + <expr>` | `<expr> - <expr>`
+    /// `<expr> + <expr> + ...` | `<expr> - <expr> - ...`
     fn parse_add(&mut self) -> Result<Expr, ParseError> {
-        let lhs = self.parse_mul()?;
-        if let Some(token) = self.tokens.peek() {
+        let mut lhs = self.parse_mul()?;
+        while let Some(token) = self.tokens.peek() {
             match token.kind {
                 Plus => {
                     expect!(self, Plus)?;
                     let rhs = self.parse_mul()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Add, Box::new(rhs)))
+                    lhs = Expr::Binary(Box::new(lhs), BinOp::Add, Box::new(rhs));
                 }
                 Minus => {
                     expect!(self, Minus)?;
                     let rhs = self.parse_mul()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Sub, Box::new(rhs)))
+                    lhs = Expr::Binary(Box::new(lhs), BinOp::Sub, Box::new(rhs));
                 }
-                _ => Ok(lhs),
+                _ => {
+                    return Ok(lhs);
+                }
             }
-        } else {
-            Err(ParseError::UnexpectedEOF)
         }
+        return Err(ParseError::UnexpectedEOF);
     }
 
     /// Multiplicative expression
@@ -824,7 +825,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_array_literal(&mut self) -> Result<Vec<Expr>, ParseError> {
         expect!(self, LBracket)?;
         let mut items = Vec::new();
-        while !check!(self, RCurly) {
+        while !check!(self, RBracket) {
             let expr = self.parse_expr()?;
             items.push(expr);
             if check!(self, Comma) {
@@ -832,7 +833,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 continue;
             }
         }
-        expect!(self, RCurly)?;
+        expect!(self, RBracket)?;
         Ok(items)
     }
 
