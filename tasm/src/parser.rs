@@ -37,6 +37,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 // Helpers
 // ------------------------------------------------------------------------
 
+#[allow(dead_code)]
 impl<I: Iterator<Item = Token>> Parser<I> {
     /// Check next token is match with condition
     fn check_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> bool {
@@ -90,6 +91,7 @@ macro_rules! expect {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! optional {
     ($parser:expr, $kind:pat) => {
         $parser.consume_if(|token| matches!(&token.kind, $kind))
@@ -181,8 +183,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// Type
     /// `int` | `<ident>` | `*<type>` | `<type>[<expr>]` | `{ <ident> : <type> , ... }` | `<args> -> <type>`
     fn parse_type(&mut self) -> Result<Type, ParseError> {
-        if let Some(token) = &self.tokens.peek() {
-            match &token.kind {
+        if let Some(token) = self.tokens.peek() {
+            match token.kind {
                 // Int
                 TokenKind::KwInt => {
                     expect!(self, TokenKind::KwInt)?;
@@ -227,7 +229,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => Err(ParseError::UnexpectedToken(token.clone().clone())),
+                _ => Err(ParseError::UnexpectedToken(token.clone())),
             }
         } else {
             Err(ParseError::UnexpectedEOF)
