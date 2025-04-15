@@ -21,10 +21,10 @@ fn case(code: &str, expects: Vec<TokenKind>) {
 
 #[test]
 fn tests() {
-    case("0", vec![Number(format!("0"), 0)]);
     case(
         "type t: int; fn main() { return \"ABC\"; } // sample comment",
         vec![
+            KwType,
             Ident(format!("t")),
             Colon,
             KwInt,
@@ -46,5 +46,13 @@ fn tests() {
 #[test]
 fn test_number() {
     case("0", vec![Number(format!("0"), 0)]);
+    case("123", vec![Number(format!("123"), 123)]);
     case("0x01", vec![Number(format!("01"), 1)]);
+}
+
+#[test]
+fn test_text() {
+    case("\"foo-42\"", vec![Text(format!("foo-42"))]);
+    case("\"\\n\"", vec![Text(format!("\n"))]); // \n
+    case("\"\\\\\"", vec![Text(format!("\\"))]); // \\ -> \
 }

@@ -35,12 +35,33 @@ pub struct LineLexer<'a> {
 }
 
 impl<'a> LineLexer<'a> {
+    pub fn new(line: &'a str, file_idx: usize, line_idx: usize) -> Self {
+        Self {
+            line,
+            iter: line.char_indices().peekable(),
+            file_idx,
+            line_idx,
+        }
+    }
+}
+
+impl<'a> LineLexer<'a> {
     pub fn check_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> bool {
         if let Some(&(_, ch)) = self.iter.peek() {
             cond(ch)
         } else {
             false
         }
+    }
+
+    pub fn check_if2<F: FnOnce(char, char) -> bool>(&mut self, cond: F) -> bool {
+        let mut clone = self.iter.clone();
+        if let Some((_, first)) = clone.next() {
+            if let Some((_, second)) = clone.next() {
+                return cond(first, second);
+            }
+        }
+        false
     }
 
     pub fn consume_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> Option<char> {
@@ -55,182 +76,150 @@ impl<'a> LineLexer<'a> {
 }
 
 impl<'a> LineLexer<'a> {
-    pub fn new(line: &'a str, file_idx: usize, line_idx: usize) -> Self {
-        Self {
-            line,
-            iter: line.char_indices().peekable(),
-            file_idx,
-            line_idx,
-        }
-    }
-
     pub fn parse(mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
-        while let Some((idx, ch)) = self.iter.next() {
+        while let Some((idx, ch0)) = self.iter.next() {
+            // 0. Skip whitespaces
+            if ch0.is_whitespace() {
+                continue;
+            }
+
             let pos = Pos {
                 file: self.file_idx,
                 col: self.line_idx,
                 row: idx,
             };
 
-            // 0. Skip whitespaces
-            if ch.is_whitespace() {
-                continue;
-            }
-
-            // 2. Comment
-            if ch == '/' {
-                if let Some(_) = self.iter.next_if(|&(_, ch2)| ch2 == '/') {
+            // 1. Double character token
+            if let Some(&(_, ch1)) = self.iter.peek() {
+                // Comment
+                if ch0 == '/' && ch1 == '/' {
+                    self.iter.next(); // consume second '/'
                     while let Some(_) = self.iter.next_if(|(_, c)| c.is_whitespace()) {}
                     let comment = self.iter.map(|(_, ch)| ch).collect::<String>();
                     tokens.push(Token::new(TokenKind::Comment(comment), pos));
                     break;
                 }
-            }
 
-            // 3. Double character token
-            if let Some(&(_, ch2)) = self.iter.peek() {
-                if let Some(kind) = double_char_token(ch, ch2) {
-                    self.iter.next();
+                if let Some(kind) = double_char_token(ch0, ch1) {
+                    self.iter.next(); // consume second char
                     tokens.push(Token::new(kind, pos));
                     continue;
                 }
             }
 
-            // 4. Single character token
-            if let Some(kind) = single_char_token(ch) {
+            // 2. Single character token
+            if let Some(kind) = single_char_token(ch0) {
                 tokens.push(Token::new(kind, pos));
                 continue;
             }
 
+            // 3. Number literal
+            if ch0.is_ascii_digit() {
+                tokens.push(Token::new(self.parse_number(ch0), pos));
+                continue;
+            }
+
+            // 4. String literal
+            if ch0 == '"' {
+                tokens.push(Token::new(self.parse_text(), pos));
+                continue;
+            }
+
             // 5. Identifier or keyword
-            if ch.is_ascii_alphabetic() || ch == '_' {
-                tokens.push(Token {
-                    kind: self.parse_ident(ch, idx),
-                    pos,
-                });
+            if ch0.is_ascii_alphabetic() || ch0 == '_' {
+                tokens.push(Token::new(self.parse_string(ch0), pos));
                 continue;
             }
 
-            // 6. String literal
-            if ch == '"' {
-                tokens.push(Token::new(self.parse_string(ch, idx), pos));
-                continue;
-            }
-
-            // 7. Number literal
-            if ch.is_ascii_digit() {
-                tokens.push(Token::new(self.parse_number(ch, idx), pos));
-                continue;
-            }
-
-            // 8. Error
-            tokens.push(Token::new(TokenKind::Error(format!("{ch}")), pos));
+            // Error
+            tokens.push(Token::new(TokenKind::Error(format!("{ch0}")), pos));
         }
         tokens
     }
 
-    fn parse_ident(&mut self, ch: char, idx: usize) -> TokenKind {
-        let mut end = idx + ch.len_utf8();
-        while let Some(&(ptr, next_ch)) = self.iter.peek() {
-            if next_ch.is_ascii_alphanumeric() || next_ch == '_' {
-                self.iter.next();
-            } else {
-                end = ptr;
-                break;
-            }
+    fn parse_string(&mut self, ch: char) -> TokenKind {
+        let mut lexeme = vec![ch];
+        while let Some((_, ch)) = self
+            .iter
+            .next_if(|(_, ch)| matches!(ch, '_' | '0'..='9' | 'a'..='z' | 'A'..='Z' ))
+        {
+            lexeme.push(ch);
         }
-        let lexeme = &self.line[idx..end];
-        match keyword(lexeme) {
+        let lexeme = lexeme.into_iter().collect::<String>();
+        match keyword(&lexeme) {
             Some(kind) => kind,
             None => TokenKind::Ident(lexeme.to_string()),
         }
     }
 
-    fn parse_string(&mut self, ch: char, idx: usize) -> TokenKind {
-        let start = idx + ch.len_utf8();
-        let mut end = start;
-        while let Some(&(ptr, next_ch)) = self.iter.peek() {
-            if next_ch != '"' {
-                self.iter.next();
+    fn parse_text(&mut self) -> TokenKind {
+        let mut lexeme = vec![];
+        let mut escape = false;
+        while let Some((_, ch)) = self.iter.next() {
+            if escape {
+                match ch {
+                    '\\' => lexeme.push('\\'),
+                    'n' => lexeme.push('\n'),
+                    ch => panic!("Invalid Escape :{ch}"),
+                }
+                escape = false;
             } else {
-                self.iter.next();
-                end = ptr;
-                break;
-            }
-        }
-        let lexeme = &self.line[start..end];
-        TokenKind::Text(lexeme.to_string())
-    }
-
-    fn parse_number(&mut self, ch: char, idx: usize) -> TokenKind {
-        if ch == '0' {
-            if let Some(&(_, ch2)) = self.iter.peek() {
-                if ch2 == 'x' || ch2 == 'X' {
-                    return self.parse_number_hex(ch, idx);
+                match ch {
+                    '"' => break,
+                    '\\' => escape = true,
+                    ch => lexeme.push(ch),
                 }
             }
         }
-        self.parse_number_dec(ch, idx)
+        let lexeme = lexeme.into_iter().collect::<String>();
+        TokenKind::Text(lexeme.to_string())
     }
 
-    fn parse_number_hex(&mut self, ch: char, idx: usize) -> TokenKind {
-        let mut end = idx + ch.len_utf8();
-
-        if let Some(&(ptr, ch2)) = self.iter.peek() {
-            if ch2 == 'x' || ch2 == 'X' {
-                self.iter.next();
-                end = ptr + ch2.len_utf8();
+    fn parse_number(&mut self, ch0: char) -> TokenKind {
+        if ch0 == '0' {
+            if let Some(&(_, ch1)) = self.iter.peek() {
+                if ch1 == 'x' || ch1 == 'X' {
+                    self.iter.next();
+                    if let Some((_, ch0)) = self.iter.next() {
+                        return self.parse_number_hex(ch0);
+                    }
+                }
             }
         }
+        return self.parse_number_dec(ch0);
+    }
 
-        while let Some(&(ptr, next_ch)) = self.iter.peek() {
-            if next_ch.is_ascii_hexdigit() || next_ch == '_' {
-                self.iter.next();
-            } else {
-                end = ptr;
-                break;
-            }
+    fn parse_number_hex(&mut self, ch: char) -> TokenKind {
+        let mut lexeme = vec![ch];
+        while let Some((_, ch)) = self
+            .iter
+            .next_if(|(_, ch)| matches!(ch, '_' | '0'..='9' | 'a'..='f' | 'A'..='F' ))
+        {
+            lexeme.push(ch);
         }
-
-        let lexeme = &self.line[idx..end];
-        let cleaned = lexeme.replace("_", "");
-        let number_result = if cleaned.len() > 2 {
-            usize::from_str_radix(&cleaned[2..], 16)
-        } else {
-            "".parse::<usize>()
-        };
-
-        match number_result {
+        let lexeme = lexeme.into_iter().collect::<String>();
+        match usize::from_str_radix(&lexeme.replace("_", ""), 16) {
             Ok(num) => TokenKind::Number(lexeme.to_string(), num),
             Err(_) => TokenKind::Error(lexeme.to_string()),
         }
     }
 
-    fn parse_number_dec(&mut self, ch: char, idx: usize) -> TokenKind {
-        let mut end = idx + ch.len_utf8();
-
-        while let Some(&(ptr, next_ch)) = self.iter.peek() {
-            if next_ch.is_ascii_digit() || next_ch == '_' {
-                self.iter.next();
-            } else {
-                end = ptr;
-                break;
-            }
+    fn parse_number_dec(&mut self, ch: char) -> TokenKind {
+        let mut lexeme = vec![ch];
+        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '0'..='9' | '_')) {
+            lexeme.push(ch);
         }
-
-        let lexeme = &self.line[idx..end];
-        let number_result = lexeme.replace("_", "").parse::<usize>();
-
-        match number_result {
+        let lexeme = lexeme.into_iter().collect::<String>();
+        match usize::from_str_radix(&lexeme.replace("_", ""), 10) {
             Ok(num) => TokenKind::Number(lexeme.to_string(), num),
             Err(_) => TokenKind::Error(lexeme.to_string()),
         }
     }
 }
 
-fn double_char_token(c1: char, c2: char) -> Option<TokenKind> {
-    match (c1, c2) {
+fn double_char_token(ch0: char, ch1: char) -> Option<TokenKind> {
+    match (ch0, ch1) {
         ('=', '=') => Some(TokenKind::EqualEqual),
         ('!', '=') => Some(TokenKind::ExclEqual),
         ('<', '=') => Some(TokenKind::LAngleEqual),
@@ -242,8 +231,8 @@ fn double_char_token(c1: char, c2: char) -> Option<TokenKind> {
     }
 }
 
-fn single_char_token(c: char) -> Option<TokenKind> {
-    match c {
+fn single_char_token(ch: char) -> Option<TokenKind> {
+    match ch {
         '=' => Some(TokenKind::Equal),
         '+' => Some(TokenKind::Plus),
         '-' => Some(TokenKind::Minus),
