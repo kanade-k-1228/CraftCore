@@ -91,16 +91,30 @@ macro_rules! expect {
     };
 }
 
-#[allow(unused_macros)]
 macro_rules! optional {
-    ($parser:expr, $kind:pat) => {
-        $parser.consume_if(|token| matches!(&token.kind, $kind))
-    };
+    ($parser:expr, $trigger:pat, $following:expr) => {{
+        if check!($parser, $trigger) {
+            expect!($parser, $trigger)?;
+            Some($following)
+        } else {
+            None
+        }
+    }};
 }
 
 macro_rules! recover {
     ($parser:expr, $kind:pat) => {
         $parser.consume_until(|token| matches!(&token.kind, $kind))
+    };
+}
+
+macro_rules! top {
+    () => {
+        TokenKind::KwType
+            | TokenKind::KwConst
+            | TokenKind::KwStatic
+            | TokenKind::KwAsm
+            | TokenKind::KwFunc
     };
 }
 
@@ -114,48 +128,52 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         while let Some(token) = self.tokens.peek() {
             match token.kind {
                 TokenKind::KwType => match self.parse_typedef() {
-                    Ok(def) => program.push(def),
+                    Ok((name, typ)) => {
+                        program.push(Def::Type(name, typ));
+                    }
                     Err(err) => {
                         self.errors.push(err);
-                        recover!(
-                            self,
-                            TokenKind::Semicolon
-                                | TokenKind::KwFunc
-                                | TokenKind::KwType
-                                | TokenKind::KwVar
-                        );
+                        recover!(self, top!());
+                    }
+                },
+
+                TokenKind::KwConst => match self.parse_const() {
+                    Ok((name, typ, expr)) => {
+                        program.push(Def::Const(name, typ, expr));
+                    }
+                    Err(err) => {
+                        self.errors.push(err);
+                        recover!(self, top!());
+                    }
+                },
+
+                TokenKind::KwStatic => match self.parse_static() {
+                    Ok((name, addr, typ)) => {
+                        program.push(Def::Static(name, addr, typ));
+                    }
+                    Err(err) => {
+                        self.errors.push(err);
+                        recover!(self, top!());
+                    }
+                },
+
+                TokenKind::KwAsm => match self.parse_asm() {
+                    Ok((name, addr, body)) => {
+                        program.push(Def::Asm(name, addr, body));
+                    }
+                    Err(err) => {
+                        self.errors.push(err);
+                        recover!(self, top!());
                     }
                 },
 
                 TokenKind::KwFunc => match self.parse_func() {
-                    Ok((name, args, ret, body)) => program.push(Def::Func(name, args, ret, body)),
-                    Err(err) => {
-                        self.errors.push(err);
-                        self.consume_until(|t| {
-                            matches!(
-                                t.kind,
-                                TokenKind::Semicolon
-                                    | TokenKind::KwFunc
-                                    | TokenKind::KwType
-                                    | TokenKind::KwVar
-                            )
-                        });
+                    Ok((name, args, ret, body)) => {
+                        program.push(Def::Func(name, args, ret, body));
                     }
-                },
-
-                TokenKind::KwVar => match self.parse_var_def() {
-                    Ok((name, typ, init)) => program.push(Def::Var(name, typ, init)),
                     Err(err) => {
                         self.errors.push(err);
-                        self.consume_until(|t| {
-                            matches!(
-                                t.kind,
-                                TokenKind::Semicolon
-                                    | TokenKind::KwFunc
-                                    | TokenKind::KwType
-                                    | TokenKind::KwVar
-                            )
-                        });
+                        recover!(self, top!());
                     }
                 },
 
@@ -171,13 +189,25 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     /// Type definition
     /// `type <ident> : <type> ;`
-    fn parse_typedef(&mut self) -> Result<Def, ParseError> {
+    fn parse_typedef(&mut self) -> Result<(String, Type), ParseError> {
         expect!(self, TokenKind::KwType)?;
         let name = self.parse_ident()?;
         expect!(self, TokenKind::Colon)?;
         let typ = self.parse_type()?;
         expect!(self, TokenKind::Semicolon)?;
-        Ok(Def::Type(name, typ))
+        Ok((name, typ))
+    }
+
+    /// Const
+    /// `const <ident> ?(: <type>) = <expr> ;`
+    fn parse_const(&mut self) -> Result<(String, Option<Type>, Expr), ParseError> {
+        expect!(self, TokenKind::KwConst)?;
+        let name = self.parse_ident()?;
+        let typ = optional!(self, TokenKind::Colon, self.parse_type()?);
+        expect!(self, TokenKind::Equal)?;
+        let expr = self.parse_expr()?;
+        expect!(self, TokenKind::Semicolon)?;
+        Ok((name, typ, expr))
     }
 
     /// Type
@@ -260,6 +290,22 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(exprs)
     }
 
+    /// Assembly
+    /// `asm <ident> ?(@ <expr>) { <stmt> ... }`
+    fn parse_asm(&mut self) -> Result<(String, Option<Expr>, Stmt), ParseError> {
+        expect!(self, TokenKind::KwAsm)?;
+        let name = self.parse_ident()?;
+        let addr = if check!(self, TokenKind::Atmark) {
+            expect!(self, TokenKind::Atmark)?;
+            let expr = self.parse_expr()?;
+            Some(expr)
+        } else {
+            None
+        };
+        let body = self.parse_block()?;
+        Ok((name, addr, body))
+    }
+
     /// Function
     /// `fn <ident> <args> -> <type> <block>`
     fn parse_func(&mut self) -> Result<(String, Vec<(String, Type)>, Type, Stmt), ParseError> {
@@ -320,7 +366,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     expect!(self, TokenKind::Comma)?;
                     continue;
                 }
-                TokenKind::RParen => {
+                TokenKind::RCurly => {
                     expect!(self, TokenKind::RCurly)?;
                     return Ok(fields);
                 }
@@ -332,22 +378,22 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Err(ParseError::UnexpectedEOF)
     }
 
-    /// Variable definition
-    /// `var <ident> : <type> = <expr> ;`
-    fn parse_var_def(&mut self) -> Result<(String, Type, Option<Expr>), ParseError> {
-        expect!(self, TokenKind::KwVar)?;
-        let name = self.parse_ident()?;
-        expect!(self, TokenKind::Colon)?;
-        let typ = self.parse_type()?;
-        let init = if check!(self, TokenKind::Equal) {
-            expect!(self, TokenKind::Equal)?;
+    /// Static variable definition
+    /// `static ?(@ <expr>) <ident> : <type>;`
+    fn parse_static(&mut self) -> Result<(String, Option<Expr>, Type), ParseError> {
+        expect!(self, TokenKind::KwStatic)?;
+        let addr = if check!(self, TokenKind::Atmark) {
+            expect!(self, TokenKind::Atmark)?;
             let expr = self.parse_expr()?;
             Some(expr)
         } else {
             None
         };
+        let name = self.parse_ident()?;
+        expect!(self, TokenKind::Colon)?;
+        let typ = self.parse_type()?;
         expect!(self, TokenKind::Semicolon)?;
-        Ok((name, typ, init))
+        Ok((name, addr, typ))
     }
 
     /// Block statement
@@ -377,7 +423,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
                 // Local variable definition
                 TokenKind::KwVar => {
-                    let (name, typ, init) = self.parse_var_def()?;
+                    let (name, typ, init) = self.parse_var()?;
                     return Ok(Stmt::Var(name, typ, init));
                 }
 
@@ -387,14 +433,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     expect!(self, TokenKind::LParen)?;
                     let cond = self.parse_expr()?;
                     expect!(self, TokenKind::RParen)?;
-                    let then_stmt = Box::new(self.parse_stmt()?);
-                    let else_stmt = if check!(self, TokenKind::KwElse) {
-                        expect!(self, TokenKind::KwElse)?;
-                        Some(Box::new(self.parse_stmt()?))
-                    } else {
-                        None
-                    };
-                    return Ok(Stmt::Cond(cond, then_stmt, else_stmt));
+                    let tstmt = Box::new(self.parse_stmt()?);
+                    let fstmt = optional!(self, TokenKind::KwElse, Box::new(self.parse_stmt()?));
+                    return Ok(Stmt::Cond(cond, tstmt, fstmt));
                 }
 
                 // While Statement: 'while' '(' expr ')' stmt
@@ -441,6 +482,18 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             }
         }
         return Err(ParseError::TODO);
+    }
+
+    /// Variable definition
+    /// `var <ident> : <type> ?( = <expr> ) ;`
+    fn parse_var(&mut self) -> Result<(String, Type, Option<Expr>), ParseError> {
+        expect!(self, TokenKind::KwVar)?;
+        let name = self.parse_ident()?;
+        expect!(self, TokenKind::Colon)?;
+        let typ = self.parse_type()?;
+        let init = optional!(self, TokenKind::Equal, self.parse_expr()?);
+        expect!(self, TokenKind::Semicolon)?;
+        Ok((name, typ, init))
     }
 
     /// Expression
@@ -668,6 +721,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             if check!(self, TokenKind::LParen) {
                 let args = self.parse_list()?;
                 expr = Expr::Call(Box::new(expr), args);
+                continue;
             }
 
             // Array access
@@ -676,6 +730,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 let index = self.parse_expr()?;
                 expect!(self, TokenKind::RBracket)?;
                 expr = Expr::ArrayAccess(Box::new(expr), Box::new(index));
+                continue;
             }
 
             // Member access
@@ -683,9 +738,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 expect!(self, TokenKind::Period)?;
                 let field = self.parse_ident()?;
                 expr = Expr::Member(Box::new(expr), field);
-            } else {
-                break;
+                continue;
             }
+
+            break;
         }
         Ok(expr)
     }

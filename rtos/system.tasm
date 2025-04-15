@@ -1,0 +1,61 @@
+static@0x0000 z:  usize;
+static@0x0001 sp: usize;
+static@0x0002 ra: usize;
+static@0x0003 s0: usize;
+static@0x0004 s1: usize;
+static@0x0005 s2: usize;
+static@0x001F s3: usize;
+
+const INTR = {
+    ENABLE: 0x0001,
+    MASK0: 0x0004,
+    MASK1: 0x0008,
+    MASK2: 0x0010,
+    MASK3: 0x0020,
+};
+
+asm@0x0000 reset {
+    call(main);
+}
+
+asm@0x0004 intr {
+    csr = csr & ~INTR.ENABLE; // Disable interrupts
+    sp = sp - 10; // Allocate stack space
+    store(sp + 10) = s0;
+    store(sp + 9) = s0;
+    store(sp + 8) = s0;
+    store(sp + 7) = s0;
+    store(sp + 6) = s0;
+    store(sp + 5) = s0;
+    store(sp + 4) = s0;
+    store(sp + 3) = s0;
+    store(sp + 2) = s0;
+    store(sp + 1) = s0;
+}
+
+const mem_top = 0x2000;
+const mem_bottom = mem_top + 0x1000;
+
+static@0x2000 heap: {top: usize, bottom: usize};
+
+fn heap_init() {
+    // Initialize the heap
+    heap.top = mem_top;
+    heap.bottom = mem_bottom;
+
+    // Initialize the stack pointer
+    asm {
+        ldi r0, mem_top
+        out SPH, r0
+        ldi r0, mem_bottom
+        out SPL, r0
+    }
+
+    // Initialize the system timer
+    timer_init();
+
+    // Enable interrupts
+    asm {
+        sei
+    }
+}

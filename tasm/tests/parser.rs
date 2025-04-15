@@ -25,10 +25,12 @@ fn case(code: &str) {
     for error in &errors {
         println!("{:?}", error);
     }
+    assert!(errors.is_empty(), "Errors found: {:?}", errors);
 }
 
 #[test]
 fn test() {
-    case("fn main() -> int { a; return 0;}");
+    case("static@100 heap: {ptr: int, buf: [100]int}; fn main() -> int { a; return;}");
     case("type t: int; fn main() -> [3]int { return \"ABC\"; } type c: int;");
+    case("fn main () -> int { if(0) { return 1; } else { return 2; } }");
 }

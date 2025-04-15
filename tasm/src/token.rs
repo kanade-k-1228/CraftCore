@@ -51,10 +51,12 @@ pub enum TokenKind {
 
     // Keywords
     KwFunc,     // "fn"
+    KwAsm,      // "asm"
     KwReturn,   // "return"
     KwVar,      // "var"
     KwLet,      // "let"
     KwStatic,   // "static"
+    KwConst,    // "const"
     KwInt,      // "int"
     KwType,     // "type"
     KwIf,       // "if"

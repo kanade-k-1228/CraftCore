@@ -6,8 +6,10 @@ pub struct Defs(pub Vec<Def>); // Program is collection of definitions
 #[derive(Debug, Clone)]
 pub enum Def {
     Type(String, Type),                            // name, type
-    Var(String, Type, Option<Expr>),               // name, type, initializer
-    Func(String, Vec<(String, Type)>, Type, Stmt), // name, args, return type, body
+    Const(String, Option<Type>, Expr),             // name, type, value
+    Static(String, Option<Expr>, Type),            // name, addr, type
+    Asm(String, Option<Expr>, Stmt),               // name, addr, body
+    Func(String, Vec<(String, Type)>, Type, Stmt), // name, arg, ret, body
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,7 @@ pub enum Expr {
     IntLit(i64),                           // integer literal | 42
     ArrayLit(Vec<Expr>),                   // array literal   | [expr1, expr2, ...]
     StringLit(String),                     // string literal  | "ABC"
+    StructLit(Vec<(String, Expr)>),        // struct literal  | {a: expr1, b: expr2}
     Ident(String),                         // variable        | var name: Type [= init]
     Cond(Box<Expr>, Box<Expr>, Box<Expr>), // conditional     | expr ? expr : expr
     Unary(UnaryOp, Box<Expr>),             // unary op        | -expr, !expr, *expr, &expr

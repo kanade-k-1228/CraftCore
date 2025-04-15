@@ -209,6 +209,8 @@ fn keyword(s: &str) -> Option<TokenKind> {
         "fn" => Some(TokenKind::KwFunc),
         "var" => Some(TokenKind::KwVar),
         "type" => Some(TokenKind::KwType),
+        "const" => Some(TokenKind::KwConst),
+        "static" => Some(TokenKind::KwStatic),
         "if" => Some(TokenKind::KwIf),
         "else" => Some(TokenKind::KwElse),
         "while" => Some(TokenKind::KwWhile),
