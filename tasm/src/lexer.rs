@@ -4,6 +4,29 @@ use crate::token::{Pos, Token, TokenKind};
 use std::iter::Peekable;
 use std::str::CharIndices;
 
+pub struct Lexer {
+    file_idx: usize,
+    lines: Vec<String>,
+}
+
+impl Lexer {
+    pub fn new(file_idx: usize, code: String) -> Self {
+        Self {
+            file_idx,
+            lines: code.lines().map(|line| line.to_string()).collect(),
+        }
+    }
+
+    pub fn parse(self) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            let line_lexer = LineLexer::new(line, self.file_idx, line_idx);
+            tokens.extend(line_lexer.parse());
+        }
+        tokens
+    }
+}
+
 pub struct LineLexer<'a> {
     line: &'a str,
     iter: Peekable<CharIndices<'a>>,
