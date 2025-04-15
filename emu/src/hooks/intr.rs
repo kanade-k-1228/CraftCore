@@ -17,6 +17,8 @@ pub struct Intr {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct List(HashMap<i32, i32>);
 
+const INDENT: usize = 32;
+
 impl Intr {
     pub fn arg(file: Option<String>) -> Self {
         match file {
@@ -43,13 +45,13 @@ impl Intr {
 impl Hook for Intr {
     fn init(&mut self, state: State) -> State {
         if let Some(fname) = &self.file {
-            println!(" * Intr: #{:?} {:?}", self.list.0.len(), fname);
+            println!(" * Intr[{}] {:?}", self.list.0.len(), fname);
         }
         state
     }
     fn exec(&mut self, time: u64, _addr: u16, _code: u32, mut cpu: State) -> State {
         if let Some(intr) = self.get(time as u16) {
-            println!(" * Intr: @ {} # {}", time, intr);
+            println!("\x1b[1A\x1b[{}C!{}", INDENT, intr);
             cpu.interrupt();
         }
         cpu

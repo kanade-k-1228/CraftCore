@@ -53,7 +53,15 @@ fn main() {
     // Initialize state machine model
     let mut state = {
         let mut cpu = State::new();
-        cpu.load_rom_file(&args.input_file).unwrap();
+        match cpu.load_rom_file(&args.input_file) {
+            Ok(_) => {
+                println!("ROM loaded: {}", args.input_file);
+            }
+            Err(e) => {
+                println!("Failed to load ROM: {}", e);
+                return;
+            }
+        }
         cpu
     };
 
@@ -61,9 +69,9 @@ fn main() {
     // Initialize hooks
     println!("[INIT]");
     let mut hooks: Vec<Box<dyn Hook>> = vec![
-        Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
-        Box::new(Intr::arg(args.intr_cfg)),
         Box::new(Serial::arg(true, args.serial_out, args.serial_in)),
+        Box::new(Intr::arg(args.intr_cfg)),
+        Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
     ];
 
     // Apply initializations
@@ -73,13 +81,11 @@ fn main() {
 
     // ------------------------------------------------------------------------
     // Main loop
-    for time in match args.tmax {
-        Some(t) => 0_u64..t,
-        None => 0_u64..u64::MAX,
-    } {
+    let tmax = args.tmax.unwrap_or(u64::MAX);
+    for time in 0..tmax {
         // Execute instruction
         let (addr, code, _op, inst) = state.exec();
-        print!("[{:0>4}] {}", time, inst.cformat());
+        println!("[{:0>4}] {}", time, inst.cformat());
 
         // Execute side effects
         for hook in hooks.iter_mut() {
