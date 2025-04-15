@@ -1,7 +1,7 @@
 // ast.rs
 
 #[derive(Debug, Clone)]
-pub struct Program(pub Vec<Def>); // Program is collection of definitions
+pub struct Defs(pub Vec<Def>); // Program is collection of definitions
 
 #[derive(Debug, Clone)]
 pub enum Def {
@@ -37,6 +37,7 @@ pub enum Stmt {
 pub enum Expr {
     IntLit(i64),                           // integer literal | 42
     ArrayLit(Vec<Expr>),                   // array literal   | [expr1, expr2, ...]
+    StringLit(String),                     // string literal  | "ABC"
     Ident(String),                         // variable        | var name: Type [= init]
     Cond(Box<Expr>, Box<Expr>, Box<Expr>), // conditional     | expr ? expr : expr
     Unary(UnaryOp, Box<Expr>),             // unary op        | -expr, !expr, *expr, &expr

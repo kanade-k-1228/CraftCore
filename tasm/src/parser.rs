@@ -1,6 +1,6 @@
 // parser.rs
 
-use crate::ast::{BinOp, Def, Expr, Program, Stmt, Type, UnaryOp};
+use crate::ast::{BinOp, Def, Defs, Expr, Stmt, Type, UnaryOp};
 use crate::token::{Token, TokenKind};
 use std::iter::Peekable;
 
@@ -29,20 +29,16 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    pub fn parse(mut self) -> Result<Program, Vec<ParseError>> {
+    pub fn parse(mut self) -> (Defs, Vec<ParseError>) {
         let program = self.parse_program();
-        if self.errors.is_empty() {
-            Ok(program)
-        } else {
-            Err(self.errors)
-        }
+        return (program, self.errors);
     }
 
     // ------------------------------------------------------------------------
     // Parsers
     // ------------------------------------------------------------------------
 
-    fn parse_program(&mut self) -> Program {
+    fn parse_program(&mut self) -> Defs {
         let mut program = Vec::new();
         while let Some(token) = self.tokens.peek() {
             match token.kind {
@@ -101,7 +97,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 }
             }
         }
-        Program(program)
+        Defs(program)
     }
 
     /// Type definition
@@ -649,10 +645,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Expr::IntLit(val))
                 }
 
-                // TokenKind::LitString(ref s) => {
-                //     self.expect(TokenKind::LitString(s))?;
-                //     return Ok(Expr::ArrayLit(s.clone()));
-                // }
+                TokenKind::LitString(_) => {
+                    let s = self.parse_string()?;
+                    return Ok(Expr::StringLit(s));
+                }
                 _ => Err(ParseError::UnexpectedToken(token.clone())),
             }
         } else {
@@ -665,6 +661,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_ident(&mut self) -> Result<String, ParseError> {
         if let Some(Token {
             kind: TokenKind::Ident(s),
+            pos: _,
+        }) = &self.tokens.peek().cloned()
+        {
+            self.tokens.next();
+            return Ok(s.clone());
+        }
+        return Err(ParseError::TODO);
+    }
+
+    /// String literal
+    /// `"abc"`
+    fn parse_string(&mut self) -> Result<String, ParseError> {
+        if let Some(Token {
+            kind: TokenKind::LitString(s),
             pos: _,
         }) = &self.tokens.peek().cloned()
         {
