@@ -285,13 +285,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_asm(&mut self) -> Result<(String, Option<Expr>, Stmt), ParseError> {
         expect!(self, KwAsm)?;
         let name = self.parse_ident()?;
-        let addr = if check!(self, Atmark) {
-            expect!(self, Atmark)?;
-            let expr = self.parse_expr()?;
-            Some(expr)
-        } else {
-            None
-        };
+        let addr = optional!(self, Atmark, self.parse_expr()?);
         let body = self.parse_block()?;
         Ok((name, addr, body))
     }
@@ -372,13 +366,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// `static ?(@ <expr>) <ident> : <type>;`
     fn parse_static(&mut self) -> Result<(String, Option<Expr>, Type), ParseError> {
         expect!(self, KwStatic)?;
-        let addr = if check!(self, Atmark) {
-            expect!(self, Atmark)?;
-            let expr = self.parse_expr()?;
-            Some(expr)
-        } else {
-            None
-        };
+        let addr = optional!(self, Atmark, self.parse_expr()?);
         let name = self.parse_ident()?;
         expect!(self, Colon)?;
         let typ = self.parse_type()?;
@@ -776,7 +764,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
                 // String literal
                 Text(_) => {
-                    let s = self.parse_string()?;
+                    let s = self.parse_string_literal()?;
                     return Ok(Expr::StringLit(s));
                 }
 
@@ -839,7 +827,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     /// String literal
     /// `"abc"`
-    fn parse_string(&mut self) -> Result<String, ParseError> {
+    fn parse_string_literal(&mut self) -> Result<String, ParseError> {
         if let Some(Token {
             kind: Text(s),
             pos: _,

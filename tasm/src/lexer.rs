@@ -35,6 +35,26 @@ pub struct LineLexer<'a> {
 }
 
 impl<'a> LineLexer<'a> {
+    pub fn check_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> bool {
+        if let Some(&(_, ch)) = self.iter.peek() {
+            cond(ch)
+        } else {
+            false
+        }
+    }
+
+    pub fn consume_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> Option<char> {
+        if let Some(&(_, ch)) = self.iter.peek() {
+            if cond(ch) {
+                self.iter.next();
+                return Some(ch);
+            }
+        }
+        None
+    }
+}
+
+impl<'a> LineLexer<'a> {
     pub fn new(line: &'a str, file_idx: usize, line_idx: usize) -> Self {
         Self {
             line,
