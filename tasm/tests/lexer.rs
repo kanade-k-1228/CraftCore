@@ -47,7 +47,7 @@ fn tests() {
 fn test_number() {
     case("0", vec![Number(format!("0"), 0)]);
     case("123", vec![Number(format!("123"), 123)]);
-    case("0x01", vec![Number(format!("01"), 1)]);
+    case("0x01", vec![Number(format!("0x01"), 1)]);
 }
 
 #[test]

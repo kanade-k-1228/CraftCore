@@ -28,22 +28,24 @@ impl Lexer {
 }
 
 pub struct LineLexer<'a> {
-    line: &'a str,
     iter: Peekable<CharIndices<'a>>,
-    file_idx: usize,
-    line_idx: usize,
+    file: usize,
+    col: usize,
 }
 
 impl<'a> LineLexer<'a> {
-    pub fn new(line: &'a str, file_idx: usize, line_idx: usize) -> Self {
+    pub fn new(line: &'a str, file: usize, col: usize) -> Self {
         Self {
-            line,
             iter: line.char_indices().peekable(),
-            file_idx,
-            line_idx,
+            file,
+            col,
         }
     }
 }
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
 
 impl<'a> LineLexer<'a> {
     pub fn check_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> bool {
@@ -75,18 +77,23 @@ impl<'a> LineLexer<'a> {
     }
 }
 
+// ----------------------------------------------------------------------------
+// Parser
+// ----------------------------------------------------------------------------
+
 impl<'a> LineLexer<'a> {
     pub fn parse(mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
-        while let Some((idx, ch0)) = self.iter.next() {
+        while let Some(&(idx, ch0)) = self.iter.peek() {
             // 0. Skip whitespaces
             if ch0.is_whitespace() {
+                self.iter.next();
                 continue;
             }
 
             let pos = Pos {
-                file: self.file_idx,
-                col: self.line_idx,
+                file: self.file,
+                col: self.col,
                 row: idx,
             };
 
@@ -94,7 +101,8 @@ impl<'a> LineLexer<'a> {
             if let Some(&(_, ch1)) = self.iter.peek() {
                 // Comment
                 if ch0 == '/' && ch1 == '/' {
-                    self.iter.next(); // consume second '/'
+                    self.iter.next(); // consume '/'
+                    self.iter.next(); // consume '/'
                     while let Some(_) = self.iter.next_if(|(_, c)| c.is_whitespace()) {}
                     let comment = self.iter.map(|(_, ch)| ch).collect::<String>();
                     tokens.push(Token::new(TokenKind::Comment(comment), pos));
@@ -102,6 +110,7 @@ impl<'a> LineLexer<'a> {
                 }
 
                 if let Some(kind) = double_char_token(ch0, ch1) {
+                    self.iter.next(); // consume
                     self.iter.next(); // consume second char
                     tokens.push(Token::new(kind, pos));
                     continue;
@@ -110,13 +119,14 @@ impl<'a> LineLexer<'a> {
 
             // 2. Single character token
             if let Some(kind) = single_char_token(ch0) {
+                self.iter.next();
                 tokens.push(Token::new(kind, pos));
                 continue;
             }
 
             // 3. Number literal
             if ch0.is_ascii_digit() {
-                tokens.push(Token::new(self.parse_number(ch0), pos));
+                tokens.push(Token::new(self.parse_number(), pos));
                 continue;
             }
 
@@ -133,12 +143,14 @@ impl<'a> LineLexer<'a> {
             }
 
             // Error
+            self.iter.next();
             tokens.push(Token::new(TokenKind::Error(format!("{ch0}")), pos));
         }
         tokens
     }
 
     fn parse_string(&mut self, ch: char) -> TokenKind {
+        self.iter.next();
         let mut lexeme = vec![ch];
         while let Some((_, ch)) = self
             .iter
@@ -153,7 +165,11 @@ impl<'a> LineLexer<'a> {
         }
     }
 
+    // Text: "hoge\nfuga"
     fn parse_text(&mut self) -> TokenKind {
+        // expect(self, '"')?;
+        self.iter.next();
+
         let mut lexeme = vec![];
         let mut escape = false;
         while let Some((_, ch)) = self.iter.next() {
@@ -176,22 +192,21 @@ impl<'a> LineLexer<'a> {
         TokenKind::Text(lexeme.to_string())
     }
 
-    fn parse_number(&mut self, ch0: char) -> TokenKind {
+    fn parse_number(&mut self) -> TokenKind {
+        let (_, ch0) = self.iter.next().unwrap();
         if ch0 == '0' {
             if let Some(&(_, ch1)) = self.iter.peek() {
                 if ch1 == 'x' || ch1 == 'X' {
-                    self.iter.next();
-                    if let Some((_, ch0)) = self.iter.next() {
-                        return self.parse_number_hex(ch0);
-                    }
+                    self.iter.next(); // consume 'x' | 'X'
+                    return self.parse_number_hex(ch0, ch1);
                 }
             }
         }
         return self.parse_number_dec(ch0);
     }
 
-    fn parse_number_hex(&mut self, ch: char) -> TokenKind {
-        let mut lexeme = vec![ch];
+    fn parse_number_hex(&mut self, ch0: char, ch1: char) -> TokenKind {
+        let mut lexeme = vec![ch0, ch1];
         while let Some((_, ch)) = self
             .iter
             .next_if(|(_, ch)| matches!(ch, '_' | '0'..='9' | 'a'..='f' | 'A'..='F' ))
@@ -199,7 +214,7 @@ impl<'a> LineLexer<'a> {
             lexeme.push(ch);
         }
         let lexeme = lexeme.into_iter().collect::<String>();
-        match usize::from_str_radix(&lexeme.replace("_", ""), 16) {
+        match usize::from_str_radix(&lexeme[2..].replace("_", ""), 16) {
             Ok(num) => TokenKind::Number(lexeme.to_string(), num),
             Err(_) => TokenKind::Error(lexeme.to_string()),
         }
@@ -207,7 +222,7 @@ impl<'a> LineLexer<'a> {
 
     fn parse_number_dec(&mut self, ch: char) -> TokenKind {
         let mut lexeme = vec![ch];
-        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '0'..='9' | '_')) {
+        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '_' | '0'..='9')) {
             lexeme.push(ch);
         }
         let lexeme = lexeme.into_iter().collect::<String>();
