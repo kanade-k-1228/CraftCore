@@ -36,7 +36,7 @@ fn tests() {
             RParen,
             LCurly,
             KwReturn,
-            LitString(format!("ABC")),
+            Text(format!("ABC")),
             Semicolon,
             RCurly,
             Comment(format!("sample comment")),

@@ -140,7 +140,7 @@ impl<'a> LineLexer<'a> {
             }
         }
         let lexeme = &self.line[start..end];
-        TokenKind::LitString(lexeme.to_string())
+        TokenKind::Text(lexeme.to_string())
     }
 
     fn parse_number(&mut self, ch: char, idx: usize) -> TokenKind {
@@ -155,7 +155,7 @@ impl<'a> LineLexer<'a> {
         }
         let lexeme = &self.line[idx..end];
         match lexeme.replace("_", "").parse::<i64>() {
-            Ok(value) => TokenKind::LitNumber(value),
+            Ok(value) => TokenKind::Number(lexeme.to_string(), value),
             Err(_) => TokenKind::Error(lexeme.to_string()),
         }
     }

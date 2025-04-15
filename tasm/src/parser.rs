@@ -755,20 +755,28 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Expr::Ident(name.clone()))
                 }
 
-                LitNumber(val) => {
-                    expect!(self, LitNumber(_))?;
+                // Number literal
+                Number(_, val) => {
+                    expect!(self, Number(_, _))?;
                     Ok(Expr::IntLit(val))
-                }
-
-                LitString(_) => {
-                    let s = self.parse_string()?;
-                    return Ok(Expr::StringLit(s));
                 }
 
                 // Struct literal
                 LCurly => {
                     let fields = self.parse_struct_literal()?;
                     return Ok(Expr::StructLit(fields));
+                }
+
+                // Array literal
+                LBracket => {
+                    let arr = self.parse_array_literal()?;
+                    return Ok(Expr::ArrayLit(arr));
+                }
+
+                // String literal
+                Text(_) => {
+                    let s = self.parse_string()?;
+                    return Ok(Expr::StringLit(s));
                 }
 
                 _ => Err(ParseError::UnexpectedToken(token.clone())),
@@ -792,20 +800,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         return Err(ParseError::TODO);
     }
 
-    /// String literal
-    /// `"abc"`
-    fn parse_string(&mut self) -> Result<String, ParseError> {
-        if let Some(Token {
-            kind: LitString(s),
-            pos: _,
-        }) = &self.tokens.peek().cloned()
-        {
-            self.tokens.next();
-            return Ok(s.clone());
-        }
-        return Err(ParseError::TODO);
-    }
-
     /// Struct literal
     /// `{ <ident> = <expr> , ... }`
     fn parse_struct_literal(&mut self) -> Result<Vec<(String, Expr)>, ParseError> {
@@ -818,9 +812,41 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             fields.push((name.clone(), expr));
             if check!(self, Comma) {
                 expect!(self, Comma)?;
+                continue;
             }
         }
         expect!(self, RCurly)?;
         Ok(fields)
+    }
+
+    /// Array literal
+    /// `[ <expr> , ... ]`
+    fn parse_array_literal(&mut self) -> Result<Vec<Expr>, ParseError> {
+        expect!(self, LBracket)?;
+        let mut items = Vec::new();
+        while !check!(self, RCurly) {
+            let expr = self.parse_expr()?;
+            items.push(expr);
+            if check!(self, Comma) {
+                expect!(self, Comma)?;
+                continue;
+            }
+        }
+        expect!(self, RCurly)?;
+        Ok(items)
+    }
+
+    /// String literal
+    /// `"abc"`
+    fn parse_string(&mut self) -> Result<String, ParseError> {
+        if let Some(Token {
+            kind: Text(s),
+            pos: _,
+        }) = &self.tokens.peek().cloned()
+        {
+            self.tokens.next();
+            return Ok(s.clone());
+        }
+        return Err(ParseError::TODO);
     }
 }

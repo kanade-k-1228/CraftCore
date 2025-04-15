@@ -70,8 +70,9 @@ pub enum TokenKind {
     Ident(String),
 
     // Literals
-    LitNumber(i64),
-    LitString(String),
+    Number(String, i64),
+    Text(String),
+    Char(String),
 
     // Special
     Comment(String), // Comment
