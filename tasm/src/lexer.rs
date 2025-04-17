@@ -48,32 +48,11 @@ impl<'a> LineLexer<'a> {
 // ----------------------------------------------------------------------------
 
 impl<'a> LineLexer<'a> {
-    pub fn check_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> bool {
-        if let Some(&(_, ch)) = self.iter.peek() {
-            cond(ch)
-        } else {
-            false
-        }
+    fn peek_nth(&self, n: usize) -> Option<(usize, char)> {
+        self.iter.clone().nth(n)
     }
-
-    pub fn check_if2<F: FnOnce(char, char) -> bool>(&mut self, cond: F) -> bool {
-        let mut clone = self.iter.clone();
-        if let Some((_, first)) = clone.next() {
-            if let Some((_, second)) = clone.next() {
-                return cond(first, second);
-            }
-        }
-        false
-    }
-
-    pub fn consume_if<F: FnOnce(char) -> bool>(&mut self, cond: F) -> Option<char> {
-        if let Some(&(_, ch)) = self.iter.peek() {
-            if cond(ch) {
-                self.iter.next();
-                return Some(ch);
-            }
-        }
-        None
+    fn consume(&mut self) -> Option<(usize, char)> {
+        self.iter.next()
     }
 }
 
@@ -84,10 +63,10 @@ impl<'a> LineLexer<'a> {
 impl<'a> LineLexer<'a> {
     pub fn parse(mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
-        while let Some(&(idx, ch0)) = self.iter.peek() {
+        while let Some((idx, ch0)) = self.peek_nth(0) {
             // 0. Skip whitespaces
             if ch0.is_whitespace() {
-                self.iter.next();
+                self.consume();
                 continue;
             }
 
@@ -98,11 +77,11 @@ impl<'a> LineLexer<'a> {
             };
 
             // 1. Double character token
-            if let Some(&(_, ch1)) = self.iter.peek() {
+            if let Some((_, ch1)) = self.peek_nth(1) {
                 // Comment
                 if ch0 == '/' && ch1 == '/' {
-                    self.iter.next(); // consume '/'
-                    self.iter.next(); // consume '/'
+                    self.consume(); // consume '/'
+                    self.consume(); // consume '/'
                     while let Some(_) = self.iter.next_if(|(_, c)| c.is_whitespace()) {}
                     let comment = self.iter.map(|(_, ch)| ch).collect::<String>();
                     tokens.push(Token::new(TokenKind::Comment(comment), pos));
@@ -110,8 +89,8 @@ impl<'a> LineLexer<'a> {
                 }
 
                 if let Some(kind) = double_char_token(ch0, ch1) {
-                    self.iter.next(); // consume
-                    self.iter.next(); // consume second char
+                    self.consume(); // consume
+                    self.consume(); // consume second char
                     tokens.push(Token::new(kind, pos));
                     continue;
                 }
@@ -119,7 +98,7 @@ impl<'a> LineLexer<'a> {
 
             // 2. Single character token
             if let Some(kind) = single_char_token(ch0) {
-                self.iter.next();
+                self.consume();
                 tokens.push(Token::new(kind, pos));
                 continue;
             }
@@ -130,13 +109,23 @@ impl<'a> LineLexer<'a> {
                 continue;
             }
 
-            // 4. String literal
+            // 4. Char literal
+            if ch0 == '\'' {
+                self.consume();
+                let (_, ch1) = self.consume().unwrap();
+                let (_, ch2) = self.consume().unwrap();
+                assert!(ch2 == '\'');
+                tokens.push(Token::new(TokenKind::Char(ch1), pos));
+                continue;
+            }
+
+            // 5. String literal
             if ch0 == '"' {
                 tokens.push(Token::new(self.parse_text(), pos));
                 continue;
             }
 
-            // 5. Identifier or keyword
+            // 6. Identifier or keyword
             if ch0.is_ascii_alphabetic() || ch0 == '_' {
                 tokens.push(Token::new(self.parse_string(ch0), pos));
                 continue;
@@ -167,12 +156,11 @@ impl<'a> LineLexer<'a> {
 
     // Text: "hoge\nfuga"
     fn parse_text(&mut self) -> TokenKind {
-        // expect(self, '"')?;
-        self.iter.next();
+        self.consume();
 
         let mut lexeme = vec![];
         let mut escape = false;
-        while let Some((_, ch)) = self.iter.next() {
+        while let Some((_, ch)) = self.consume() {
             if escape {
                 match ch {
                     '\\' => lexeme.push('\\'),
@@ -193,11 +181,11 @@ impl<'a> LineLexer<'a> {
     }
 
     fn parse_number(&mut self) -> TokenKind {
-        let (_, ch0) = self.iter.next().unwrap();
+        let (_, ch0) = self.consume().unwrap();
         if ch0 == '0' {
             if let Some(&(_, ch1)) = self.iter.peek() {
                 if ch1 == 'x' || ch1 == 'X' {
-                    self.iter.next(); // consume 'x' | 'X'
+                    self.consume();
                     return self.parse_number_hex(ch0, ch1);
                 }
             }
@@ -286,6 +274,9 @@ fn keyword(s: &str) -> Option<TokenKind> {
         "if" => Some(TokenKind::KwIf),
         "else" => Some(TokenKind::KwElse),
         "while" => Some(TokenKind::KwWhile),
+        "asm" => Some(TokenKind::KwAsm),
+        "break" => Some(TokenKind::KwBreak),
+        "continue" => Some(TokenKind::KwContinue),
         "int" => Some(TokenKind::KwInt),
         "return" => Some(TokenKind::KwReturn),
         _ => None,

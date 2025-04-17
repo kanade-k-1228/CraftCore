@@ -54,7 +54,6 @@ pub enum TokenKind {
     KwAsm,      // "asm"
     KwReturn,   // "return"
     KwVar,      // "var"
-    KwLet,      // "let"
     KwStatic,   // "static"
     KwConst,    // "const"
     KwInt,      // "int"
@@ -64,7 +63,6 @@ pub enum TokenKind {
     KwWhile,    // "while"
     KwBreak,    // "break"
     KwContinue, // "continue"
-    KwSizeof,   // "sizeof"
 
     // Identifier
     Ident(String),
@@ -72,7 +70,7 @@ pub enum TokenKind {
     // Literals
     Number(String, usize),
     Text(String),
-    Char(String),
+    Char(char),
 
     // Special
     Comment(String), // Comment
