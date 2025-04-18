@@ -1,6 +1,6 @@
 // parser.rs
 
-use crate::ast::{BinOp, Def, Defs, Expr, Stmt, Type, UnaryOp};
+use crate::ast::{BinaryOp, Def, Defs, Expr, Stmt, Type, UnaryOp};
 use crate::token::{Token, TokenKind::*};
 use std::iter::Peekable;
 
@@ -178,11 +178,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Type definition
-    /// `type <ident> : <type> ;`
+    /// `type <ident> = <type> ;`
     fn parse_typedef(&mut self) -> Result<(String, Type), ParseError> {
         expect!(self, KwType)?;
         let name = self.parse_ident()?;
-        expect!(self, Colon)?;
+        expect!(self, Equal)?;
         let typ = self.parse_type()?;
         expect!(self, Semicolon)?;
         Ok((name, typ))
@@ -208,7 +208,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 // Int
                 KwInt => {
                     expect!(self, KwInt)?;
-                    Ok(Type::Word)
+                    Ok(Type::Int)
                 }
 
                 // Custom
@@ -241,9 +241,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
                 // Function
                 LParen => {
-                    expect!(self, LParen)?;
+                    println!("FUNCTION");
                     let args = self.parse_args()?;
-                    expect!(self, RParen)?;
                     expect!(self, Arrow)?;
                     let ret = self.parse_type()?;
                     Ok(Type::Func(args, Box::new(ret)))
@@ -256,9 +255,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    /// List of expressions
+    /// Function call
     /// `( <expr> , <expr> , ... )`
-    fn parse_list(&mut self) -> Result<Vec<Expr>, ParseError> {
+    fn parse_call(&mut self) -> Result<Vec<Expr>, ParseError> {
         let mut exprs = Vec::new();
         expect!(self, LParen)?;
         while let Some(token) = self.tokens.peek() {
@@ -307,6 +306,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_args(&mut self) -> Result<Vec<(String, Type)>, ParseError> {
         let mut args = Vec::new();
         expect!(self, LParen)?;
+
         while let Some(token) = self.tokens.peek() {
             match token.kind {
                 Ident(_) => {
@@ -486,7 +486,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         while check!(self, Pipe) {
             expect!(self, Pipe)?;
             let rhs = self.parse_xor()?;
-            lhs = Expr::Binary(Box::new(lhs), BinOp::Or, Box::new(rhs))
+            lhs = Expr::Binary(BinaryOp::Or, Box::new(lhs), Box::new(rhs))
         }
         Ok(lhs)
     }
@@ -498,7 +498,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         while check!(self, Caret) {
             expect!(self, Caret)?;
             let rhs = self.parse_and()?;
-            lhs = Expr::Binary(Box::new(lhs), BinOp::Xor, Box::new(rhs))
+            lhs = Expr::Binary(BinaryOp::Xor, Box::new(lhs), Box::new(rhs))
         }
         Ok(lhs)
     }
@@ -510,7 +510,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         while check!(self, Ampasand) {
             expect!(self, Ampasand)?;
             let rhs = self.parse_eq()?;
-            lhs = Expr::Binary(Box::new(lhs), BinOp::And, Box::new(rhs))
+            lhs = Expr::Binary(BinaryOp::And, Box::new(lhs), Box::new(rhs))
         }
         Ok(lhs)
     }
@@ -523,11 +523,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             if check!(self, EqualEqual) {
                 expect!(self, EqualEqual)?;
                 let rhs = self.parse_relat()?;
-                lhs = Expr::Binary(Box::new(lhs), BinOp::Eq, Box::new(rhs));
+                lhs = Expr::Binary(BinaryOp::Eq, Box::new(lhs), Box::new(rhs));
             } else if check!(self, ExclEqual) {
                 expect!(self, ExclEqual)?;
                 let rhs = self.parse_relat()?;
-                lhs = Expr::Binary(Box::new(lhs), BinOp::Ne, Box::new(rhs));
+                lhs = Expr::Binary(BinaryOp::Ne, Box::new(lhs), Box::new(rhs));
             } else {
                 break;
             }
@@ -544,22 +544,22 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 LAngleEqual => {
                     expect!(self, LAngleEqual)?;
                     let rhs = self.parse_shift()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Le, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Le, Box::new(lhs), Box::new(rhs)))
                 }
                 LAngle => {
                     expect!(self, LAngle)?;
                     let rhs = self.parse_shift()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Lt, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Lt, Box::new(lhs), Box::new(rhs)))
                 }
                 RAngleEqual => {
                     expect!(self, RAngleEqual)?;
                     let rhs = self.parse_shift()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Ge, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Ge, Box::new(lhs), Box::new(rhs)))
                 }
                 RAngle => {
                     expect!(self, RAngle)?;
                     let rhs = self.parse_shift()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Gt, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Gt, Box::new(lhs), Box::new(rhs)))
                 }
                 _ => Ok(lhs),
             }
@@ -574,16 +574,16 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let lhs = self.parse_add()?;
         if let Some(token) = self.tokens.peek() {
             match token.kind {
-                // LAngleLAngle => {
-                //     expect!(self,LAngleLAngle)?;
-                //     let rhs = self.parse_add()?;
-                //     Ok(Expr::Binary(Box::new(lhs), BinOp::LShift, Box::new(rhs)))
-                // }
-                // RAngleRAngle => {
-                //     expect!(self,RAngleRAngle)?;
-                //     let rhs = self.parse_add()?;
-                //     Ok(Expr::Binary(Box::new(lhs), BinOp::RShift, Box::new(rhs)))
-                // }
+                LAngleLAngle => {
+                    expect!(self, LAngleLAngle)?;
+                    let rhs = self.parse_add()?;
+                    Ok(Expr::Binary(BinaryOp::Shl, Box::new(lhs), Box::new(rhs)))
+                }
+                RAngleRAngle => {
+                    expect!(self, RAngleRAngle)?;
+                    let rhs = self.parse_add()?;
+                    Ok(Expr::Binary(BinaryOp::Shr, Box::new(lhs), Box::new(rhs)))
+                }
                 _ => Ok(lhs),
             }
         } else {
@@ -600,12 +600,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 Plus => {
                     expect!(self, Plus)?;
                     let rhs = self.parse_mul()?;
-                    lhs = Expr::Binary(Box::new(lhs), BinOp::Add, Box::new(rhs));
+                    lhs = Expr::Binary(BinaryOp::Add, Box::new(lhs), Box::new(rhs));
                 }
                 Minus => {
                     expect!(self, Minus)?;
                     let rhs = self.parse_mul()?;
-                    lhs = Expr::Binary(Box::new(lhs), BinOp::Sub, Box::new(rhs));
+                    lhs = Expr::Binary(BinaryOp::Sub, Box::new(lhs), Box::new(rhs));
                 }
                 _ => {
                     return Ok(lhs);
@@ -624,17 +624,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 Star => {
                     expect!(self, Star)?;
                     let rhs = self.parse_cast()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Mul, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Mul, Box::new(lhs), Box::new(rhs)))
                 }
                 Slash => {
                     expect!(self, Slash)?;
                     let rhs = self.parse_cast()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Div, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Div, Box::new(lhs), Box::new(rhs)))
                 }
                 Percent => {
                     expect!(self, Percent)?;
                     let rhs = self.parse_cast()?;
-                    Ok(Expr::Binary(Box::new(lhs), BinOp::Mod, Box::new(rhs)))
+                    Ok(Expr::Binary(BinaryOp::Mod, Box::new(lhs), Box::new(rhs)))
                 }
                 _ => Ok(lhs),
             }
@@ -698,7 +698,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         loop {
             // Function call
             if check!(self, LParen) {
-                let args = self.parse_list()?;
+                let args = self.parse_call()?;
                 expr = Expr::Call(Box::new(expr), args);
                 continue;
             }
@@ -778,11 +778,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// Identifier
     /// `<ident>`
     fn parse_ident(&mut self) -> Result<String, ParseError> {
-        if let Some(Token {
-            kind: Ident(s),
-            pos: _,
-        }) = &self.tokens.peek().cloned()
-        {
+        if let Some(Token { kind: Ident(s), .. }) = &self.tokens.peek().cloned() {
             self.tokens.next();
             return Ok(s.clone());
         }
@@ -828,11 +824,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// String literal
     /// `"abc"`
     fn parse_string_literal(&mut self) -> Result<String, ParseError> {
-        if let Some(Token {
-            kind: Text(s),
-            pos: _,
-        }) = &self.tokens.peek().cloned()
-        {
+        if let Some(Token { kind: Text(s), .. }) = &self.tokens.peek().cloned() {
             self.tokens.next();
             return Ok(s.clone());
         }

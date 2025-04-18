@@ -14,7 +14,7 @@ pub enum Def {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Word,                                 // data         | int
+    Int,                                  // data         | int
     Custom(String),                       // user-defined | Type
     Addr(Box<Type>),                      // address      | *Type
     Array(Expr, Box<Type>),               // array        | Type[10]
@@ -37,19 +37,20 @@ pub enum Stmt {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    NumberLit(usize),                      // integer literal | 42
-    StructLit(Vec<(String, Expr)>),        // struct literal  | {a: expr1, b: expr2}
-    ArrayLit(Vec<Expr>),                   // array literal   | [expr1, expr2, ...]
-    StringLit(String),                     // string literal  | "ABC"
-    Ident(String),                         // variable        | var name: Type [= init]
-    Cond(Box<Expr>, Box<Expr>, Box<Expr>), // conditional     | expr ? expr : expr
-    Unary(UnaryOp, Box<Expr>),             // unary op        | -expr, !expr, *expr, &expr
-    Binary(Box<Expr>, BinOp, Box<Expr>),   // bin op          | expr1 + expr2
-    Call(Box<Expr>, Vec<Expr>),            // function call   | func(expr1, expr2, ...)
-    Cast(Box<Expr>, Box<Type>),            // cast            | expr : Type
-    ArrayAccess(Box<Expr>, Box<Expr>),     // array access    | expr[expr]
-    Member(Box<Expr>, String),             // member access   | expr.field
-    Error,                                 // placeholder for an expression that failed to parse
+    NumberLit(usize),                       // integer literal | 42
+    StructLit(Vec<(String, Expr)>),         // struct literal  | {a: expr1, b: expr2}
+    ArrayLit(Vec<Expr>),                    // array literal   | [expr1, expr2, ...]
+    CharLit(char),                          // char literal    | 'A'
+    StringLit(String),                      // string literal  | "ABC"
+    Ident(String),                          // variable        | var name: Type [= init]
+    Cond(Box<Expr>, Box<Expr>, Box<Expr>),  // conditional     | expr ? expr : expr
+    Unary(UnaryOp, Box<Expr>),              // unary op        | -expr, !expr, *expr, &expr
+    Binary(BinaryOp, Box<Expr>, Box<Expr>), // bin op          | expr1 + expr2
+    Call(Box<Expr>, Vec<Expr>),             // function call   | func(expr1, expr2, ...)
+    Cast(Box<Expr>, Box<Type>),             // cast            | expr : Type
+    ArrayAccess(Box<Expr>, Box<Expr>),      // array access    | expr[expr]
+    Member(Box<Expr>, String),              // member access   | expr.field
+    Error,                                  // placeholder for an expression that failed to parse
 }
 
 #[derive(Debug, Clone)]
@@ -62,7 +63,7 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum BinOp {
+pub enum BinaryOp {
     Add, // +  arithmetic addition
     Sub, // -  arithmetic subtraction
     Mul, // *  arithmetic multiplication
@@ -71,6 +72,8 @@ pub enum BinOp {
     And, // &  bitwise and
     Or,  // |  bitwise or
     Xor, // ^  bitwise xor
+    Shl, // << bitwise shift left
+    Shr, // >> bitwise shift right
     Eq,  // == equal
     Ne,  // != non-equal
     Lt,  // <  less than
