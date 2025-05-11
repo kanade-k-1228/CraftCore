@@ -1,4 +1,9 @@
 pub mod ast;
+pub mod collect;
+pub mod fir;
+pub mod flowgen;
+pub mod global;
 pub mod lexer;
 pub mod parser;
 pub mod token;
+pub mod utils;

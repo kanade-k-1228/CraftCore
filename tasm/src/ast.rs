@@ -1,7 +1,7 @@
 // ast.rs
 
 #[derive(Debug, Clone)]
-pub struct Defs(pub Vec<Def>); // Program is collection of definitions
+pub struct AST(pub Vec<Def>); // Program is collection of definitions
 
 #[derive(Debug, Clone)]
 pub enum Def {
@@ -58,7 +58,7 @@ pub enum UnaryOp {
     Pos,   // unary plus (+expr)
     Neg,   // unary minus (-expr)
     Not,   // logical not (!expr)
-    Deref, // pointer dereference (*expr)
+    Deref, // value-at (*expr)
     Ref,   // address-of (&expr)
 }
 

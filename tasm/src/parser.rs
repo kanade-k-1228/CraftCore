@@ -1,6 +1,6 @@
 // parser.rs
 
-use crate::ast::{BinaryOp, Def, Defs, Expr, Stmt, Type, UnaryOp};
+use crate::ast::{BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
 use crate::token::{Token, TokenKind::*};
 use std::iter::Peekable;
 
@@ -27,7 +27,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    pub fn parse(mut self) -> (Defs, Vec<ParseError>) {
+    pub fn parse(mut self) -> (AST, Vec<ParseError>) {
         let program = self.parse_program();
         return (program, self.errors);
     }
@@ -113,7 +113,7 @@ macro_rules! recover {
 // ------------------------------------------------------------------------
 
 impl<I: Iterator<Item = Token>> Parser<I> {
-    fn parse_program(&mut self) -> Defs {
+    fn parse_program(&mut self) -> AST {
         let mut program = Vec::new();
         while let Some(token) = self.tokens.peek() {
             match token.kind {
@@ -174,7 +174,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 }
             }
         }
-        Defs(program)
+        AST(program)
     }
 
     /// Type definition
