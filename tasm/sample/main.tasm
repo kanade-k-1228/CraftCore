@@ -1,0 +1,6 @@
+type Vec3 = {x: int, y: int, z: int};
+
+fn main() {
+    var a: A = {a: 1, b: 2, c: 3};
+    var b: int = a.x + a.y + a.z;
+}

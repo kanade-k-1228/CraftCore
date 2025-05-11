@@ -33,3 +33,10 @@ $ rkasm -d sample/00_asm_test/main.rk
 ![](rkasm.png)
 
 Left side is the output binary, right side is the assembly code.
+
+## Test
+
+```
+cargo test
+cargo llvm-cov --html
+```

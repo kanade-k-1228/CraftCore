@@ -39,7 +39,12 @@ fn main() {
     }
 
     // Print the tokens for debugging
-    let ast = tasm::parser::Parser::new(tokens.into_iter()).parse();
+    let (ast, err) = tasm::parser::Parser::new(tokens.into_iter()).parse();
 
     println!("Parsed AST: {:#?}", ast);
+    println!("Parser error: {:#?}", err);
+
+    // Collect the globals
+    let globals = tasm::collect::collect(ast);
+    println!("Collected globals: {:#?}", globals);
 }
