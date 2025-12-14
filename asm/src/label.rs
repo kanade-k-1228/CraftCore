@@ -42,12 +42,12 @@ impl Labels {
     }
 
     pub fn get_val(&self, name: &str) -> Option<u16> {
-        self.labels.get(name).and_then(|(_, label_type, pc_val)| {
-            match label_type {
+        self.labels
+            .get(name)
+            .and_then(|(_, label_type, pc_val)| match label_type {
                 LabelType::Code => *pc_val,
                 LabelType::Static(val) => Some(*val),
                 LabelType::Const(val) => Some(*val),
-            }
-        })
+            })
     }
 }

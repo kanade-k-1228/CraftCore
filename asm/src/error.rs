@@ -1,6 +1,6 @@
-use thiserror::Error;
-use indexmap::IndexMap;
 use color_print::cprintln;
+use indexmap::IndexMap;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -47,7 +47,8 @@ impl Error {
         cprintln!("      <blue>|</>");
 
         // Get the line content from the files map
-        let line_content = files.get(file)
+        let line_content = files
+            .get(file)
             .and_then(|lines| lines.get(line_idx))
             .map(|s| s.as_str())
             .unwrap_or("");

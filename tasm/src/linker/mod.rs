@@ -283,8 +283,7 @@ fn get_imm(operand: &Operand) -> Result<u16, String> {
 
 fn parse_hex(s: &str) -> Result<usize, String> {
     if s.starts_with("0x") || s.starts_with("0X") {
-        usize::from_str_radix(&s[2..], 16)
-            .map_err(|e| format!("Invalid hex number {}: {}", s, e))
+        usize::from_str_radix(&s[2..], 16).map_err(|e| format!("Invalid hex number {}: {}", s, e))
     } else {
         s.parse::<usize>()
             .map_err(|e| format!("Invalid number {}: {}", s, e))
