@@ -33,18 +33,56 @@ fn main() {
         let reader = std::io::BufReader::new(file);
         for (line_idx, line) in reader.lines().enumerate() {
             let line = line.expect("Failed to read line");
-            let toks = tasm::lexer::LineLexer::new(&line, file_idx, line_idx).parse();
+            let toks = tasm::grammer::lexer::LineLexer::new(&line, file_idx, line_idx).parse();
             tokens.extend(toks);
         }
     }
 
-    // Print the tokens for debugging
-    let (ast, err) = tasm::parser::Parser::new(tokens.into_iter()).parse();
+    // Parse tokens into AST
+    let (ast, errors) = tasm::grammer::parser::Parser::new(tokens.into_iter()).parse();
 
-    println!("Parsed AST: {:#?}", ast);
-    println!("Parser error: {:#?}", err);
+    if !errors.is_empty() {
+        eprintln!("Parser errors:");
+        for error in &errors {
+            eprintln!("  {:?}", error);
+        }
+        std::process::exit(1);
+    }
 
     // Collect the globals
-    let globals = tasm::collect::collect(ast);
-    println!("Collected globals: {:#?}", globals);
+    let globals = match tasm::collect::collect(ast) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("Collection error: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Generate code
+    let asm_code = match tasm::codegen::CodeGen::generate(&globals) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Code generation error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Link and generate binary
+    let binary = match tasm::linker::link(&asm_code) {
+        Ok(bin) => bin,
+        Err(e) => {
+            eprintln!("Linker error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Write output to file
+    std::fs::write(&args.output, binary)
+        .expect(&format!("Failed to write to file: {}", args.output));
+
+    println!(
+        "Successfully compiled {} to {}",
+        args.input.join(", "),
+        args.output
+    );
 }

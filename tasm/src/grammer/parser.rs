@@ -1,7 +1,5 @@
-// parser.rs
-
-use crate::ast::{BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
-use crate::token::{Token, TokenKind::*};
+use super::ast::{BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
+use super::token::{Token, TokenKind::*};
 use std::iter::Peekable;
 
 pub struct Parser<I: Iterator<Item = Token>> {
@@ -280,10 +278,14 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Assembly
-    /// `asm <ident> ?(@ <expr>) { <stmt> ... }`
+    /// `asm <ident> ?( <args> ) ?(@ <expr>) { <stmt> ... }`
     fn parse_asm(&mut self) -> Result<(String, Option<Expr>, Stmt), ParseError> {
         expect!(self, KwAsm)?;
         let name = self.parse_ident()?;
+        // Optional arguments (currently ignored)
+        if check!(self, LParen) {
+            let _args = self.parse_args()?;
+        }
         let addr = optional!(self, Atmark, self.parse_expr()?);
         let body = self.parse_block()?;
         Ok((name, addr, body))
@@ -463,12 +465,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Variable definition
-    /// `var <ident> : <type> ?( = <expr> ) ;`
+    /// `var <ident> ?( : <type> ) ?( = <expr> ) ;`
     fn parse_var(&mut self) -> Result<(String, Type, Option<Expr>), ParseError> {
         expect!(self, KwVar)?;
         let name = self.parse_ident()?;
-        expect!(self, Colon)?;
-        let typ = self.parse_type()?;
+        let typ = if check!(self, Colon) {
+            expect!(self, Colon)?;
+            self.parse_type()?
+        } else {
+            // Type inference - use Error as placeholder
+            Type::Error
+        };
         let init = optional!(self, Equal, self.parse_expr()?);
         expect!(self, Semicolon)?;
         Ok((name, typ, init))
@@ -708,7 +715,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 expect!(self, LBracket)?;
                 let index = self.parse_expr()?;
                 expect!(self, RBracket)?;
-                expr = Expr::ArrayAccess(Box::new(expr), Box::new(index));
+                expr = Expr::Index(Box::new(expr), Box::new(index));
                 continue;
             }
 
@@ -786,13 +793,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Struct literal
-    /// `{ <ident> = <expr> , ... }`
+    /// `{ <ident> : <expr> , ... }`
     fn parse_struct_literal(&mut self) -> Result<Vec<(String, Expr)>, ParseError> {
         expect!(self, LCurly)?;
         let mut fields = Vec::new();
         while !check!(self, RCurly) {
             let name = self.parse_ident()?;
-            expect!(self, Equal)?;
+            expect!(self, Colon)?;
             let expr = self.parse_expr()?;
             fields.push((name.clone(), expr));
             if check!(self, Comma) {

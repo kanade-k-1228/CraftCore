@@ -1,8 +1,6 @@
-// global.rs
-
 use std::collections::HashMap;
 
-use crate::ast::Stmt;
+use crate::grammer::ast::Stmt;
 
 #[derive(Debug, Clone)]
 pub struct Globals(pub HashMap<String, Global>);
@@ -12,8 +10,8 @@ pub enum Global {
     Type(Type),
     Const(Literal, Type),
     Static(Type, Option<usize>),
-    Asm(Stmt, Option<usize>),
-    Func(Vec<(String, Type)>, Type, Stmt),
+    Asm(Stmt, Option<usize>),              // args, body, addr
+    Func(Vec<(String, Type)>, Type, Stmt), // args, ret, body
 }
 
 #[derive(Debug, Clone)]

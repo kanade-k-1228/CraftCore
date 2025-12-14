@@ -1,5 +1,3 @@
-// token.rs
-
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,

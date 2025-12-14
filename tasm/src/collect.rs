@@ -1,7 +1,5 @@
-// collect.rs
-
-use crate::ast::{self, AST};
 use crate::global::{self, Global, Globals};
+use crate::grammer::ast::{self, AST};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

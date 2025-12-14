@@ -1,4 +1,4 @@
-# TASM
+# Compiler Archtecture
 
 ## typegen & tir
 

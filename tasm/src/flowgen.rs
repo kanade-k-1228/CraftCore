@@ -1,5 +1,3 @@
-// flowgen.rs
-
 use std::collections::HashMap;
 
 use crate::fir::{Func, FIR};

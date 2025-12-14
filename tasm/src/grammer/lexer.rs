@@ -1,6 +1,4 @@
-// lexer.rs
-
-use crate::token::{Pos, Token, TokenKind};
+use super::token::{Pos, Token, TokenKind};
 use std::iter::Peekable;
 use std::str::CharIndices;
 

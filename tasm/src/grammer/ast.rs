@@ -1,5 +1,3 @@
-// ast.rs
-
 #[derive(Debug, Clone)]
 pub struct AST(pub Vec<Def>); // Program is collection of definitions
 
@@ -48,7 +46,7 @@ pub enum Expr {
     Binary(BinaryOp, Box<Expr>, Box<Expr>), // bin op          | expr1 + expr2
     Call(Box<Expr>, Vec<Expr>),             // function call   | func(expr1, expr2, ...)
     Cast(Box<Expr>, Box<Type>),             // cast            | expr : Type
-    ArrayAccess(Box<Expr>, Box<Expr>),      // array access    | expr[expr]
+    Index(Box<Expr>, Box<Expr>),            // index           | expr[expr]
     Member(Box<Expr>, String),              // member access   | expr.field
     Error,                                  // placeholder for an expression that failed to parse
 }
