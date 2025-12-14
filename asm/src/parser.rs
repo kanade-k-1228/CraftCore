@@ -2,17 +2,17 @@ use arch::{inst::Inst, reg::Reg};
 use color_print::cformat;
 use std::num::ParseIntError;
 
-use crate::{error, error::Error, label::Labels};
+use crate::{error, error::Error, ident::Idents};
 
 // ----------------------------------------------------------------------------
 // Statement
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    Asm(Asm, Option<u16>),
-    CodeLabel(String),
-    StaticLabel(String, u16),
-    ConstLabel(String, u16),
+    Code(Code, Option<u16>),
+    Label(String),
+    Static(String, u16),
+    Const(String, u16),
 }
 
 impl Stmt {
@@ -32,7 +32,7 @@ impl Stmt {
                         if let Some(value) = key.get(1..) {
                             let key = label.to_string();
                             let val = parse_with_prefix(value).unwrap();
-                            return (Some(Stmt::StaticLabel(key, val)), vec![]);
+                            return (Some(Stmt::Static(key, val)), vec![]);
                         }
                     }
                 }
@@ -42,7 +42,7 @@ impl Stmt {
                         if let Some(value) = key.get(1..) {
                             let key = label.to_string();
                             let val = parse_with_prefix(value).unwrap();
-                            return (Some(Stmt::ConstLabel(key, val)), vec![]);
+                            return (Some(Stmt::Const(key, val)), vec![]);
                         }
                     }
                 }
@@ -54,15 +54,15 @@ impl Stmt {
                     let label = key.to_string();
                     if let Some(label) = label.get(0..label.len() - 1) {
                         let key = label.to_string();
-                        return (Some(Stmt::CodeLabel(key)), vec![]);
+                        return (Some(Stmt::Label(key)), vec![]);
                     }
                 }
             }
         }
 
         // Operation
-        match Asm::parse(&code) {
-            Ok(op) => (Some(Stmt::Asm(op, None)), vec![]),
+        match Code::parse(&code) {
+            Ok(op) => (Some(Stmt::Code(op, None)), vec![]),
             Err(err) => (None, vec![err]),
         }
     }
@@ -72,7 +72,7 @@ impl Stmt {
 // Operation
 
 #[derive(Debug, Clone)]
-pub enum Asm {
+pub enum Code {
     ADD(Reg, Reg, Reg),
     SUB(Reg, Reg, Reg),
     AND(Reg, Reg, Reg),
@@ -111,8 +111,8 @@ pub enum Asm {
     IRET(),
 }
 
-impl Asm {
-    fn parse(code: &str) -> Result<Asm, Error> {
+impl Code {
+    fn parse(code: &str) -> Result<Code, Error> {
         match code.split_whitespace().collect::<Vec<_>>().split_first() {
             Some((op, args)) => {
                 // Get argument by index and parse as Type
@@ -131,42 +131,42 @@ impl Asm {
 
                 let op: &str = op.to_owned();
                 match op {
-                    "nop" => Ok(Asm::NOP()),
-                    "add" => Ok(Asm::ADD(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "sub" => Ok(Asm::SUB(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "and" => Ok(Asm::AND(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "or" => Ok(Asm::OR(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "xor" => Ok(Asm::XOR(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "eq" => Ok(Asm::EQ(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "neq" => Ok(Asm::NEQ(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "lt" => Ok(Asm::LT(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "lts" => Ok(Asm::LTS(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
-                    "sr" => Ok(Asm::SR(arg!(0, Reg), arg!(1, Reg))),
-                    "srs" => Ok(Asm::SRS(arg!(0, Reg), arg!(1, Reg))),
-                    "srr" => Ok(Asm::SRR(arg!(0, Reg), arg!(1, Reg))),
-                    "sl" => Ok(Asm::SL(arg!(0, Reg), arg!(1, Reg))),
-                    "slr" => Ok(Asm::SLR(arg!(0, Reg), arg!(1, Reg))),
-                    "mov" => Ok(Asm::MOV(arg!(0, Reg), arg!(1, Reg))),
-                    "addi" => Ok(Asm::ADDI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "subi" => Ok(Asm::SUBI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "andi" => Ok(Asm::ANDI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "ori" => Ok(Asm::ORI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "xori" => Ok(Asm::XORI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "eqi" => Ok(Asm::EQI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "neqi" => Ok(Asm::NEQI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "lti" => Ok(Asm::LTI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "ltsi" => Ok(Asm::LTSI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "not" => Ok(Asm::NOT(arg!(0, Reg), arg!(1, Reg))),
-                    "loadi" => Ok(Asm::LOADI(arg!(0, Reg), arg!(1, Imm))),
-                    "load" => Ok(Asm::LOAD(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "store" => Ok(Asm::STORE(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
-                    "if" => Ok(Asm::IF(arg!(0, Reg), arg!(1, Imm))),
-                    "ifr" => Ok(Asm::IFR(arg!(0, Reg), arg!(1, Imm))),
-                    "jump" => Ok(Asm::JUMP(arg!(0, Imm))),
-                    "jumpr" => Ok(Asm::JUMPR(arg!(0, Imm))),
-                    "call" => Ok(Asm::CALL(arg!(0, Imm))),
-                    "ret" => Ok(Asm::RET()),
-                    "iret" => Ok(Asm::IRET()),
+                    "nop" => Ok(Code::NOP()),
+                    "add" => Ok(Code::ADD(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "sub" => Ok(Code::SUB(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "and" => Ok(Code::AND(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "or" => Ok(Code::OR(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "xor" => Ok(Code::XOR(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "eq" => Ok(Code::EQ(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "neq" => Ok(Code::NEQ(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "lt" => Ok(Code::LT(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "lts" => Ok(Code::LTS(arg!(0, Reg), arg!(1, Reg), arg!(2, Reg))),
+                    "sr" => Ok(Code::SR(arg!(0, Reg), arg!(1, Reg))),
+                    "srs" => Ok(Code::SRS(arg!(0, Reg), arg!(1, Reg))),
+                    "srr" => Ok(Code::SRR(arg!(0, Reg), arg!(1, Reg))),
+                    "sl" => Ok(Code::SL(arg!(0, Reg), arg!(1, Reg))),
+                    "slr" => Ok(Code::SLR(arg!(0, Reg), arg!(1, Reg))),
+                    "mov" => Ok(Code::MOV(arg!(0, Reg), arg!(1, Reg))),
+                    "addi" => Ok(Code::ADDI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "subi" => Ok(Code::SUBI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "andi" => Ok(Code::ANDI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "ori" => Ok(Code::ORI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "xori" => Ok(Code::XORI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "eqi" => Ok(Code::EQI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "neqi" => Ok(Code::NEQI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "lti" => Ok(Code::LTI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "ltsi" => Ok(Code::LTSI(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "not" => Ok(Code::NOT(arg!(0, Reg), arg!(1, Reg))),
+                    "loadi" => Ok(Code::LOADI(arg!(0, Reg), arg!(1, Imm))),
+                    "load" => Ok(Code::LOAD(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "store" => Ok(Code::STORE(arg!(0, Reg), arg!(1, Reg), arg!(2, Imm))),
+                    "if" => Ok(Code::IF(arg!(0, Reg), arg!(1, Imm))),
+                    "ifr" => Ok(Code::IFR(arg!(0, Reg), arg!(1, Imm))),
+                    "jump" => Ok(Code::JUMP(arg!(0, Imm))),
+                    "jumpr" => Ok(Code::JUMPR(arg!(0, Imm))),
+                    "call" => Ok(Code::CALL(arg!(0, Imm))),
+                    "ret" => Ok(Code::RET()),
+                    "iret" => Ok(Code::IRET()),
                     _ => Err(Error::UnknownOperation(op.to_string())),
                 }
             }
@@ -175,8 +175,8 @@ impl Asm {
     }
 }
 
-impl Asm {
-    pub fn cformat(&self, labels: &Labels) -> String {
+impl Code {
+    pub fn cformat(&self) -> String {
         macro_rules! opfmt {
             ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {
                 cformat!(
@@ -189,85 +189,85 @@ impl Asm {
             };
         }
         match self {
-            Asm::ADD(rd, rs1, rs2) => opfmt!("add", rd, rs1, rs2),
-            Asm::SUB(rd, rs1, rs2) => opfmt!("sub", rd, rs1, rs2),
-            Asm::AND(rd, rs1, rs2) => opfmt!("and", rd, rs1, rs2),
-            Asm::OR(rd, rs1, rs2) => opfmt!("or", rd, rs1, rs2),
-            Asm::XOR(rd, rs1, rs2) => opfmt!("xor", rd, rs1, rs2),
-            Asm::EQ(rd, rs1, rs2) => opfmt!("eq", rd, rs1, rs2),
-            Asm::NEQ(rd, rs1, rs2) => opfmt!("neq", rd, rs1, rs2),
-            Asm::LT(rd, rs1, rs2) => opfmt!("lt", rd, rs1, rs2),
-            Asm::LTS(rd, rs1, rs2) => opfmt!("lts", rd, rs1, rs2),
-            Asm::SR(rd, rs1) => opfmt!("sr", rd, rs1, ""),
-            Asm::SRS(rd, rs1) => opfmt!("srs", rd, rs1, ""),
-            Asm::SRR(rd, rs1) => opfmt!("srr", rd, rs1, ""),
-            Asm::SL(rd, rs1) => opfmt!("sl", rd, rs1, ""),
-            Asm::SLR(rd, rs1) => opfmt!("slr", rd, rs1, ""),
-            Asm::NOP() => opfmt!("nop", "", "", ""),
-            Asm::MOV(rd, rs1) => opfmt!("mov", rd, rs1, ""),
-            Asm::ADDI(rd, rs1, imm) => opfmt!("addi", rd, rs1, imm.cformat(labels)),
-            Asm::SUBI(rd, rs1, imm) => opfmt!("subi", rd, rs1, imm.cformat(labels)),
-            Asm::ANDI(rd, rs1, imm) => opfmt!("andi", rd, rs1, imm.cformat(labels)),
-            Asm::ORI(rd, rs1, imm) => opfmt!("ori", rd, rs1, imm.cformat(labels)),
-            Asm::XORI(rd, rs1, imm) => opfmt!("xori", rd, rs1, imm.cformat(labels)),
-            Asm::EQI(rd, rs1, imm) => opfmt!("eqi", rd, rs1, imm.cformat(labels)),
-            Asm::NEQI(rd, rs1, imm) => opfmt!("neqi", rd, rs1, imm.cformat(labels)),
-            Asm::LTI(rd, rs1, imm) => opfmt!("lti", rd, rs1, imm.cformat(labels)),
-            Asm::LTSI(rd, rs1, imm) => opfmt!("ltsi", rd, rs1, imm.cformat(labels)),
-            Asm::NOT(rd, rs1) => opfmt!("not", rd, rs1, ""),
-            Asm::LOADI(rd, imm) => opfmt!("loadi", rd, "", imm.cformat(labels)),
-            Asm::LOAD(rd, rs1, imm) => opfmt!("load", rd, rs1, imm.cformat(labels)),
-            Asm::STORE(rs2, rs1, imm) => opfmt!("store", rs2, rs1, imm.cformat(labels)),
-            Asm::IF(rs2, imm) => opfmt!("if", rs2, "", imm.cformat(labels)),
-            Asm::IFR(rs2, imm) => opfmt!("ifr", rs2, "", imm.cformat(labels)),
-            Asm::JUMP(imm) => opfmt!("jump", "", "", imm.cformat(labels)),
-            Asm::JUMPR(imm) => opfmt!("jumpr", "", "", imm.cformat(labels)),
-            Asm::CALL(imm) => opfmt!("call", "", "", imm.cformat(labels)),
-            Asm::RET() => opfmt!("ret", "", "", ""),
-            Asm::IRET() => opfmt!("iret", "", "", ""),
+            Code::ADD(rd, rs1, rs2) => opfmt!("add", rd, rs1, rs2),
+            Code::SUB(rd, rs1, rs2) => opfmt!("sub", rd, rs1, rs2),
+            Code::AND(rd, rs1, rs2) => opfmt!("and", rd, rs1, rs2),
+            Code::OR(rd, rs1, rs2) => opfmt!("or", rd, rs1, rs2),
+            Code::XOR(rd, rs1, rs2) => opfmt!("xor", rd, rs1, rs2),
+            Code::EQ(rd, rs1, rs2) => opfmt!("eq", rd, rs1, rs2),
+            Code::NEQ(rd, rs1, rs2) => opfmt!("neq", rd, rs1, rs2),
+            Code::LT(rd, rs1, rs2) => opfmt!("lt", rd, rs1, rs2),
+            Code::LTS(rd, rs1, rs2) => opfmt!("lts", rd, rs1, rs2),
+            Code::SR(rd, rs1) => opfmt!("sr", rd, rs1, ""),
+            Code::SRS(rd, rs1) => opfmt!("srs", rd, rs1, ""),
+            Code::SRR(rd, rs1) => opfmt!("srr", rd, rs1, ""),
+            Code::SL(rd, rs1) => opfmt!("sl", rd, rs1, ""),
+            Code::SLR(rd, rs1) => opfmt!("slr", rd, rs1, ""),
+            Code::NOP() => opfmt!("nop", "", "", ""),
+            Code::MOV(rd, rs1) => opfmt!("mov", rd, rs1, ""),
+            Code::ADDI(rd, rs1, imm) => opfmt!("addi", rd, rs1, imm.cfmt()),
+            Code::SUBI(rd, rs1, imm) => opfmt!("subi", rd, rs1, imm.cfmt()),
+            Code::ANDI(rd, rs1, imm) => opfmt!("andi", rd, rs1, imm.cfmt()),
+            Code::ORI(rd, rs1, imm) => opfmt!("ori", rd, rs1, imm.cfmt()),
+            Code::XORI(rd, rs1, imm) => opfmt!("xori", rd, rs1, imm.cfmt()),
+            Code::EQI(rd, rs1, imm) => opfmt!("eqi", rd, rs1, imm.cfmt()),
+            Code::NEQI(rd, rs1, imm) => opfmt!("neqi", rd, rs1, imm.cfmt()),
+            Code::LTI(rd, rs1, imm) => opfmt!("lti", rd, rs1, imm.cfmt()),
+            Code::LTSI(rd, rs1, imm) => opfmt!("ltsi", rd, rs1, imm.cfmt()),
+            Code::NOT(rd, rs1) => opfmt!("not", rd, rs1, ""),
+            Code::LOADI(rd, imm) => opfmt!("loadi", rd, "", imm.cfmt()),
+            Code::LOAD(rd, rs1, imm) => opfmt!("load", rd, rs1, imm.cfmt()),
+            Code::STORE(rs2, rs1, imm) => opfmt!("store", rs2, rs1, imm.cfmt()),
+            Code::IF(rs2, imm) => opfmt!("if", rs2, "", imm.cfmt()),
+            Code::IFR(rs2, imm) => opfmt!("ifr", rs2, "", imm.cfmt()),
+            Code::JUMP(imm) => opfmt!("jump", "", "", imm.cfmt()),
+            Code::JUMPR(imm) => opfmt!("jumpr", "", "", imm.cfmt()),
+            Code::CALL(imm) => opfmt!("call", "", "", imm.cfmt()),
+            Code::RET() => opfmt!("ret", "", "", ""),
+            Code::IRET() => opfmt!("iret", "", "", ""),
         }
     }
 }
 
-impl Asm {
-    pub fn resolve(&self, labels: &Labels) -> Result<Inst, error::Error> {
+impl Code {
+    pub fn resolve(&self, labels: &Idents) -> Result<Inst, error::Error> {
         match self {
-            Asm::ADD(rd, rs1, rs2) => Ok(Inst::ADD(*rd, *rs1, *rs2)),
-            Asm::SUB(rd, rs1, rs2) => Ok(Inst::SUB(*rd, *rs1, *rs2)),
-            Asm::AND(rd, rs1, rs2) => Ok(Inst::AND(*rd, *rs1, *rs2)),
-            Asm::OR(rd, rs1, rs2) => Ok(Inst::OR(*rd, *rs1, *rs2)),
-            Asm::XOR(rd, rs1, rs2) => Ok(Inst::XOR(*rd, *rs1, *rs2)),
-            Asm::EQ(rd, rs1, rs2) => Ok(Inst::EQ(*rd, *rs1, *rs2)),
-            Asm::NEQ(rd, rs1, rs2) => Ok(Inst::NEQ(*rd, *rs1, *rs2)),
-            Asm::LT(rd, rs1, rs2) => Ok(Inst::LT(*rd, *rs1, *rs2)),
-            Asm::LTS(rd, rs1, rs2) => Ok(Inst::LTS(*rd, *rs1, *rs2)),
-            Asm::SR(rd, rs1) => Ok(Inst::SR(*rd, *rs1)),
-            Asm::SRS(rd, rs1) => Ok(Inst::SRS(*rd, *rs1)),
-            Asm::SRR(rd, rs1) => Ok(Inst::SRR(*rd, *rs1)),
-            Asm::SL(rd, rs1) => Ok(Inst::SL(*rd, *rs1)),
-            Asm::SLR(rd, rs1) => Ok(Inst::SLR(*rd, *rs1)),
-            Asm::MOV(rd, rs1) => Ok(Inst::MOV(*rd, *rs1)),
-            Asm::ADDI(rd, rs1, imm) => Ok(Inst::ADDI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::SUBI(rd, rs1, imm) => Ok(Inst::SUBI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::ANDI(rd, rs1, imm) => Ok(Inst::ANDI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::ORI(rd, rs1, imm) => Ok(Inst::ORI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::XORI(rd, rs1, imm) => Ok(Inst::XORI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::EQI(rd, rs1, imm) => Ok(Inst::EQI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::NEQI(rd, rs1, imm) => Ok(Inst::NEQI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::LTI(rd, rs1, imm) => Ok(Inst::LTI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::LTSI(rd, rs1, imm) => Ok(Inst::LTSI(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::NOT(rd, rs1) => Ok(Inst::NOT(*rd, *rs1)),
-            Asm::LOADI(rd, imm) => Ok(Inst::LOADI(*rd, imm.resolve(&labels)?)),
-            Asm::LOAD(rd, rs1, imm) => Ok(Inst::LOAD(*rd, *rs1, imm.resolve(&labels)?)),
-            Asm::STORE(rs2, rs1, imm) => Ok(Inst::STORE(*rs2, *rs1, imm.resolve(&labels)?)),
-            Asm::NOP() => Ok(Inst::NOP()),
-            Asm::IF(rs2, imm) => Ok(Inst::IF(*rs2, imm.resolve(&labels)?)),
-            Asm::IFR(rs2, imm) => Ok(Inst::IFR(*rs2, imm.resolve(&labels)?)),
-            Asm::JUMP(imm) => Ok(Inst::JUMP(imm.resolve(&labels)?)),
-            Asm::JUMPR(imm) => Ok(Inst::JUMPR(imm.resolve(&labels)?)),
-            Asm::CALL(imm) => Ok(Inst::CALL(imm.resolve(&labels)?)),
-            Asm::RET() => Ok(Inst::RET()),
-            Asm::IRET() => Ok(Inst::IRET()),
+            Code::ADD(rd, rs1, rs2) => Ok(Inst::ADD(*rd, *rs1, *rs2)),
+            Code::SUB(rd, rs1, rs2) => Ok(Inst::SUB(*rd, *rs1, *rs2)),
+            Code::AND(rd, rs1, rs2) => Ok(Inst::AND(*rd, *rs1, *rs2)),
+            Code::OR(rd, rs1, rs2) => Ok(Inst::OR(*rd, *rs1, *rs2)),
+            Code::XOR(rd, rs1, rs2) => Ok(Inst::XOR(*rd, *rs1, *rs2)),
+            Code::EQ(rd, rs1, rs2) => Ok(Inst::EQ(*rd, *rs1, *rs2)),
+            Code::NEQ(rd, rs1, rs2) => Ok(Inst::NEQ(*rd, *rs1, *rs2)),
+            Code::LT(rd, rs1, rs2) => Ok(Inst::LT(*rd, *rs1, *rs2)),
+            Code::LTS(rd, rs1, rs2) => Ok(Inst::LTS(*rd, *rs1, *rs2)),
+            Code::SR(rd, rs1) => Ok(Inst::SR(*rd, *rs1)),
+            Code::SRS(rd, rs1) => Ok(Inst::SRS(*rd, *rs1)),
+            Code::SRR(rd, rs1) => Ok(Inst::SRR(*rd, *rs1)),
+            Code::SL(rd, rs1) => Ok(Inst::SL(*rd, *rs1)),
+            Code::SLR(rd, rs1) => Ok(Inst::SLR(*rd, *rs1)),
+            Code::MOV(rd, rs1) => Ok(Inst::MOV(*rd, *rs1)),
+            Code::ADDI(rd, rs1, imm) => Ok(Inst::ADDI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::SUBI(rd, rs1, imm) => Ok(Inst::SUBI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::ANDI(rd, rs1, imm) => Ok(Inst::ANDI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::ORI(rd, rs1, imm) => Ok(Inst::ORI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::XORI(rd, rs1, imm) => Ok(Inst::XORI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::EQI(rd, rs1, imm) => Ok(Inst::EQI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::NEQI(rd, rs1, imm) => Ok(Inst::NEQI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::LTI(rd, rs1, imm) => Ok(Inst::LTI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::LTSI(rd, rs1, imm) => Ok(Inst::LTSI(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::NOT(rd, rs1) => Ok(Inst::NOT(*rd, *rs1)),
+            Code::LOADI(rd, imm) => Ok(Inst::LOADI(*rd, imm.resolve(&labels)?)),
+            Code::LOAD(rd, rs1, imm) => Ok(Inst::LOAD(*rd, *rs1, imm.resolve(&labels)?)),
+            Code::STORE(rs2, rs1, imm) => Ok(Inst::STORE(*rs2, *rs1, imm.resolve(&labels)?)),
+            Code::NOP() => Ok(Inst::NOP()),
+            Code::IF(rs2, imm) => Ok(Inst::IF(*rs2, imm.resolve(&labels)?)),
+            Code::IFR(rs2, imm) => Ok(Inst::IFR(*rs2, imm.resolve(&labels)?)),
+            Code::JUMP(imm) => Ok(Inst::JUMP(imm.resolve(&labels)?)),
+            Code::JUMPR(imm) => Ok(Inst::JUMPR(imm.resolve(&labels)?)),
+            Code::CALL(imm) => Ok(Inst::CALL(imm.resolve(&labels)?)),
+            Code::RET() => Ok(Inst::RET()),
+            Code::IRET() => Ok(Inst::IRET()),
         }
     }
 }
@@ -278,41 +278,34 @@ impl Asm {
 #[derive(Debug, Clone)]
 pub enum Imm {
     Literal(u16),
-    Label(String),
+    Ident(String, Option<u16>),
 }
 
 impl Imm {
     fn parse(s: &str) -> Option<Imm> {
         match parse_with_prefix(s) {
-            Ok(value) => Some(Imm::Literal(value)),
-            Err(_) => Some(Imm::Label(s.to_string())),
+            Ok(v) => Some(Imm::Literal(v)),
+            Err(_) => Some(Imm::Ident(s.to_string(), None)),
         }
     }
-    fn cformat(&self, labels: &Labels) -> String {
+
+    pub fn resolve(&self, idents: &Idents) -> Result<u16, error::Error> {
         match self {
-            Imm::Label(str) => {
-                // Get label information directly from Labels
-                if let Some(((_, _), label_type, pc_val)) = labels.get(str) {
-                    match label_type {
-                        crate::label::LabelType::Code => {
-                            if let Some(val) = pc_val {
-                                cformat!("<g>0x{:0>4X}({})</>", val, str)
-                            } else {
-                                cformat!("<g>({})</>", str)
-                            }
-                        }
-                        crate::label::LabelType::Static(val) => {
-                            cformat!("<c>0x{:0>4X}({})</>", val, str)
-                        }
-                        crate::label::LabelType::Const(val) => {
-                            cformat!("<y>0x{:0>4X}({})</>", val, str)
-                        }
-                    }
-                } else {
-                    cformat!("<r,u>{}</>", str)
-                }
-            }
-            Imm::Literal(val) => cformat!("<y>0x{:0>4X}</>", val),
+            Imm::Literal(v) => Ok(*v),
+            Imm::Ident(s, _) => match idents.get_val(s) {
+                Some(v) => Ok(v),
+                None => Err(error::Error::UndefinedLabel(s.clone())),
+            },
+        }
+    }
+
+    fn cfmt(&self) -> String {
+        match self {
+            Imm::Ident(str, val) => match val {
+                Some(v) => cformat!("<g>0x{:0>4X}({})</>", v, str),
+                _ => cformat!("<r,u>{}</>", str),
+            },
+            Imm::Literal(v) => cformat!("<y>0x{:0>4X}</>", v),
         }
     }
 }
@@ -329,20 +322,5 @@ fn parse_with_prefix(s: &str) -> Result<u16, ParseIntError> {
             _ => 10,
         };
         u16::from_str_radix(num, radix)
-    }
-}
-
-impl Imm {
-    pub fn resolve(&self, labels: &Labels) -> Result<u16, error::Error> {
-        match self {
-            Imm::Literal(val) => Ok(*val),
-            Imm::Label(label) => {
-                if let Some(val) = labels.get_val(label) {
-                    Ok(val)
-                } else {
-                    Err(error::Error::UndefinedLabel(label.clone()))
-                }
-            }
-        }
     }
 }

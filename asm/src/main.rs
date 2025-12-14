@@ -1,10 +1,9 @@
-mod error;
-mod label;
-mod parser;
+use rkasm::error::Error;
+use rkasm::ident::{Ident, Idents};
+use rkasm::parser::Stmt;
+use rkasm::util;
 
-use error::Error;
 use indexmap::IndexMap;
-use parser::Stmt;
 use std::{fs::File, io::BufReader};
 
 #[derive(Debug, clap::Parser)]
@@ -77,53 +76,44 @@ fn main() -> Result<(), Error> {
         result
     };
 
-    println!("3. Collect labels and calculate PC");
-    let (parsed, labels) = {
+    println!("3. Collect idents and calculate PC");
+    let (parsed, idents) = {
         let mut pc: u16 = 0;
         let mut resolved = IndexMap::new();
-        let mut labels = label::Labels::new();
+        let mut idents = Idents::new();
 
         for (path, parsed_lines) in parsed {
             let mut updated_lines = vec![];
-
-            for (content, comment) in parsed_lines {
+            for (idx, (content, comment)) in parsed_lines.into_iter().enumerate() {
                 let updated_content = match content {
-                    Some(parser::Stmt::CodeLabel(key)) => {
-                        // Codeラベルの場合、現在のpcを記録
-                        if let Some(_prev) = labels.insert(
-                            key.clone(),
-                            (path.clone(), updated_lines.len()),
-                            label::LabelType::Code,
-                        ) {
+                    Some(Stmt::Label(key)) => {
+                        if let Some(_prev) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Code, pc)
+                        {
                             // 重複ラベルの警告は一旦省略
                         }
-                        labels.set_pc(key.clone(), pc);
-                        Some(parser::Stmt::CodeLabel(key))
+                        Some(Stmt::Label(key))
                     }
-                    Some(parser::Stmt::StaticLabel(key, val)) => {
-                        if let Some(_prev) = labels.insert(
-                            key.clone(),
-                            (path.clone(), updated_lines.len()),
-                            label::LabelType::Static(val),
-                        ) {
+                    Some(Stmt::Static(key, val)) => {
+                        if let Some(_prev) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Static, val)
+                        {
                             // 重複ラベルの警告は一旦省略
                         }
-                        Some(parser::Stmt::StaticLabel(key, val))
+                        Some(Stmt::Static(key, val))
                     }
-                    Some(parser::Stmt::ConstLabel(key, val)) => {
-                        if let Some(_prev) = labels.insert(
-                            key.clone(),
-                            (path.clone(), updated_lines.len()),
-                            label::LabelType::Const(val),
-                        ) {
+                    Some(Stmt::Const(key, val)) => {
+                        if let Some(_prev) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Const, val)
+                        {
                             // 重複ラベルの警告は一旦省略
                         }
-                        Some(parser::Stmt::ConstLabel(key, val))
+                        Some(Stmt::Const(key, val))
                     }
-                    Some(parser::Stmt::Asm(asm, _)) => {
+                    Some(Stmt::Code(asm, _)) => {
                         let current_pc = pc;
                         pc += 1;
-                        Some(parser::Stmt::Asm(asm, Some(current_pc)))
+                        Some(Stmt::Code(asm, Some(current_pc)))
                     }
                     None => None,
                 };
@@ -134,25 +124,44 @@ fn main() -> Result<(), Error> {
             resolved.insert(path, updated_lines);
         }
 
-        (resolved, labels)
+        (resolved, idents)
     };
 
     // Pass 4: Resolve labels
     println!("4. Resolve labels");
 
-    let mut resolved_instructions = vec![];
-    for (path, parsed_lines) in &parsed {
-        for (idx, (content, _comment)) in parsed_lines.iter().enumerate() {
-            if let Some(parser::Stmt::Asm(asm, _pc)) = content {
-                match asm.resolve(&labels) {
-                    Ok(inst) => resolved_instructions.push(inst),
-                    Err(err) => {
-                        err.print_diag(&files, path.as_str(), idx);
+    let resolved_instructions: IndexMap<String, Vec<(Option<Stmt>, Option<String>)>> = {
+        let mut resolved = IndexMap::new();
+
+        for (path, parsed_lines) in &parsed {
+            let mut resolved_lines = vec![];
+
+            for (idx, (content, comment)) in parsed_lines.iter().enumerate() {
+                if let Some(Stmt::Code(code, pc)) = content {
+                    match code.resolve(&idents) {
+                        Ok(_inst) => {
+                            // Keep the statement as is - resolution succeeded
+                            resolved_lines
+                                .push((Some(Stmt::Code(code.clone(), *pc)), comment.clone()));
+                        }
+                        Err(err) => {
+                            err.print_diag(&files, path.as_str(), idx);
+                            // Keep the statement even if resolution failed
+                            resolved_lines
+                                .push((Some(Stmt::Code(code.clone(), *pc)), comment.clone()));
+                        }
                     }
+                } else {
+                    // Non-Asm statements are kept as is
+                    resolved_lines.push((content.clone(), comment.clone()));
                 }
             }
+
+            resolved.insert(path.clone(), resolved_lines);
         }
-    }
+
+        resolved
+    };
 
     // Pass 5: Generate binary
     println!("5. Generate binary");
@@ -160,84 +169,22 @@ fn main() -> Result<(), Error> {
     let mut file =
         File::create(&args.output).map_err(|e| Error::FileCreate(args.output.clone(), e))?;
 
-    for inst in &resolved_instructions {
-        let bin = inst.clone().to_op().to_bin();
-        file.write(&bin.to_le_bytes())
-            .map_err(|e| Error::FileWrite(args.output.clone(), e))?;
+    // Extract and write instructions from the resolved structure
+    for (_path, resolved_lines) in &resolved_instructions {
+        for (_idx, (content, _comment)) in resolved_lines.iter().enumerate() {
+            if let Some(Stmt::Code(asm, _pc)) = content {
+                // Only generate binary for successfully resolved instructions
+                if let Ok(inst) = asm.resolve(&idents) {
+                    let bin = inst.to_op().to_bin();
+                    file.write(&bin.to_le_bytes())
+                        .map_err(|e| Error::FileWrite(args.output.clone(), e))?;
+                }
+            }
+        }
     }
 
     if args.dump {
-        use color_print::cformat;
-        for (path, parsed_lines) in &parsed {
-            for (idx, (content, comment)) in parsed_lines.iter().enumerate() {
-                // Print file header for first line
-                let file_header = if idx == 0 {
-                    format!(
-                        "{}+------[{}]{}\n",
-                        "-".repeat(19),
-                        path,
-                        "-".repeat(45 - path.len())
-                    )
-                } else {
-                    String::new()
-                };
-
-                let comment_str = comment
-                    .as_ref()
-                    .map(|s| format!(";{}", s))
-                    .unwrap_or_default();
-
-                let line_num = idx + 1;
-                let body = match content {
-                    None => {
-                        format!("{:19}| {:>4}: {}", "", line_num, comment_str)
-                    }
-                    Some(parser::Stmt::Asm(asm, pc_opt)) => {
-                        let bin_str = match asm.resolve(&labels) {
-                            Ok(inst) => {
-                                let bin = inst.clone().to_op().to_bin();
-                                format!(
-                                    "{:02X} {:02X} {:02X} {:02X}",
-                                    (bin >> 24) & 0xFF,
-                                    (bin >> 16) & 0xFF,
-                                    (bin >> 8) & 0xFF,
-                                    bin & 0xFF
-                                )
-                            }
-                            Err(_) => cformat!("<r,s>!! !! !! !!</>"),
-                        };
-                        // Use the PC value from the Option
-                        let pc_str = pc_opt
-                            .map(|pc| format!("{:04X}", pc))
-                            .unwrap_or_else(|| "????".to_string());
-                        format!(
-                            "[{}] {} | {:>4}:   {} {}",
-                            pc_str,
-                            bin_str,
-                            line_num,
-                            asm.cformat(&labels),
-                            comment_str
-                        )
-                    }
-                    Some(parser::Stmt::CodeLabel(key)) => {
-                        let label = cformat!("<g>{}:</>", key);
-                        format!("{:19}| {:>4}: {} {}", "", line_num, label, comment_str)
-                    }
-                    Some(parser::Stmt::StaticLabel(key, val)) => {
-                        let label = cformat!("<c>@0x{:04X} {}</>", val, key);
-                        format!("{:19}| {:>4}: {} {}", "", line_num, label, comment_str)
-                    }
-                    Some(parser::Stmt::ConstLabel(key, val)) => {
-                        let label = cformat!("<y>#0x{:04X} {}</>", val, key);
-                        format!("{:19}| {:>4}: {} {}", "", line_num, label, comment_str)
-                    }
-                };
-
-                print!("{}{}", file_header, body);
-                println!();
-            }
-        }
-        println!("-------------------+-----------------------------------------------------");
+        util::print_dump(&resolved_instructions, &idents);
     }
 
     Ok(())
