@@ -13,12 +13,12 @@ pub struct ConstMap(pub HashMap<String, (NormType, ConstExpr, Option<usize>)>);
 
 impl ConstMap {
     pub fn print(&self) {
-        println!("=== Constants Table ===");
+        println!("\n┌─── Constants ──────────────────────────────────────────────────────────────────────────────────┐");
         println!(
-            "{:<20} {:<10} {:<30} {:<6} {:<30}",
+            "│ {:<20} │ {:<10} │ {:<30} │ {:<6} │ {:<30} │",
             "Name", "Address", "Type", "Size", "Value"
         );
-        println!("{:-<96}", "");
+        println!("├──────────────────────┼────────────┼────────────────────────────────┼────────┼────────────────────────────────┤");
 
         let mut sorted_consts: Vec<_> = self.0.iter().collect();
         sorted_consts.sort_by_key(|(name, _)| name.as_str());
@@ -28,12 +28,26 @@ impl ConstMap {
             let type_str = ty.format_inline();
             let size = ty.sizeof();
             let value_str = value.format_inline();
+
+            // Truncate long strings if needed
+            let type_str = if type_str.len() > 30 {
+                format!("{}...", &type_str[..27])
+            } else {
+                type_str
+            };
+
+            let value_str = if value_str.len() > 30 {
+                format!("{}...", &value_str[..27])
+            } else {
+                value_str
+            };
+
             println!(
-                "{:<20} {:<10} {:<30} {:<6} {:<30}",
+                "│ {:<20} │ {:<10} │ {:<30} │ {:<6} │ {:<30} │",
                 name, addr_str, type_str, size, value_str
             );
         }
-        println!();
+        println!("└──────────────────────┴────────────┴────────────────────────────────┴────────┴────────────────────────────────┘");
     }
 
     pub fn collect(ast: &ast::AST) -> Result<Self, CollectError> {

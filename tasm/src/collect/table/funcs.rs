@@ -10,9 +10,14 @@ pub struct FuncMap(pub HashMap<String, (NormType, Option<usize>)>);
 
 impl FuncMap {
     pub fn print(&self) {
-        println!("=== Functions Table ===");
-        println!("{:<20} {:<10} {:<40}", "Name", "Address", "Signature");
-        println!("{:-<70}", "");
+        println!("\n┌─── Functions ──────────────────────────────────────────────────────────┐");
+        println!(
+            "│ {:<20} │ {:<10} │ {:<40} │",
+            "Name", "Address", "Signature"
+        );
+        println!(
+            "├──────────────────────┼────────────┼──────────────────────────────────────────┤"
+        );
 
         let mut sorted_funcs: Vec<_> = self.0.iter().collect();
         sorted_funcs.sort_by_key(|(name, _)| name.as_str());
@@ -21,9 +26,18 @@ impl FuncMap {
             let addr_str = addr.map_or("auto".to_string(), |a| format!("0x{:04X}", a));
             let sig_str = flat_type.format_inline();
 
-            println!("{:<20} {:<10} {:<40}", name, addr_str, sig_str);
+            // Truncate long signatures if needed
+            let sig_str = if sig_str.len() > 40 {
+                format!("{}...", &sig_str[..37])
+            } else {
+                sig_str
+            };
+
+            println!("│ {:<20} │ {:<10} │ {:<40} │", name, addr_str, sig_str);
         }
-        println!();
+        println!(
+            "└──────────────────────┴────────────┴──────────────────────────────────────────┘"
+        );
     }
 
     pub fn collect(

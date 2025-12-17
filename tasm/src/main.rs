@@ -4,9 +4,22 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use tasm::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
-use tasm::convert::types::BiMapExt;
 use tasm::grammer::lexer::LineLexer;
 use tasm::grammer::parser::Parser as TasmParser;
+
+fn print_memory_map(map: &BiMap<String, u16>, map_type: &str) {
+    println!("\n┌─── {} Memory Map ────────────────────┐", map_type);
+    println!("│ {:<20} │ {:<10} │", "Symbol", "Address");
+    println!("├──────────────────────┼────────────┤");
+
+    let mut sorted_entries: Vec<_> = map.iter().collect();
+    sorted_entries.sort_by_key(|(_, addr)| *addr);
+
+    for (name, addr) in sorted_entries {
+        println!("│ {:<20} │ 0x{:04X}     │", name, addr);
+    }
+    println!("└──────────────────────┴────────────┘");
+}
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
@@ -57,7 +70,6 @@ fn main() {
     let funcs = FuncMap::collect(&ast, &consts, &types, &statics).unwrap();
 
     if args.verbose {
-        println!("\n=== Collected Information ===\n");
         consts.print();
         types.print();
         statics.print();
@@ -97,11 +109,8 @@ fn main() {
     }
 
     if args.verbose {
-        println!("\n=== Memory Allocation ===");
-        println!("Program Memory:");
-        pmmap.print();
-        println!("Data Memory:");
-        dmmap.print();
+        print_memory_map(&pmmap, "Program");
+        print_memory_map(&dmmap, "Data");
     }
 
     // 6. Resolve symbols

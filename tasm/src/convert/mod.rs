@@ -1,5 +1,3 @@
-// Code generation module
-
 pub mod asm2code;
 pub mod func2code;
 pub mod types;

@@ -28,31 +28,3 @@ impl Code {
         }
     }
 }
-
-/// Extension trait for BiMap to add print functionality
-pub trait BiMapExt<L, R> {
-    fn print(&self);
-}
-
-impl<
-        L: std::fmt::Display + std::hash::Hash + Eq + Clone,
-        R: std::fmt::Display + std::hash::Hash + Eq + Clone + Ord,
-    > BiMapExt<L, R> for bimap::BiMap<L, R>
-{
-    fn print(&self) {
-        println!("=== Memory Map ===");
-        // Convert to vec for sorting
-        let mut entries: Vec<_> = Vec::new();
-        for k in self.left_values() {
-            if let Some(r) = self.get_by_left(k) {
-                entries.push((k.clone(), r.clone()));
-            }
-        }
-        entries.sort_by_key(|(_, v)| v.clone());
-
-        for (k, v) in entries {
-            println!("  {} -> {}", k, v);
-        }
-        println!();
-    }
-}
