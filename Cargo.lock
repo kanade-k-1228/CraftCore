@@ -374,6 +374,7 @@ dependencies = [
  "bimap",
  "clap",
  "color-print",
+ "indexmap",
 ]
 
 [[package]]

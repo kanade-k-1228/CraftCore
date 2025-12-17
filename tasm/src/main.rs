@@ -1,99 +1,14 @@
 use bimap::BiMap;
 use clap::Parser;
-use color_print::{cprint, cprintln};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use tasm::allocate::allocator::allocate;
 use tasm::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
 use tasm::grammer::lexer::LineLexer;
 use tasm::grammer::parser::Parser as TasmParser;
-
-fn print_detailed_memory_layout(
-    pmmap: &BiMap<String, u16>,
-    dmmap: &BiMap<String, u16>,
-    codes: &HashMap<String, tasm::convert::Code>,
-    statics: &StaticMap,
-    consts: &ConstMap,
-    asms: &AsmMap,
-    funcs: &FuncMap,
-) {
-    // Program Memory Layout
-    println!("+-[Inst]----------+---------------------------------------------------------------");
-
-    let mut prog_entries: Vec<_> = pmmap
-        .iter()
-        .map(|(name, addr)| {
-            let code = codes.get(name);
-            let size = code.map_or(0, |c| c.instructions.len()) as u16;
-            let end_addr = if size > 0 { addr + size - 1 } else { *addr };
-
-            // Get type information
-            let (type_info, signature) = if asms.0.contains_key(name) {
-                ("asm", String::new())
-            } else if let Some((func_type, _)) = funcs.0.get(name) {
-                ("func", func_type.format_inline())
-            } else {
-                ("unknown", String::new())
-            };
-
-            (name.clone(), *addr, end_addr, type_info, signature)
-        })
-        .collect();
-    prog_entries.sort_by_key(|(_, addr, _, _, _)| *addr);
-
-    for (name, addr, end_addr, type_info, signature) in prog_entries {
-        cprint!("| 0x{:04X} : 0x{:04X} | ", addr, end_addr);
-
-        // Display colored name
-        match type_info {
-            "asm" => cprint!("<red>{}</red>", name),
-            "func" => cprint!("<green>{}</green>", name),
-            _ => cprint!("{}", name),
-        }
-
-        // Display type signature for functions
-        if !signature.is_empty() {
-            cprintln!(" : {}", signature);
-        } else {
-            cprintln!("");
-        }
-    }
-
-    // Data Memory Layout
-    println!("+-[Data]----------+---------------------------------------------------------------");
-
-    let mut data_entries: Vec<_> = dmmap
-        .iter()
-        .map(|(name, addr)| {
-            let (size, type_str, is_static) = if let Some((norm_type, _)) = statics.0.get(name) {
-                (norm_type.sizeof() as u16, norm_type.format_inline(), true)
-            } else if let Some((norm_type, _, _)) = consts.0.get(name) {
-                (norm_type.sizeof() as u16, norm_type.format_inline(), false)
-            } else {
-                (0, "unknown".to_string(), false)
-            };
-            let end_addr = if size > 0 { addr + size - 1 } else { *addr };
-            (name.clone(), *addr, end_addr, type_str, is_static)
-        })
-        .collect();
-    data_entries.sort_by_key(|(_, addr, _, _, _)| *addr);
-
-    for (name, addr, end_addr, type_str, is_static) in data_entries {
-        cprint!("| 0x{:04X} : 0x{:04X} | ", addr, end_addr);
-
-        // Display colored name
-        if is_static {
-            cprint!("<cyan>{}</cyan>", name);
-        } else {
-            cprint!("<yellow>{}</yellow>", name);
-        }
-
-        // Display type
-        cprintln!(" : {}", type_str);
-    }
-
-    println!("+-----------------+---------------------------------------------------------------");
-}
+use tasm::util::display::print_binary;
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
@@ -153,33 +68,61 @@ fn main() {
     codes.extend(asm_codes);
 
     // 5. Allocate global objects
+    // Prepare instruction memory items for allocation
+    let mut inst_items = IndexMap::new();
+
+    // Add assembly blocks with their fixed addresses (first, to maintain priority)
+    for (name, fixed_addr) in &asms.0 {
+        if let Some(code) = codes.get(name) {
+            let addr = fixed_addr.map(|a| a as u16);
+            inst_items.insert(name.clone(), (code.instructions.len() as u16, addr));
+        }
+    }
+
+    // Add functions without fixed addresses
+    for (name, code) in &codes {
+        if !asms.0.contains_key(name) {
+            inst_items.insert(name.clone(), (code.instructions.len() as u16, None));
+        }
+    }
+
+    // Prepare data memory items for allocation
+    let mut data_items = IndexMap::new();
+
+    // Add statics with their fixed addresses (first, to maintain priority)
+    for (name, (norm_type, fixed_addr)) in statics.0.iter() {
+        let addr = fixed_addr.map(|a| a as u16);
+        data_items.insert(name.clone(), (norm_type.sizeof() as u16, addr));
+    }
+
+    // Add constants without fixed addresses
+    for (name, (norm_type, _, _)) in consts.0.iter() {
+        if !statics.0.contains_key(name) {
+            data_items.insert(name.clone(), (norm_type.sizeof() as u16, None));
+        }
+    }
+
+    // Allocate memory using the allocate function
+    let inst_allocations = allocate(inst_items).expect("Failed to allocate instruction memory");
+    let data_allocations = allocate(data_items).expect("Failed to allocate data memory");
+
+    // Convert allocations to BiMaps
     let mut imap: BiMap<String, u16> = BiMap::new(); // Inst memory map
     let mut dmap: BiMap<String, u16> = BiMap::new(); // Data memory map
 
-    // Allocate program memory for functions and assembly blocks
-    let mut pmem_addr = 0x0000u16;
-    for (name, code) in &codes {
-        imap.insert(name.clone(), pmem_addr);
-        pmem_addr += code.instructions.len() as u16;
+    for (name, addr) in inst_allocations {
+        imap.insert(name, addr);
     }
-
-    // Allocate data memory for statics and constants
-    let mut dmem_addr = 0x0000u16;
-    for (name, (norm_type, _)) in statics.0.iter() {
-        dmap.insert(name.clone(), dmem_addr);
-        dmem_addr += norm_type.sizeof() as u16;
-    }
-    for (name, (norm_type, _, _)) in consts.0.iter() {
-        dmap.insert(name.clone(), dmem_addr);
-        dmem_addr += norm_type.sizeof() as u16;
-    }
-
-    if args.verbose {
-        print_detailed_memory_layout(&imap, &dmap, &codes, &statics, &consts, &asms, &funcs);
+    for (name, addr) in data_allocations {
+        dmap.insert(name, addr);
     }
 
     // 6. Resolve symbols
     let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap);
+
+    if args.verbose {
+        print_binary(&imap, &dmap, &codes, &statics, &consts, &asms, &funcs);
+    }
 
     // 7. Generate binary
     let ibin = tasm::link::generate_program_binary(&resolved, &imap).unwrap();

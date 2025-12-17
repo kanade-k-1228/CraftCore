@@ -1,73 +1,80 @@
-use crate::link::structs::*;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
-/// Allocate addresses for all items
-pub fn allocate(items: Vec<Item>) -> Result<Allocated, String> {
-    let mut symbols = HashMap::new();
-    let mut sections = Vec::new();
+pub fn allocate(
+    items: IndexMap<String, (u16, Option<u16>)>,
+) -> Result<IndexMap<String, u16>, String> {
+    let mut allocations = IndexMap::new();
+    let mut occupied_ranges = Vec::new();
 
-    // First pass: collect fixed address items and build initial symbol table
-    let mut next_auto_addr = 0x0100; // Start auto allocation at 0x0100
-    let mut code_items = Vec::new();
-
-    for item in items {
-        match item {
-            Item::Static(name, size, addr) => {
-                let allocated_addr = if let Some(fixed_addr) = addr {
-                    fixed_addr
-                } else {
-                    let addr = next_auto_addr;
-                    next_auto_addr += size;
-                    addr
-                };
-
-                symbols.insert(name.clone(), allocated_addr);
-                sections.push(Section {
-                    name,
-                    addr: allocated_addr,
-                    data: SectionData::Data(size),
-                });
+    // First pass: allocate items with fixed addresses
+    for (name, (size, fixed_addr)) in &items {
+        if let Some(addr) = fixed_addr {
+            // Check for overlaps with existing allocations
+            let range = (*addr, *addr + size - 1);
+            for (existing_start, existing_end) in &occupied_ranges {
+                if overlaps(range, (*existing_start, *existing_end)) {
+                    return Err(format!(
+                        "Address conflict: {} at 0x{:04X}-0x{:04X} overlaps with existing allocation",
+                        name, range.0, range.1
+                    ));
+                }
             }
-            Item::Const(name, size, addr) => {
-                let allocated_addr = if let Some(fixed_addr) = addr {
-                    fixed_addr
-                } else {
-                    let addr = next_auto_addr;
-                    next_auto_addr += size;
-                    addr
-                };
 
-                symbols.insert(name.clone(), allocated_addr);
-                sections.push(Section {
-                    name,
-                    addr: allocated_addr,
-                    data: SectionData::Data(size),
-                });
-            }
-            Item::Code(name, code) => {
-                code_items.push((name, code));
-            }
+            allocations.insert(name.clone(), *addr);
+            occupied_ranges.push(range);
         }
     }
 
-    // Second pass: allocate code sections
-    // Code typically goes into a separate region
-    let mut code_addr = 0x0000; // Code starts at 0x0000
+    // Sort occupied ranges for efficient free space finding
+    occupied_ranges.sort_by_key(|(start, _)| *start);
 
-    for (name, code) in code_items {
-        symbols.insert(name.clone(), code_addr);
+    // Second pass: allocate items without fixed addresses
+    let mut next_free_addr = 0u16;
 
-        // Each instruction is 4 bytes (32 bits)
-        let code_size = code.len();
+    for (name, (size, fixed_addr)) in &items {
+        if fixed_addr.is_none() {
+            // Find next available address
+            let addr = find_next_free_address(next_free_addr, *size, &occupied_ranges);
 
-        sections.push(Section {
-            name,
-            addr: code_addr,
-            data: SectionData::Code(code),
-        });
+            // Check for address space overflow
+            if addr.saturating_add(*size) > u16::MAX {
+                return Err(format!(
+                    "Address space overflow: Cannot allocate {} bytes for {}",
+                    size, name
+                ));
+            }
 
-        code_addr += code_size;
+            allocations.insert(name.clone(), addr);
+            let range = (addr, addr + size - 1);
+
+            // Insert the new range in sorted order
+            let insert_pos = occupied_ranges
+                .binary_search_by_key(&addr, |(start, _)| *start)
+                .unwrap_or_else(|pos| pos);
+            occupied_ranges.insert(insert_pos, range);
+
+            next_free_addr = addr + size;
+        }
     }
 
-    Ok(Allocated { symbols, sections })
+    Ok(allocations)
+}
+
+fn overlaps(range1: (u16, u16), range2: (u16, u16)) -> bool {
+    range1.0 <= range2.1 && range2.0 <= range1.1
+}
+
+fn find_next_free_address(start: u16, size: u16, occupied: &[(u16, u16)]) -> u16 {
+    let mut current = start;
+
+    for &(occupied_start, occupied_end) in occupied {
+        if current + size - 1 < occupied_start {
+            // Found enough space before this occupied range
+            return current;
+        }
+        // Move past this occupied range
+        current = current.max(occupied_end + 1);
+    }
+
+    current
 }
