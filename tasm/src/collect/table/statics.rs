@@ -12,30 +12,6 @@ use std::collections::HashMap;
 pub struct StaticMap(pub HashMap<String, (NormType, Option<usize>)>);
 
 impl StaticMap {
-    pub fn print(&self) {
-        println!("\n┌─── Static Variables ─────────────────────────────────────────────────┐");
-        println!("│ {:<20} │ {:<10} │ {:<35} │", "Name", "Address", "Type");
-        println!("├──────────────────────┼────────────┼─────────────────────────────────────┤");
-
-        let mut sorted_statics: Vec<_> = self.0.iter().collect();
-        sorted_statics.sort_by_key(|(name, _)| name.as_str());
-
-        for (name, (flat_ty, addr)) in sorted_statics {
-            let addr_str = addr.map_or("auto".to_string(), |a| format!("0x{:04X}", a));
-            let type_str = flat_ty.format_inline();
-
-            // Truncate long type strings if needed
-            let type_str = if type_str.len() > 35 {
-                format!("{}...", &type_str[..32])
-            } else {
-                type_str
-            };
-
-            println!("│ {:<20} │ {:<10} │ {:<35} │", name, addr_str, type_str);
-        }
-        println!("└──────────────────────┴────────────┴─────────────────────────────────────┘");
-    }
-
     pub fn collect(
         ast: &ast::AST,
         consts: &ConstMap,

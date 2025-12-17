@@ -6,21 +6,6 @@ use std::collections::HashMap;
 pub struct AsmMap(pub HashMap<String, Option<usize>>);
 
 impl AsmMap {
-    pub fn print(&self) {
-        println!("\n┌─── Assembly Modules ───────────────┐");
-        println!("│ {:<20} │ {:<10} │", "Name", "Address");
-        println!("├──────────────────────┼────────────┤");
-
-        let mut sorted_asms: Vec<_> = self.0.iter().collect();
-        sorted_asms.sort_by_key(|(name, _)| name.as_str());
-
-        for (name, addr) in sorted_asms {
-            let addr_str = addr.map_or("auto".to_string(), |a| format!("0x{:04X}", a));
-            println!("│ {:<20} │ {:<10} │", name, addr_str);
-        }
-        println!("└──────────────────────┴────────────┘");
-    }
-
     pub fn collect(ast: &ast::AST) -> Result<Self, CollectError> {
         let ast::AST(defs) = ast;
         let mut result = HashMap::new();

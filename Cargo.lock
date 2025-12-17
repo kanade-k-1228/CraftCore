@@ -373,6 +373,7 @@ dependencies = [
  "arch",
  "bimap",
  "clap",
+ "color-print",
 ]
 
 [[package]]
