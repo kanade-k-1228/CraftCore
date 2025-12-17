@@ -1,5 +1,6 @@
 use crate::{
-    collect::{flattype::FlatType, utils::CollectError, ConstMap},
+    collect::{utils::CollectError, ConstMap},
+    eval::normtype::NormType,
     grammer::ast,
 };
 
@@ -17,7 +18,7 @@ pub fn eval(expr: &ast::Expr, consts: &ConstMap) -> Result<ConstExpr, CollectErr
         ast::Expr::NumberLit(n) => ConstExpr::Number(*n),
         ast::Expr::CharLit(c) => ConstExpr::Char(*c),
         ast::Expr::StringLit(s) => ConstExpr::String(s.clone()),
-        ast::Expr::Ident(name) => match consts.get(name) {
+        ast::Expr::Ident(name) => match consts.0.get(name) {
             Some((_, lit, _)) => lit.clone(),
             None => return Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
         },
@@ -38,23 +39,23 @@ pub fn eval(expr: &ast::Expr, consts: &ConstMap) -> Result<ConstExpr, CollectErr
 }
 
 impl ConstExpr {
-    pub fn totype(&self) -> Result<FlatType, CollectError> {
+    pub fn totype(&self) -> Result<NormType, CollectError> {
         Ok(match self {
-            ConstExpr::Number(_) => FlatType::Int,
-            ConstExpr::Char(_) => FlatType::Int, // char is represented as int
-            ConstExpr::String(s) => FlatType::Array(s.len(), Box::new(FlatType::Int)),
+            ConstExpr::Number(_) => NormType::Int,
+            ConstExpr::Char(_) => NormType::Int, // char is represented as int
+            ConstExpr::String(s) => NormType::Array(s.len(), Box::new(NormType::Int)),
             ConstExpr::Struct(fields) => {
                 let mut list = Vec::new();
                 for (name, field_lit) in fields {
                     list.push((name.clone(), field_lit.totype()?));
                 }
-                FlatType::Struct(list)
+                NormType::Struct(list)
             }
             ConstExpr::Array(elems) => {
                 if elems.is_empty() {
                     return Err(CollectError::CannotInferTypeOfEmptyArray);
                 }
-                FlatType::Array(elems.len(), Box::new(elems[0].totype()?))
+                NormType::Array(elems.len(), Box::new(elems[0].totype()?))
             }
         })
     }
@@ -73,9 +74,7 @@ impl ConstExpr {
                 if elems.is_empty() {
                     format!("{}[]", indent_str)
                 } else if elems.len() <= 5 {
-                    let elem_strs: Vec<String> = elems.iter()
-                        .map(|e| e.format_inline())
-                        .collect();
+                    let elem_strs: Vec<String> = elems.iter().map(|e| e.format_inline()).collect();
                     format!("{}[{}]", indent_str, elem_strs.join(", "))
                 } else {
                     let mut result = format!("{}[\n", indent_str);
@@ -96,11 +95,19 @@ impl ConstExpr {
                     let mut result = format!("{}{{\n", indent_str);
                     for (i, (name, value)) in fields.iter().enumerate() {
                         if value.is_complex() {
-                            result.push_str(&format!("{}  {}: \n{},",
-                                indent_str, name, value.format_pretty(indent + 2)));
+                            result.push_str(&format!(
+                                "{}  {}: \n{},",
+                                indent_str,
+                                name,
+                                value.format_pretty(indent + 2)
+                            ));
                         } else {
-                            result.push_str(&format!("{}  {}: {},",
-                                indent_str, name, value.format_inline()));
+                            result.push_str(&format!(
+                                "{}  {}: {},",
+                                indent_str,
+                                name,
+                                value.format_inline()
+                            ));
                         }
                         if i < fields.len() - 1 {
                             result.push_str("\n");
@@ -128,9 +135,7 @@ impl ConstExpr {
                 if elems.is_empty() {
                     "[]".to_string()
                 } else if elems.len() <= 3 {
-                    let elem_strs: Vec<String> = elems.iter()
-                        .map(|e| e.format_inline())
-                        .collect();
+                    let elem_strs: Vec<String> = elems.iter().map(|e| e.format_inline()).collect();
                     format!("[{}]", elem_strs.join(", "))
                 } else {
                     format!("[...{} items]", elems.len())
@@ -140,7 +145,8 @@ impl ConstExpr {
                 if fields.is_empty() {
                     "{}".to_string()
                 } else if fields.len() <= 2 {
-                    let field_strs: Vec<String> = fields.iter()
+                    let field_strs: Vec<String> = fields
+                        .iter()
                         .map(|(name, val)| format!("{}: {}", name, val.format_inline()))
                         .collect();
                     format!("{{{}}}", field_strs.join(", "))

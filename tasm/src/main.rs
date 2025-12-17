@@ -1,5 +1,9 @@
 use clap::Parser;
-use std::io::BufRead;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use tasm::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
+use tasm::grammer::lexer::LineLexer;
+use tasm::grammer::parser::Parser as TasmParser;
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
@@ -20,31 +24,30 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    // Parse the input file
+    // 1. Parse input files and tokenize
     let mut tokens = vec![];
     for (file_idx, input) in args.input.iter().enumerate() {
-        let file = std::fs::File::open(&input).expect(&format!("Failed to open file: {}", input));
-        let reader = std::io::BufReader::new(file);
+        let file = File::open(&input).expect(&format!("Failed to open file: {}", input));
+        let reader = BufReader::new(file);
         for (line_idx, line) in reader.lines().enumerate() {
             let line = line.expect("Failed to read line");
-            let toks = tasm::grammer::lexer::LineLexer::new(&line, file_idx, line_idx).parse();
+            let toks = LineLexer::new(&line, file_idx, line_idx).parse();
             tokens.extend(toks);
         }
     }
 
-    // Parse tokens into AST
-    let (ast, errors) = tasm::grammer::parser::Parser::new(tokens.into_iter()).parse();
-
+    // 2. Parse tokens into AST
+    let (ast, errors) = TasmParser::new(tokens.into_iter()).parse();
     if !errors.is_empty() {
         eprintln!("Parser errors:");
-        for error in &errors {
-            eprintln!("  {:?}", error);
+        for e in &errors {
+            eprintln!("  {:?}", e);
         }
         std::process::exit(1);
     }
 
-    // Collect the globals in dependency order
-    let consts = match tasm::collect::table::consts::collect(&ast) {
+    // 3. Collect global symbols
+    let consts = match ConstMap::collect(&ast) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Constants collection error: {:?}", e);
@@ -52,7 +55,7 @@ fn main() {
         }
     };
 
-    let types = match tasm::collect::table::types::collect(&ast, &consts) {
+    let types = match TypeMap::collect(&ast, &consts) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("Types collection error: {:?}", e);
@@ -60,7 +63,7 @@ fn main() {
         }
     };
 
-    let statics = match tasm::collect::table::statics::collect(&ast, &consts, &types) {
+    let statics = match StaticMap::collect(&ast, &consts, &types) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Statics collection error: {:?}", e);
@@ -68,7 +71,7 @@ fn main() {
         }
     };
 
-    let asms = match tasm::collect::table::asms::collect(&ast) {
+    let asms = match AsmMap::collect(&ast) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("Assembly blocks collection error: {:?}", e);
@@ -76,7 +79,7 @@ fn main() {
         }
     };
 
-    let funcs = match tasm::collect::table::funcs::collect(&ast, &consts, &types, &statics) {
+    let funcs = match FuncMap::collect(&ast, &consts, &types, &statics) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("Functions collection error: {:?}", e);
@@ -87,11 +90,11 @@ fn main() {
     // Display collected globals if verbose
     if args.verbose {
         println!("\n=== Collected Information ===\n");
-        tasm::collect::table::consts::print(&consts);
-        tasm::collect::table::types::print(&types);
-        tasm::collect::table::statics::print(&statics);
-        tasm::collect::table::asms::print(&asms);
-        tasm::collect::table::funcs::print(&funcs);
+        consts.print();
+        types.print();
+        statics.print();
+        asms.print();
+        funcs.print();
     }
 
     // Generate binary

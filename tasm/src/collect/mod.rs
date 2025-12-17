@@ -1,6 +1,4 @@
-pub mod constexpr;
-pub mod flattype;
-pub mod table;
+mod table;
 pub mod utils;
 
 pub use table::asms::AsmMap;

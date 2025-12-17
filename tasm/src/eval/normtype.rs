@@ -1,32 +1,33 @@
 use crate::{
-    collect::{constexpr::ConstExpr, utils::CollectError, ConstMap, TypeMap},
+    collect::{utils::CollectError, ConstMap, TypeMap},
+    eval::constexpr::ConstExpr,
     grammer::ast,
 };
 
 #[derive(Debug, Clone)]
-pub enum FlatType {
+pub enum NormType {
     Int,                                          // data         | int
-    Addr(Box<FlatType>),                          // address      | *Type
-    Array(usize, Box<FlatType>),                  // array        | Type[10]
-    Struct(Vec<(String, FlatType)>),              // struct       | {a: int, b: Type}
-    Func(Vec<(String, FlatType)>, Box<FlatType>), // function     | (a: int, b: Type) -> Type
+    Addr(Box<NormType>),                          // address      | *Type
+    Array(usize, Box<NormType>),                  // array        | Type[10]
+    Struct(Vec<(String, NormType)>),              // struct       | {a: int, b: Type}
+    Func(Vec<(String, NormType)>, Box<NormType>), // function     | (a: int, b: Type) -> Type
     Error,                                        // placeholder for error
 }
 
-impl FlatType {
+impl NormType {
     pub fn sizeof(&self) -> usize {
         match self {
-            FlatType::Int => 1,     // 1 byte for int in this architecture
-            FlatType::Addr(_) => 1, // 1 byte for address
-            FlatType::Array(len, elem) => len * elem.sizeof(),
-            FlatType::Struct(fields) => fields.iter().map(|(_, elem)| elem.sizeof()).sum(),
-            FlatType::Func(_, _) => 0, // Funtion has no space on RAM
-            FlatType::Error => 0,
+            NormType::Int => 1,     // 1 byte for int in this architecture
+            NormType::Addr(_) => 1, // 1 byte for address
+            NormType::Array(len, elem) => len * elem.sizeof(),
+            NormType::Struct(fields) => fields.iter().map(|(_, elem)| elem.sizeof()).sum(),
+            NormType::Func(_, _) => 0, // Funtion has no space on RAM
+            NormType::Error => 0,
         }
     }
 }
 
-impl FlatType {
+impl NormType {
     pub fn pprint(&self) {
         println!("{}", self.format_pretty(0));
     }
@@ -34,14 +35,14 @@ impl FlatType {
     pub fn format_pretty(&self, indent: usize) -> String {
         let indent_str = "  ".repeat(indent);
         match self {
-            FlatType::Int => format!("{}int", indent_str),
-            FlatType::Addr(inner) => {
+            NormType::Int => format!("{}int", indent_str),
+            NormType::Addr(inner) => {
                 format!("{}*{}", indent_str, inner.format_inline())
             }
-            FlatType::Array(len, elem) => {
+            NormType::Array(len, elem) => {
                 format!("{}[{}]{}", indent_str, len, elem.format_inline())
             }
-            FlatType::Struct(fields) => {
+            NormType::Struct(fields) => {
                 if fields.is_empty() {
                     format!("{}{{}}", indent_str)
                 } else {
@@ -58,7 +59,7 @@ impl FlatType {
                     result
                 }
             }
-            FlatType::Func(params, ret) => {
+            NormType::Func(params, ret) => {
                 if params.is_empty() {
                     format!("{}() -> {}", indent_str, ret.format_inline())
                 } else {
@@ -75,16 +76,16 @@ impl FlatType {
                     result
                 }
             }
-            FlatType::Error => format!("{}error", indent_str),
+            NormType::Error => format!("{}error", indent_str),
         }
     }
 
     pub fn format_inline(&self) -> String {
         match self {
-            FlatType::Int => "int".to_string(),
-            FlatType::Addr(inner) => format!("*{}", inner.format_inline()),
-            FlatType::Array(len, elem) => format!("{}[{}]", elem.format_inline(), len),
-            FlatType::Struct(fields) => {
+            NormType::Int => "int".to_string(),
+            NormType::Addr(inner) => format!("*{}", inner.format_inline()),
+            NormType::Array(len, elem) => format!("{}[{}]", elem.format_inline(), len),
+            NormType::Struct(fields) => {
                 if fields.is_empty() {
                     "{}".to_string()
                 } else if fields.len() <= 3 {
@@ -97,10 +98,10 @@ impl FlatType {
                     format!("{{...{} fields}}", fields.len())
                 }
             }
-            FlatType::Func(params, ret) => {
+            NormType::Func(params, ret) => {
                 format!("fn({}) -> {}", params.len(), ret.format_inline())
             }
-            FlatType::Error => "error".to_string(),
+            NormType::Error => "error".to_string(),
         }
     }
 }
@@ -109,20 +110,20 @@ pub fn collect_type(
     ty: &ast::Type,
     consts: &ConstMap,
     types: &TypeMap,
-) -> Result<FlatType, CollectError> {
+) -> Result<NormType, CollectError> {
     match ty {
-        ast::Type::Int => Ok(FlatType::Int),
-        ast::Type::Custom(name) => match types.get(name) {
+        ast::Type::Int => Ok(NormType::Int),
+        ast::Type::Custom(name) => match types.0.get(name) {
             Some((flat, _)) => Ok(flat.clone()),
             None => Err(CollectError::TODO),
         },
-        ast::Type::Addr(inner) => Ok(FlatType::Addr(Box::new(collect_type(
+        ast::Type::Addr(inner) => Ok(NormType::Addr(Box::new(collect_type(
             inner, consts, types,
         )?))),
         ast::Type::Array(len, ty) => {
             let len = match len {
                 ast::Expr::NumberLit(n) => *n,
-                ast::Expr::Ident(name) => match consts.get(name) {
+                ast::Expr::Ident(name) => match consts.0.get(name) {
                     Some((_, expr, _)) => match expr {
                         ConstExpr::Number(n) => *n,
                         _ => return Err(CollectError::TODO),
@@ -132,25 +133,25 @@ pub fn collect_type(
                 _ => return Err(CollectError::NonLiteralArrayLength(Box::new(len.clone()))),
             };
             let ty = collect_type(ty, consts, types)?;
-            Ok(FlatType::Array(len, Box::new(ty)))
+            Ok(NormType::Array(len, Box::new(ty)))
         }
         ast::Type::Struct(fields) => {
-            let mut rets = Vec::<(String, FlatType)>::new();
+            let mut rets = Vec::<(String, NormType)>::new();
             for (name, ty) in fields {
                 let ty = collect_type(&ty, consts, types)?;
                 rets.push((name.clone(), ty));
             }
-            Ok(FlatType::Struct(rets))
+            Ok(NormType::Struct(rets))
         }
         ast::Type::Func(params, ret) => {
             let ty = collect_type(ret, consts, types)?;
-            let mut rets = Vec::<(String, FlatType)>::new();
+            let mut rets = Vec::<(String, NormType)>::new();
             for (name, ty) in params {
                 let ty = collect_type(&ty, consts, types)?;
                 rets.push((name.clone(), ty));
             }
-            Ok(FlatType::Func(rets, Box::new(ty)))
+            Ok(NormType::Func(rets, Box::new(ty)))
         }
-        ast::Type::Error => Ok(FlatType::Error),
+        ast::Type::Error => Ok(NormType::Error),
     }
 }

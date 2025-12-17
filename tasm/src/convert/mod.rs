@@ -1,4 +1,6 @@
-// Temporary placeholder implementation until the code generation is properly refactored
+// Code generation module
+
+pub mod func2code;
 
 use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
 
