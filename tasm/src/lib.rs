@@ -1,5 +1,4 @@
-pub mod allocate;
-pub mod bingen;
+// Removed unused modules: allocate, bingen
 pub mod collect;
 pub mod convert;
 pub mod eval;

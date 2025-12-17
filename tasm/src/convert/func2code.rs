@@ -1,19 +1,13 @@
 use crate::{
-    collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap},
+    collect::{ConstMap, FuncMap, StaticMap, TypeMap},
     grammer::ast,
     link::structs::{AsmInst, AsmLine},
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub enum SymbolRef {
-    Function(String),
-    Static(String),
-    Const(String),
-}
-
 struct CodeGenContext {
+    #[allow(dead_code)]
     func_name: String,
     /// Local variable offsets (stack-relative)
     locals: HashMap<String, i16>,
@@ -23,6 +17,7 @@ struct CodeGenContext {
     instructions: Vec<AsmLine>,
     /// Positions that need patching for forward jumps
     /// (instruction_index, target_instruction_index)
+    #[allow(dead_code)]
     forward_jumps: Vec<(usize, usize)>,
 }
 
@@ -108,16 +103,15 @@ impl CodeGenContext {
     }
 }
 
-/// Generate instruction sequence from a function definition
+/// Generate code from all functions in the AST
 pub fn func2code(
     ast: &ast::AST,
     _consts: &ConstMap,
     _types: &TypeMap,
     _statics: &StaticMap,
-    _asms: &AsmMap,
     _funcs: &FuncMap,
-) -> Vec<(String, Vec<AsmLine>)> {
-    let mut result = Vec::new();
+) -> HashMap<String, crate::convert::types::Code> {
+    let mut result = HashMap::new();
 
     // Process each function definition in the AST
     let ast::AST(defs) = ast;
@@ -125,7 +119,8 @@ pub fn func2code(
         if let ast::Def::Func(func_name, args, ret_type, body) = def {
             // Generate instructions for this function
             let instructions = generate_function(func_name.clone(), args, ret_type, body);
-            result.push((func_name.clone(), instructions));
+            let code = crate::convert::types::Code::new_function(func_name.clone(), instructions);
+            result.insert(func_name.clone(), code);
         }
     }
 

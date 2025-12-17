@@ -1,21 +1,9 @@
 // Code generation module
 
+pub mod asm2code;
 pub mod func2code;
+pub mod types;
 
-use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
-
-pub struct CodeGen;
-
-impl CodeGen {
-    pub fn generate(
-        _consts: &ConstMap,
-        _types: &TypeMap,
-        _statics: &StaticMap,
-        _asms: &AsmMap,
-        _funcs: &FuncMap,
-    ) -> Result<String, String> {
-        // Temporary placeholder implementation
-        // Returns a minimal valid assembly code
-        Ok(String::from("@0x0010 halt\n"))
-    }
-}
+pub use asm2code::asm2code;
+pub use func2code::func2code;
+pub use types::Code;

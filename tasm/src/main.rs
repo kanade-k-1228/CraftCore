@@ -1,7 +1,10 @@
+use bimap::BiMap;
 use clap::Parser;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use tasm::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
+use tasm::convert::types::BiMapExt;
 use tasm::grammer::lexer::LineLexer;
 use tasm::grammer::parser::Parser as TasmParser;
 
@@ -47,47 +50,12 @@ fn main() {
     }
 
     // 3. Collect global symbols
-    let consts = match ConstMap::collect(&ast) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Constants collection error: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let consts = ConstMap::collect(&ast).unwrap();
+    let types = TypeMap::collect(&ast, &consts).unwrap();
+    let statics = StaticMap::collect(&ast, &consts, &types).unwrap();
+    let asms = AsmMap::collect(&ast).unwrap();
+    let funcs = FuncMap::collect(&ast, &consts, &types, &statics).unwrap();
 
-    let types = match TypeMap::collect(&ast, &consts) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Types collection error: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let statics = match StaticMap::collect(&ast, &consts, &types) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Statics collection error: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let asms = match AsmMap::collect(&ast) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("Assembly blocks collection error: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let funcs = match FuncMap::collect(&ast, &consts, &types, &statics) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Functions collection error: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Display collected globals if verbose
     if args.verbose {
         println!("\n=== Collected Information ===\n");
         consts.print();
@@ -97,105 +65,72 @@ fn main() {
         funcs.print();
     }
 
-    // Generate binary
-    let asm_code = match tasm::convert::CodeGen::generate(&consts, &types, &statics, &asms, &funcs)
-    {
-        Ok(code) => code,
-        Err(e) => {
-            eprintln!("Code generation error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    // 4. Generate code from functions and assembly blocks
+    let func_codes = tasm::convert::func2code(&ast, &consts, &types, &statics, &funcs);
+    let asm_codes = tasm::convert::asm2code(&ast, &asms, &consts);
 
-    // Allocate Globals
-    let allocated = match tasm::link::link(&asm_code) {
-        Ok(alloc) => alloc,
-        Err(e) => {
-            eprintln!("Link error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    // Combine function and assembly codes
+    let mut codes: HashMap<String, tasm::convert::Code> = HashMap::new();
+    codes.extend(func_codes);
+    codes.extend(asm_codes);
 
-    // Prepare allocation information for verbose output
-    let mut sorted_symbols: Vec<_> = allocated.symbols.iter().collect();
-    sorted_symbols.sort_by_key(|(_, addr)| *addr);
+    // 5. Allocate global objects
+    let mut dmmap: BiMap<String, u16> = BiMap::new();
+    let mut pmmap: BiMap<String, u16> = BiMap::new();
 
-    let mut sorted_sections = allocated.sections.clone();
-    sorted_sections.sort_by_key(|s| s.addr);
-
-    if args.verbose {
-        println!("=== Phase 1: Object Allocation ===");
-        println!("\nAllocated Symbols:");
-        for (name, addr) in &sorted_symbols {
-            println!("  0x{:04X} : {}", addr, name);
-        }
-
-        println!("\nAllocated Sections:");
-        for section in &sorted_sections {
-            match section.data {
-                tasm::link::SectionData::Data(size) => {
-                    println!(
-                        "  0x{:04X}-0x{:04X} : {} (data, {} bytes)",
-                        section.addr,
-                        section.addr + size - 1,
-                        section.name,
-                        size
-                    );
-                }
-                tasm::link::SectionData::Code(ref code) => {
-                    let size = code.len();
-                    println!(
-                        "  0x{:04X}-0x{:04X} : {} (code, {} instructions)",
-                        section.addr,
-                        section.addr + size - 1,
-                        section.name,
-                        size
-                    );
-                }
-            }
-        }
-        println!();
+    // Allocate program memory for functions and assembly blocks
+    let mut pmem_addr = 0x0000u16;
+    for (name, code) in &codes {
+        pmmap.insert(name.clone(), pmem_addr);
+        pmem_addr += code.instructions.len() as u16;
     }
 
-    // Phase 2: Resolve - resolve symbols and fill unresolved operands
-    let resolved = match tasm::link::resolve(&allocated) {
-        Ok(resolved) => resolved,
-        Err(e) => {
-            eprintln!("Resolve error: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    if args.verbose {
-        println!("=== Phase 2: Symbol Resolution ===");
-        println!("Symbols resolved successfully");
-        println!();
+    // Allocate data memory for statics and constants
+    let mut dmem_addr = 0x0000u16;
+    for (name, (norm_type, _)) in statics.0.iter() {
+        dmmap.insert(name.clone(), dmem_addr);
+        dmem_addr += norm_type.sizeof() as u16;
+    }
+    for (name, (norm_type, _, _)) in consts.0.iter() {
+        dmmap.insert(name.clone(), dmem_addr);
+        dmem_addr += norm_type.sizeof() as u16;
     }
 
-    // Phase 3: Generate binary from resolved allocation
-    let binary = match tasm::link::generate_binary(&resolved) {
-        Ok(bin) => bin,
-        Err(e) => {
-            eprintln!("Binary generation error: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let binary_size = binary.len();
-
     if args.verbose {
-        println!("=== Phase 3: Binary Generation ===");
-        println!("Binary size: {} bytes", binary_size);
-        println!();
+        println!("\n=== Memory Allocation ===");
+        println!("Program Memory:");
+        pmmap.print();
+        println!("Data Memory:");
+        dmmap.print();
     }
 
-    // Write output to file
-    std::fs::write(&args.output, binary)
-        .expect(&format!("Failed to write to file: {}", args.output));
+    // 6. Resolve symbols
+    let resolved = tasm::link::resolve_symbols(&codes, &pmmap, &dmmap);
 
-    println!(
-        "Successfully compiled {} to {}",
-        args.input.join(", "),
-        args.output
-    );
+    // 7. Generate binary
+    let pbin = tasm::link::generate_program_binary(&resolved, &pmmap).unwrap();
+    let dbin = tasm::link::generate_data_binary(&consts, &dmmap).unwrap();
+
+    // 8. Write output to file
+    std::fs::write(&args.output, pbin).expect(&format!("Failed to write to file: {}", args.output));
+
+    // Write data binary if exists
+    if !dbin.is_empty() {
+        let data_output = args.output.replace(".bin", ".data.bin");
+        std::fs::write(&data_output, dbin)
+            .expect(&format!("Failed to write data file: {}", data_output));
+
+        println!(
+            "Successfully compiled {} to {} and {}",
+            args.input.join(", "),
+            args.output,
+            data_output
+        );
+    } else {
+        println!(
+            "Successfully compiled {} to {}",
+            args.input.join(", "),
+            args.output
+        );
+    }
 }
