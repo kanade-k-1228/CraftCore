@@ -342,10 +342,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     // Check if this is a label (followed by colon)
                     if check!(self, Colon) {
                         expect!(self, Colon)?;
-                        // Optional semicolon after label
-                        if check!(self, Semicolon) {
-                            expect!(self, Semicolon)?;
-                        }
                         return Ok(Some(AsmStmt::Label(name)));
                     } else {
                         // It's an instruction - parse the arguments
@@ -354,9 +350,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                         } else {
                             Vec::new()
                         };
-
-                        // Semicolon after instruction
-                        expect!(self, Semicolon)?;
+                        if check!(self, Semicolon) {
+                            expect!(self, Semicolon)?;
+                        }
                         return Ok(Some(AsmStmt::Inst(name, args)));
                     }
                 }
@@ -369,19 +365,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     } else {
                         Vec::new()
                     };
-                    expect!(self, Semicolon)?;
+                    if check!(self, Semicolon) {
+                        expect!(self, Semicolon)?;
+                    }
                     return Ok(Some(AsmStmt::Inst("if".to_string(), args)));
-                }
-
-                KwReturn => {
-                    self.tokens.next(); // consume 'return'
-                    let args = if check!(self, LParen) {
-                        self.parse_call()?
-                    } else {
-                        Vec::new()
-                    };
-                    expect!(self, Semicolon)?;
-                    return Ok(Some(AsmStmt::Inst("return".to_string(), args)));
                 }
 
                 // Empty statement
@@ -391,18 +378,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 }
 
                 _ => {
-                    // Try to parse as an expression (for compatibility)
-                    let expr = self.parse_expr()?;
-                    expect!(self, Semicolon)?;
-
-                    // Convert expression to assembly instruction if possible
-                    if let Expr::Call(func, args) = expr {
-                        if let Expr::Ident(name) = *func {
-                            return Ok(Some(AsmStmt::Inst(name, args)));
-                        }
-                    }
-
-                    // Couldn't parse as assembly statement
                     return Err(ParseError::UnexpectedToken(token));
                 }
             }
