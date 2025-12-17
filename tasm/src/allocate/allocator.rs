@@ -1,4 +1,4 @@
-use super::structs::*;
+use crate::link::structs::*;
 use std::collections::HashMap;
 
 /// Allocate addresses for all items

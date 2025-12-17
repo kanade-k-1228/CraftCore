@@ -37,7 +37,7 @@ pub enum Error {
 
 impl Error {
     /// Print error with diagnostic information showing file location and line content
-    pub fn print_diag(&self, files: &IndexMap<String, Vec<String>>, file: &str, line_idx: usize) {
+    pub fn cprint(&self, files: &IndexMap<String, Vec<String>>, file: &str, line_idx: usize) {
         // Print the error message
         cprintln!("<red,bold>error</>: {}", self);
 

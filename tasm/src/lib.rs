@@ -1,8 +1,6 @@
-pub mod codegen;
+pub mod allocate;
+pub mod bingen;
 pub mod collect;
-pub mod fir;
-pub mod flowgen;
-pub mod global;
+pub mod convert;
 pub mod grammer;
-pub mod linker;
-pub mod utils;
+pub mod link;

@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
 pub enum Ident {
-    Code,
+    Label,
     Static,
     Const,
 }

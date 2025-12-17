@@ -1,4 +1,4 @@
-use super::structs::*;
+use crate::link::structs::*;
 use std::collections::HashMap;
 
 /// Generate binary from allocated sections

@@ -115,6 +115,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let mut program = Vec::new();
         while let Some(token) = self.tokens.peek() {
             match token.kind {
+                // Skip comment tokens
+                Comment(_) => {
+                    self.tokens.next(); // consume comment
+                    continue;
+                }
+
                 KwType => match self.parse_typedef() {
                     Ok((name, typ)) => {
                         program.push(Def::Type(name, typ));
@@ -126,8 +132,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 },
 
                 KwConst => match self.parse_const() {
-                    Ok((name, typ, expr)) => {
-                        program.push(Def::Const(name, typ, expr));
+                    Ok((name, addr, typ, expr)) => {
+                        program.push(Def::Const(name, addr, typ, expr));
                     }
                     Err(err) => {
                         self.errors.push(err);
@@ -187,15 +193,16 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Const
-    /// `const <ident> ?(: <type>) = <expr> ;`
-    fn parse_const(&mut self) -> Result<(String, Option<Type>, Expr), ParseError> {
+    /// `const <ident> ?( @ <expr> ) = <expr> ;`
+    fn parse_const(&mut self) -> Result<(String, Option<Expr>, Option<Type>, Expr), ParseError> {
         expect!(self, KwConst)?;
         let name = self.parse_ident()?;
-        let typ = optional!(self, Colon, self.parse_type()?);
+        let addr = optional!(self, Atmark, self.parse_expr()?);
+        // Type annotation is no longer allowed for const - type is always inferred from the initial value
         expect!(self, Equal)?;
         let expr = self.parse_expr()?;
         expect!(self, Semicolon)?;
-        Ok((name, typ, expr))
+        Ok((name, addr, None, expr))
     }
 
     /// Type
@@ -292,13 +299,22 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Function
-    /// `fn <ident> <args> -> <type> <block>`
+    /// `fn <ident> <args> ?( -> <type> ) <block>`
     fn parse_func(&mut self) -> Result<(String, Vec<(String, Type)>, Type, Stmt), ParseError> {
         expect!(self, KwFunc)?;
         let name = self.parse_ident()?;
         let args = self.parse_args()?;
-        expect!(self, Arrow)?;
-        let ret = self.parse_type()?;
+
+        // Check if there's a return type specified
+        let ret = if check!(self, Arrow) {
+            expect!(self, Arrow)?;
+            self.parse_type()?
+        } else {
+            // No return type specified - default to void/unit type
+            // For now, use Type::Int as a placeholder for void
+            Type::Int
+        };
+
         let body = self.parse_block()?;
         Ok((name, args, ret, body))
     }
@@ -365,11 +381,11 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Static variable definition
-    /// `static ?(@ <expr>) <ident> : <type>;`
+    /// `static <ident> ?( @ <expr> ) : <type> ;`
     fn parse_static(&mut self) -> Result<(String, Option<Expr>, Type), ParseError> {
         expect!(self, KwStatic)?;
-        let addr = optional!(self, Atmark, self.parse_expr()?);
         let name = self.parse_ident()?;
+        let addr = optional!(self, Atmark, self.parse_expr()?);
         expect!(self, Colon)?;
         let typ = self.parse_type()?;
         expect!(self, Semicolon)?;
@@ -382,6 +398,18 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         expect!(self, LCurly)?;
         let mut stmts = Vec::new();
         while !check!(self, RCurly) {
+            // Skip comments in block
+            while let Some(token) = self.tokens.peek() {
+                if matches!(token.kind, Comment(_)) {
+                    self.tokens.next();
+                } else {
+                    break;
+                }
+            }
+            // Check again after skipping comments
+            if check!(self, RCurly) {
+                break;
+            }
             let stmt = self.parse_stmt()?;
             stmts.push(stmt);
         }
@@ -393,6 +421,15 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// `;` | `var <ident> : <type> = <expr> ;` | `if ( <expr> ) <stmt> [ else <stmt> ]` |
     /// `while ( <expr> ) <stmt>` | `return [ <expr> ] ;` | `{ <stmt> ... }` | `<expr> ;`
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+        // Skip comment tokens at statement level
+        while let Some(token) = self.tokens.peek() {
+            if matches!(token.kind, Comment(_)) {
+                self.tokens.next();
+            } else {
+                break;
+            }
+        }
+
         if let Some(token) = &self.tokens.peek() {
             match &token.kind {
                 // Empty statement
@@ -652,14 +689,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     /// Cast expression
     /// `<expr> : <type>`
+    ///
+    /// Note: Simplified version - cast is not supported yet to avoid ambiguity
+    /// with type annotations in static/const declarations
     fn parse_cast(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_unary()?;
-        if check!(self, Colon) {
-            expect!(self, Colon)?;
-            let typ = self.parse_type()?;
-            expr = Expr::Cast(Box::new(expr), Box::new(typ));
-        }
-        Ok(expr)
+        // For now, we don't support cast expressions to avoid ambiguity
+        // TODO: Add proper cast support with different syntax or context awareness
+        self.parse_unary()
     }
 
     /// Unary expression
@@ -733,7 +769,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Primary expression
-    /// `( <expr> )` | `<ident>` | `<number>` | `<string>`
+    /// `( <expr> )` | `<ident>` | `<number>` | `<string>` | `{ ... }` | `[ ... ]`
     fn parse_prim(&mut self) -> Result<Expr, ParseError> {
         if let Some(token) = self.tokens.peek() {
             match token.kind {
@@ -802,9 +838,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             expect!(self, Colon)?;
             let expr = self.parse_expr()?;
             fields.push((name.clone(), expr));
+
+            // Check for comma - if present, continue. If not, we should be at the closing brace
             if check!(self, Comma) {
                 expect!(self, Comma)?;
-                continue;
+                // If there's a closing brace after the comma, break
+                if check!(self, RCurly) {
+                    break;
+                }
+            } else {
+                // No comma, so we must be at the end
+                break;
             }
         }
         expect!(self, RCurly)?;
@@ -819,9 +863,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         while !check!(self, RBracket) {
             let expr = self.parse_expr()?;
             items.push(expr);
+
+            // Check for comma - if present, continue. If not, we should be at the closing bracket
             if check!(self, Comma) {
                 expect!(self, Comma)?;
-                continue;
+                // If there's a closing bracket after the comma, break
+                if check!(self, RBracket) {
+                    break;
+                }
+            } else {
+                // No comma, so we must be at the end
+                break;
             }
         }
         expect!(self, RBracket)?;

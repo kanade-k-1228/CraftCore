@@ -1,0 +1,21 @@
+asm reset @ 0x0000 {
+  // Loop 1
+  t0 = 0x0010;
+  t0 = t0 - 1;
+  if(t0) goto -1;
+
+  // Loop 2
+  t0 = 0x0010;
+  a:
+  t0 = t0 - 1;
+  if(t0) goto a;
+
+  jump halt;
+}
+
+static pwcsr @ 0x0010 : int; // Power Control Register
+
+asm halt {
+  t0 = 0x0001;
+  pwcsr = t0;
+}

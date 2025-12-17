@@ -1,5 +1,48 @@
 # 文法
 
+## 定義
+
+プログラムは定義の集合です
+
+|            | 記法                                               |
+| ---------- | -------------------------------------------------- |
+| 型         | `type hoge : {x : int, y : int};`                  |
+| 定数       | `const hoge : int = 123 @ 0x0000;`                 |
+| 変数       | `static hoge : int @ 0x0000;`                      |
+| アセンブリ | `asm hoge @ 0x0000 { t0 = a; }`                    |
+| 関数       | `fn hoge(a : int, b : int) -> int { return a+b; }` |
+
+```
+def  =
+ | type   = 'type' ident ':' type ';'
+ | const  = 'const'  ident ':' type '=' expr ?('@' expr ) ';'
+ | static = 'static'  ident ':' type ?('@' expr ) ';'
+ | asm    = 'asm' ident '@' expr stmt
+ | func   = 'fn' ident '(' args ')' '->' type stmt
+```
+
+### 型定義
+
+独自の型は `type` 文で定義します。
+
+`type hoge : {x : int, y : int};`
+
+### 定数定義
+
+定数は `const` 文で定義します。
+
+`var hoge : int;`
+
+変数の型はコロンの後に書きます。
+
+### グローバル変数定義
+
+### アセンブリ定義
+
+アセンブリシーケンスを定義するブロックです。
+
+### 関数定義
+
 ## 型
 
 |            | 記法                   |
@@ -12,12 +55,12 @@
 
 ```
 type =
- | data   = "int"
- | addr   = "*" type
- | prim   = ident | "(" type ")"
- | arr    = "[" expr "]" type
- | struct = "{" (ident ":" type) % "," "}"
- | func   = "(" (ident ":" type) % "," ")" "=>" type
+ | data   = 'int'
+ | addr   = '*' type
+ | prim   = ident | '(' type ')'
+ | arr    = '[' expr ']' type
+ | struct = '{' (ident ':' type) % ',' '}'
+ | func   = '(' (ident ':' type) % ',' ')' '=>' type
 ```
 
 ### データ型
@@ -47,11 +90,11 @@ tasm は Data = 16 bit / Addres = 16 bit のシステム向けに設計されて
 型のサイズは固定です。次の計算規則に従い、コンパイル時に計算されます。
 
 ```
-sizeof(int) = 1
-sizeof(*T) = 1
-sizeof([N]T) = N × sizeof(T)
-sizeof({f₁: T₁, f₂: T₂, ...}) = sizeof(T₁) + sizeof(T₂) + ...
-sizeof((args) => Ret) = 0
+<int> = 1
+<*T> = 1
+<[N]T> = N × <T>
+<{f₁: T₁, f₂: T₂, ...}> = <T₁> + <T₂> + ...
+<(args) => Ret> = 0
 ```
 
 これらの規則により、型のサイズは常にコンパイル時に計算可能です。sizeof 演算子は型が使用するメモリを 16bit 単位で返します。
@@ -76,7 +119,7 @@ sizeof((args) => Ret) = 0
 
 メモリ上でサイズが同じ型どうしでキャストができます。
 
-`sizeof(a) == sizeof(TB)`
+`<a> == <TB>`
 
 後置演算子 `$` で変数をブーリアン型にします。
 
@@ -147,81 +190,28 @@ C 言語と異なり、配列とポインタの暗黙のキャストは行いま
 
 関数ポインタには関数のアドレスが入ってます。
 
-## 定義
-
-|            | 記法                                               |
-| ---------- | -------------------------------------------------- |
-| 型         | `type hoge : {x : int, y : int};`                  |
-| 定数       | `const hoge : int = 123;`                          |
-| 変数       | `static hoge : int;`                               |
-| アセンブリ | `asm hoge(a : int) { t0 = a; }`                    |
-| 関数       | `fn hoge(a : int, b : int) -> int { return a+b; }` |
-
-```
-def  =
- | type_def = "type" ident ":" type ";"
- | const_def = "const"  ident ":" type "=" expr ";"
- | static_def = "static"  ident ":" type ";"
- | asm_def = "asm" ident stmt
- | func_def = "func" ident '(' args ')' '->' type stmt
-```
-
-### 型定義
-
-独自の型は `type` 文で定義します。
-
-`type hoge : {x : int, y : int};`
-
-### 定数定義
-
-定数は `const` 文で定義します。
-
-`var hoge : int;`
-
-変数の型はコロンの後に書きます。
-
-
-### グローバル変数定義
-
-
-
-### アセンブリ定義
-
-インラインアセンブリ関数を定義するブロックです。
-
-### 関数定義
-
-
-
 ## 文
 
-関数定義には複文 (compound satements) が続き、
+関数定義には複文 (block satements) が続き、
 その中には文 (statement) が並びます。
 
 ```
-compound = "{" stmt* "}"
+block = '{' stmt* '}'
 
 stmt =
-空文
- | void_stmt = ";"
-複文
- | compound  = "{" stmt* "}"
-式文
- | expr_stmt = expr ";"
-ローカル変数定義
- | lvar_def  = "var" ident ":" type ";"
-代入文
- | assign    = expr "=" expr ";"
-制御文
- | if        = "if" "(" expr ")" stmt
- | if_else   = "if" "(" expr ")" stmt "else" stmt
- | goto      = "goto" ident ";"
- | label     = ident ":"
- | return    = "return" expr ";"
-繰り返し文
- | while     = "while" "(" expr ")" stmt
- | continue  = "continue" ";"
- | break     = "break" ";"
+ | void     = ';'            # 空文
+ | block    = '{' stmt* '}'  # 複文
+ | expr     = expr ';'       # 式文
+ | var      = 'var' ident ':' type ';' # ローカル変数定義
+ | assign   = expr '=' expr ';' # 代入文
+# 制御文
+ | if       = 'if' '(' expr ')' stmt
+ | if_else  = 'if' '(' expr ')' stmt 'else' stmt
+ | return   = 'return' expr ';'
+# 繰り返し文
+ | while    = 'while' ?( ':' ident ) '(' expr ')' stmt
+ | continue = 'continue' ?( ident ) ';'
+ | break    = 'break' ?( ident ) ';'
 ```
 
 ### 式文
@@ -242,36 +232,20 @@ stmt =
 
 このような動作をしています。
 
-### goto label
-
-関数呼び出しの ABI を守るため、goto は同一の関数内である必要がある。
-
-ラベルの前に関数名を付記することで `<func-name>_<label-name>` 、
-関数外への goto はアセンブラがエラーを出す。
-
-アドホックですが、goto はそんなに使わないのでこの程度のエラー処理でいいでしょう。
-
-```
-func main : ()=>int {
-  goto hoge; //     jump zero zero main_hoge
-hoge:      // main_hoge:
-}
-```
-
 ## 式
 
 ### 演算
 
 ```
-expr = cond = or ("?" expr ":" cond)?
-or  = xor ("|" xor)*
-xor = and ("^" and)*
-and = equal ("&" equal)*
-equal = relat ("==" relat | "!=" relat)*
-relat = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
-shift = (shift "<<" | shift ">>")? add
-add   = mul ("+" mul | "-" mul)*
-mul   = prim ("**" prim | "//" prim | "%%" prim)*
+expr = cond = or ('?' expr ':' cond)?
+or  = xor ('|' xor)*
+xor = and ('^' and)*
+and = equal ('&' equal)*
+equal = relat ('==' relat | '!=' relat)*
+relat = shift ('<' shift | '<=' shift | '>' shift | '>=' shift)*
+shift = (shift '<<' | shift '>>')? add
+add   = mul ('+' mul | '-' mul)*
+mul   = prim ('**' prim | '//' prim | '%%' prim)*
 ```
 
 ### 後置演算子
@@ -279,12 +253,12 @@ mul   = prim ("**" prim | "//" prim | "%%" prim)*
 ```
 post =
  | prim
- | cast      = post ":" type
- | ref       = post "*"
- | addr      = post "@"
- | array     = post "[" expr "]"
- | member    = post "." ident
- | func_call = post "(" expr % "," )"
+ | cast   = post ':' type
+ | ref    = post '*'
+ | addr   = post '@'
+ | array  = post '[' expr ']'
+ | member = post '.' ident
+ | call   = post '(' expr % ',' )'
 ```
 
 ## 値
@@ -293,6 +267,10 @@ post =
 prim =
  | num
  | ident
- | "(" expr ")"
- | "<" type ">" // sizeof
+ | '(' expr ')'
+ | '<' type '>' // sizeof
 ```
+
+## アセンブリ
+
+`asm` ブロック中では次の記述ができます。

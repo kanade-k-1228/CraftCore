@@ -1,21 +1,29 @@
-pub mod allocator;
-pub mod generator;
 pub mod structs;
 
 use structs::*;
+pub use structs::{Allocated, SectionData};
 
-/// Main linker entry point
-pub fn link(asm_code: &str) -> Result<Vec<u8>, String> {
+/// Phase 1: Link - allocate addresses for objects
+pub fn link(asm_code: &str) -> Result<Allocated, String> {
     // Parse assembly code into items
     let items = parse_asm(asm_code)?;
 
     // Allocate addresses
-    let allocated = allocator::allocate(items)?;
+    let allocated = crate::allocate::allocator::allocate(items)?;
 
-    // Generate binary
-    let binary = generator::generate(&allocated)?;
+    Ok(allocated)
+}
 
-    Ok(binary)
+/// Phase 2: Resolve - resolve symbols and fill unresolved operands
+pub fn resolve(allocated: &Allocated) -> Result<Allocated, String> {
+    // For now, just return the allocated as-is
+    // In the future, this will resolve symbol references in instructions
+    Ok(allocated.clone())
+}
+
+/// Phase 3: Generate binary from resolved allocation
+pub fn generate_binary(allocated: &Allocated) -> Result<Vec<u8>, String> {
+    crate::bingen::generator::generate(allocated)
 }
 
 /// Parse assembly code string into items

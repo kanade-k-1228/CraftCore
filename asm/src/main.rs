@@ -49,10 +49,10 @@ fn main() -> Result<(), Error> {
     let parsed: IndexMap<String, Vec<(Option<Stmt>, Option<String>)>> = {
         let mut result = IndexMap::new();
 
-        for (path, file_lines) in &files {
-            let mut parsed_lines = vec![];
+        for (file, lines) in &files {
+            let mut parsed = vec![];
 
-            for (idx, raw) in file_lines.iter().enumerate() {
+            for (idx, raw) in lines.iter().enumerate() {
                 // Split comment
                 let (code, comment) = match raw.split_once(';') {
                     Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
@@ -60,17 +60,16 @@ fn main() -> Result<(), Error> {
                 };
 
                 // Parse content
-                let (content, errors) = Stmt::parse(&code);
+                let (stmt, errors) = Stmt::parse(&code);
 
-                // Print parse errors
-                for error in errors {
-                    error.print_diag(&files, path.as_str(), idx);
+                for e in errors {
+                    e.cprint(&files, file.as_str(), idx);
                 }
 
-                parsed_lines.push((content, comment));
+                parsed.push((stmt, comment));
             }
 
-            result.insert(path.clone(), parsed_lines);
+            result.insert(file.clone(), parsed);
         }
 
         result
@@ -85,40 +84,39 @@ fn main() -> Result<(), Error> {
         for (path, parsed_lines) in parsed {
             let mut updated_lines = vec![];
             for (idx, (content, comment)) in parsed_lines.into_iter().enumerate() {
-                let updated_content = match content {
+                let pcfilled = match content {
                     Some(Stmt::Label(key)) => {
-                        if let Some(_prev) =
-                            idents.insert(key.clone(), (path.clone(), idx), Ident::Code, pc)
+                        if let Some(_) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Label, pc)
                         {
-                            // 重複ラベルの警告は一旦省略
+                            Error::RedefinedLabel(key.clone()).cprint(&files, &path, idx);
                         }
                         Some(Stmt::Label(key))
                     }
                     Some(Stmt::Static(key, val)) => {
-                        if let Some(_prev) =
+                        if let Some(_) =
                             idents.insert(key.clone(), (path.clone(), idx), Ident::Static, val)
                         {
-                            // 重複ラベルの警告は一旦省略
+                            Error::RedefinedLabel(key.clone()).cprint(&files, &path, idx);
                         }
                         Some(Stmt::Static(key, val))
                     }
                     Some(Stmt::Const(key, val)) => {
-                        if let Some(_prev) =
+                        if let Some(_) =
                             idents.insert(key.clone(), (path.clone(), idx), Ident::Const, val)
                         {
-                            // 重複ラベルの警告は一旦省略
+                            Error::RedefinedLabel(key.clone()).cprint(&files, &path, idx);
                         }
                         Some(Stmt::Const(key, val))
                     }
                     Some(Stmt::Code(asm, _)) => {
-                        let current_pc = pc;
                         pc += 1;
-                        Some(Stmt::Code(asm, Some(current_pc)))
+                        Some(Stmt::Code(asm, Some(pc - 1)))
                     }
                     None => None,
                 };
 
-                updated_lines.push((updated_content, comment));
+                updated_lines.push((pcfilled, comment));
             }
 
             resolved.insert(path, updated_lines);
@@ -127,33 +125,27 @@ fn main() -> Result<(), Error> {
         (resolved, idents)
     };
 
-    // Pass 4: Resolve labels
     println!("4. Resolve labels");
-
-    let resolved_instructions: IndexMap<String, Vec<(Option<Stmt>, Option<String>)>> = {
+    let resolved: IndexMap<String, Vec<(Option<Stmt>, Option<String>)>> = {
         let mut resolved = IndexMap::new();
-
-        for (path, parsed_lines) in &parsed {
+        for (path, parsed) in &parsed {
             let mut resolved_lines = vec![];
 
-            for (idx, (content, comment)) in parsed_lines.iter().enumerate() {
-                if let Some(Stmt::Code(code, pc)) = content {
+            for (idx, (stmt, comment)) in parsed.iter().enumerate() {
+                if let Some(Stmt::Code(code, pc)) = stmt {
                     match code.resolve(&idents) {
-                        Ok(_inst) => {
-                            // Keep the statement as is - resolution succeeded
+                        Ok(_) => {
                             resolved_lines
                                 .push((Some(Stmt::Code(code.clone(), *pc)), comment.clone()));
                         }
                         Err(err) => {
-                            err.print_diag(&files, path.as_str(), idx);
-                            // Keep the statement even if resolution failed
+                            err.cprint(&files, path.as_str(), idx);
                             resolved_lines
                                 .push((Some(Stmt::Code(code.clone(), *pc)), comment.clone()));
                         }
                     }
                 } else {
-                    // Non-Asm statements are kept as is
-                    resolved_lines.push((content.clone(), comment.clone()));
+                    resolved_lines.push((stmt.clone(), comment.clone()));
                 }
             }
 
@@ -170,10 +162,9 @@ fn main() -> Result<(), Error> {
         File::create(&args.output).map_err(|e| Error::FileCreate(args.output.clone(), e))?;
 
     // Extract and write instructions from the resolved structure
-    for (_path, resolved_lines) in &resolved_instructions {
-        for (_idx, (content, _comment)) in resolved_lines.iter().enumerate() {
-            if let Some(Stmt::Code(asm, _pc)) = content {
-                // Only generate binary for successfully resolved instructions
+    for (_, resolved_lines) in &resolved {
+        for (_, (content, _)) in resolved_lines.iter().enumerate() {
+            if let Some(Stmt::Code(asm, _)) = content {
                 if let Ok(inst) = asm.resolve(&idents) {
                     let bin = inst.to_op().to_bin();
                     file.write(&bin.to_le_bytes())
@@ -184,7 +175,7 @@ fn main() -> Result<(), Error> {
     }
 
     if args.dump {
-        util::print_dump(&resolved_instructions, &idents);
+        util::print_dump(&resolved, &idents);
     }
 
     Ok(())
