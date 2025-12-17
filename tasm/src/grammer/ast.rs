@@ -6,7 +6,7 @@ pub enum Def {
     Type(String, Type),                              // name, type
     Const(String, Option<Expr>, Option<Type>, Expr), // name, addr, type, value
     Static(String, Option<Expr>, Type),              // name, addr, type
-    Asm(String, Option<Expr>, Stmt),                 // name, addr, body
+    Asm(String, Option<Expr>, Vec<AsmStmt>),         // name, addr, body
     Func(String, Vec<(String, Type)>, Type, Stmt),   // name, arg, ret, body
 }
 
@@ -31,6 +31,13 @@ pub enum Stmt {
     Return(Option<Expr>),                     // return      | 'return' ?( expr ) ';'
     Var(String, Type, Option<Expr>),          // variable    | 'var' name ':' type ?('=' init) ';'
     Error,                                    // placeholder for a statement that failed to parse
+}
+
+// Assembly-specific AST types
+#[derive(Debug, Clone)]
+pub enum AsmStmt {
+    Label(String),           // label definition | name:
+    Inst(String, Vec<Expr>), // instruction      | inst(arg1, arg2, ...)
 }
 
 #[derive(Debug, Clone)]

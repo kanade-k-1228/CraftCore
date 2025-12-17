@@ -26,7 +26,7 @@ pub fn asm2code(ast: &ast::AST, _asms: &AsmMap, _consts: &ConstMap) -> HashMap<S
 }
 
 /// Generate instructions from an assembly block
-fn generate_asm_block(asm_name: String, body: &ast::Stmt) -> Vec<AsmLine> {
+fn generate_asm_block(asm_name: String, body: &[ast::AsmStmt]) -> Vec<AsmLine> {
     let mut instructions = Vec::new();
 
     // Add entry label for the assembly block
@@ -36,51 +36,29 @@ fn generate_asm_block(asm_name: String, body: &ast::Stmt) -> Vec<AsmLine> {
     });
 
     // Parse the assembly statements
-    compile_asm_stmt(&mut instructions, body);
+    for stmt in body {
+        compile_asm_stmt(&mut instructions, stmt);
+    }
 
     instructions
 }
 
-/// Compile assembly statements
-fn compile_asm_stmt(instructions: &mut Vec<AsmLine>, stmt: &ast::Stmt) {
+/// Compile a single assembly statement
+fn compile_asm_stmt(instructions: &mut Vec<AsmLine>, stmt: &ast::AsmStmt) {
     match stmt {
-        ast::Stmt::Block(stmts) => {
-            for s in stmts {
-                compile_asm_stmt(instructions, s);
-            }
+        ast::AsmStmt::Label(name) => {
+            // Add label
+            instructions.push(AsmLine {
+                inst: AsmInst::Label(name.clone()),
+                symbols: Vec::new(),
+            });
         }
-        ast::Stmt::Expr(expr) => {
-            // In assembly blocks, expressions are typically assembly instructions
-            if let Some(inst) = parse_asm_expr(expr) {
+        ast::AsmStmt::Inst(name, args) => {
+            // Parse instruction
+            if let Some(inst) = parse_instruction(name, args) {
                 instructions.push(inst);
             }
         }
-        _ => {
-            // Other statement types might not be relevant in assembly blocks
-            // Or could be handled specially
-        }
-    }
-}
-
-/// Parse an expression as an assembly instruction
-fn parse_asm_expr(expr: &ast::Expr) -> Option<AsmLine> {
-    match expr {
-        ast::Expr::Call(func_expr, args) => {
-            if let ast::Expr::Ident(inst_name) = &**func_expr {
-                // Parse instruction based on name
-                parse_instruction(inst_name, args)
-            } else {
-                None
-            }
-        }
-        ast::Expr::Ident(label) => {
-            // Standalone identifier might be a label
-            Some(AsmLine {
-                inst: AsmInst::Label(label.clone()),
-                symbols: Vec::new(),
-            })
-        }
-        _ => None,
     }
 }
 
@@ -112,17 +90,72 @@ fn parse_instruction(inst_name: &str, args: &[ast::Expr]) -> Option<AsmLine> {
             let rs2 = parse_register(&args[2])?;
             Some(Inst::SUB(rd, rs1, rs2))
         }
+        "load" if args.len() == 2 => {
+            // load(rd, addr/imm)
+            let rd = parse_register(&args[0])?;
+            // Check if second arg is an immediate or a symbol
+            if let Some(imm) = parse_immediate(&args[1]) {
+                Some(Inst::LOADI(rd, imm))
+            } else if let ast::Expr::Ident(symbol) = &args[1] {
+                // Symbol reference - will be resolved later
+                return Some(AsmLine {
+                    inst: AsmInst::Inst(Inst::LOADI(rd, 0)),
+                    symbols: vec![symbol.clone()],
+                });
+            } else {
+                None
+            }
+        }
         "load" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
             let imm = parse_immediate(&args[2])?;
             Some(Inst::LOAD(rd, rs, imm))
         }
+        "store" if args.len() == 2 => {
+            // store(symbol, rs)
+            if let ast::Expr::Ident(symbol) = &args[0] {
+                let rs = parse_register(&args[1])?;
+                // Symbol reference - will be resolved later
+                return Some(AsmLine {
+                    inst: AsmInst::Inst(Inst::STORE(rs, Reg::Z, 0)),
+                    symbols: vec![symbol.clone()],
+                });
+            } else {
+                None
+            }
+        }
         "store" if args.len() == 3 => {
             let rs2 = parse_register(&args[0])?;
             let rs1 = parse_register(&args[1])?;
             let imm = parse_immediate(&args[2])?;
             Some(Inst::STORE(rs2, rs1, imm))
+        }
+        "if" if args.len() == 2 => {
+            // if(cond_reg, label/offset)
+            let cond = parse_register(&args[0])?;
+            // Check if it's a symbol or immediate
+            if let Some(imm) = parse_immediate(&args[1]) {
+                // Absolute address jump
+                Some(Inst::IF(cond, imm))
+            } else if let ast::Expr::Ident(label) = &args[1] {
+                // Label reference - will be resolved later
+                return Some(AsmLine {
+                    inst: AsmInst::Inst(Inst::IF(cond, 0)),
+                    symbols: vec![label.clone()],
+                });
+            } else if let ast::Expr::Unary(ast::UnaryOp::Neg, inner) = &args[1] {
+                // Negative immediate for relative backward jump
+                if let Some(imm) = parse_immediate(inner) {
+                    // Use IFR for relative jumps with negative offsets
+                    let offset = (-(imm as i16)) as u16;
+                    Some(Inst::IFR(cond, offset))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         }
         "jump" if args.len() == 1 => {
             // Check if it's a symbol or immediate

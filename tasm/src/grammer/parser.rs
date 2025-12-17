@@ -1,4 +1,4 @@
-use super::ast::{BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
+use super::ast::{AsmStmt, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
 use super::token::{Token, TokenKind::*};
 use std::iter::Peekable;
 
@@ -285,8 +285,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Assembly
-    /// `asm <ident> ?( <args> ) ?(@ <expr>) { <stmt> ... }`
-    fn parse_asm(&mut self) -> Result<(String, Option<Expr>, Stmt), ParseError> {
+    /// `asm <ident> ?( <args> ) ?(@ <expr>) { <asm-stmts> ... }`
+    fn parse_asm(&mut self) -> Result<(String, Option<Expr>, Vec<AsmStmt>), ParseError> {
         expect!(self, KwAsm)?;
         let name = self.parse_ident()?;
         // Optional arguments (currently ignored)
@@ -294,8 +294,121 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             let _args = self.parse_args()?;
         }
         let addr = optional!(self, Atmark, self.parse_expr()?);
-        let body = self.parse_block()?;
+        let body = self.parse_asm_block()?;
         Ok((name, addr, body))
+    }
+
+    /// Parse assembly block
+    /// `{ <asm-stmt>* }`
+    fn parse_asm_block(&mut self) -> Result<Vec<AsmStmt>, ParseError> {
+        expect!(self, LCurly)?;
+        let mut statements = Vec::new();
+
+        while !check!(self, RCurly) {
+            // Skip comment tokens (just consume them, don't store)
+            while let Some(token) = self.tokens.peek() {
+                if let Comment(_) = &token.kind {
+                    self.tokens.next();
+                } else {
+                    break;
+                }
+            }
+
+            // Check again after comments
+            if check!(self, RCurly) {
+                break;
+            }
+
+            // Try to parse assembly statement
+            if let Some(stmt) = self.parse_asm_stmt()? {
+                statements.push(stmt);
+            }
+        }
+
+        expect!(self, RCurly)?;
+        Ok(statements)
+    }
+
+    /// Parse a single assembly statement
+    fn parse_asm_stmt(&mut self) -> Result<Option<AsmStmt>, ParseError> {
+        if let Some(token) = self.tokens.peek().cloned() {
+            // Handle keywords that can be instruction names in assembly
+            match &token.kind {
+                // Regular identifier
+                Ident(name) => {
+                    let name = name.clone();
+                    self.tokens.next(); // consume identifier
+
+                    // Check if this is a label (followed by colon)
+                    if check!(self, Colon) {
+                        expect!(self, Colon)?;
+                        // Optional semicolon after label
+                        if check!(self, Semicolon) {
+                            expect!(self, Semicolon)?;
+                        }
+                        return Ok(Some(AsmStmt::Label(name)));
+                    } else {
+                        // It's an instruction - parse the arguments
+                        let args = if check!(self, LParen) {
+                            self.parse_call()?
+                        } else {
+                            Vec::new()
+                        };
+
+                        // Semicolon after instruction
+                        expect!(self, Semicolon)?;
+                        return Ok(Some(AsmStmt::Inst(name, args)));
+                    }
+                }
+
+                // Keywords that can be instructions in assembly
+                KwIf => {
+                    self.tokens.next(); // consume 'if'
+                    let args = if check!(self, LParen) {
+                        self.parse_call()?
+                    } else {
+                        Vec::new()
+                    };
+                    expect!(self, Semicolon)?;
+                    return Ok(Some(AsmStmt::Inst("if".to_string(), args)));
+                }
+
+                KwReturn => {
+                    self.tokens.next(); // consume 'return'
+                    let args = if check!(self, LParen) {
+                        self.parse_call()?
+                    } else {
+                        Vec::new()
+                    };
+                    expect!(self, Semicolon)?;
+                    return Ok(Some(AsmStmt::Inst("return".to_string(), args)));
+                }
+
+                // Empty statement
+                Semicolon => {
+                    expect!(self, Semicolon)?;
+                    return Ok(None);
+                }
+
+                _ => {
+                    // Try to parse as an expression (for compatibility)
+                    let expr = self.parse_expr()?;
+                    expect!(self, Semicolon)?;
+
+                    // Convert expression to assembly instruction if possible
+                    if let Expr::Call(func, args) = expr {
+                        if let Expr::Ident(name) = *func {
+                            return Ok(Some(AsmStmt::Inst(name, args)));
+                        }
+                    }
+
+                    // Couldn't parse as assembly statement
+                    return Err(ParseError::UnexpectedToken(token));
+                }
+            }
+        }
+
+        Err(ParseError::UnexpectedEOF)
     }
 
     /// Function
