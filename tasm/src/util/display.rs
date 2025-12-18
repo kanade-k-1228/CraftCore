@@ -2,7 +2,7 @@ use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap};
 use crate::convert::Code;
 use crate::link::structs::AsmInst;
 use bimap::BiMap;
-use color_print::{cprint, cprintln};
+use color_print::cprintln;
 use std::collections::HashMap;
 
 pub fn binprint(
@@ -15,7 +15,6 @@ pub fn binprint(
     funcs: &FuncMap,
 ) {
     // Program Memory Layout
-    println!("+-[Inst]-+------------------------------------------------------------------------");
     let mut iblocks: Vec<_> = imap
         .iter()
         .map(|(name, addr)| {
@@ -40,10 +39,11 @@ pub fn binprint(
         .collect();
     iblocks.sort_by_key(|(_, addr, _, _, _, _)| *addr);
 
-    for (name, addr, size, kind, signature, code) in iblocks {
+    for (name, addr, size, kind, ty, code) in iblocks {
+        print!("{} + {}\r", "-".repeat(18), "-".repeat(39));
         match kind {
-            "asm" => cprintln!("+--------+ <red>{}</red>", name),
-            "func" => cprintln!("+--------+ <green>{}</green> : {}", name, signature),
+            "asm" => cprintln!("{} + <red>{}</red> ", "-".repeat(18), name),
+            "func" => cprintln!("{} + <green>{}</green> : {} ", "-".repeat(18), name, ty),
             _ => unreachable!(),
         }
 
@@ -53,15 +53,20 @@ pub fn binprint(
                 match &line.inst {
                     AsmInst::Inst(inst) => {
                         let asm_text = inst.cformat();
-                        cprintln!("| 0x{:04X} : {}", current_addr, asm_text);
+                        let bin = inst.clone().to_op().to_bin();
+                        let bytes = bin.to_le_bytes();
+                        cprintln!(
+                            "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",
+                            current_addr,
+                            bytes[0],
+                            bytes[1],
+                            bytes[2],
+                            bytes[3],
+                            asm_text
+                        );
                         current_addr += 1;
                     }
-                    AsmInst::Label(label) => {
-                        cprintln!("| <m>{}</m>:", label);
-                    }
-                    AsmInst::Org(new_addr) => {
-                        current_addr = *new_addr;
-                    }
+                    _ => {}
                 }
             }
         } else {
@@ -70,39 +75,32 @@ pub fn binprint(
             }
         }
     }
+    println!("{} + {}", "-".repeat(18), "-".repeat(39));
 
     // Data Memory Layout
-    println!("+-[Data]-+------------------------------------------------------------------------");
-
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, type_str, is_static) = if let Some((ty, _)) = statics.0.get(name) {
-                (ty.sizeof() as u16, ty.fmt(), true)
+            let (size, ty, kind) = if let Some((ty, _)) = statics.0.get(name) {
+                (ty.sizeof() as u16, ty.fmt(), "static")
             } else if let Some((ty, _, _)) = consts.0.get(name) {
-                (ty.sizeof() as u16, ty.fmt(), false)
+                (ty.sizeof() as u16, ty.fmt(), "const")
             } else {
-                (0, "unknown".to_string(), false)
+                (0, "unknown".to_string(), "unknown")
             };
-            let end_addr = if size > 0 { addr + size - 1 } else { *addr };
-            (name.clone(), *addr, end_addr, type_str, is_static)
+            (kind, name.clone(), *addr, size, ty)
         })
         .collect();
-    dblocks.sort_by_key(|(_, addr, _, _, _)| *addr);
+    dblocks.sort_by_key(|(_, _, addr, _, _)| *addr);
 
-    for (name, addr, end_addr, type_str, is_static) in dblocks {
-        cprint!("| 0x{:04X} : 0x{:04X} | ", addr, end_addr);
-
-        // Display colored name
-        if is_static {
-            cprint!("<cyan>{}</cyan>", name);
-        } else {
-            cprint!("<yellow>{}</yellow>", name);
+    for (kind, name, addr, size, ty) in dblocks {
+        print!("[{:04X}:{:04X}] ", addr, addr + size);
+        match kind {
+            "static" => cprintln!("<cyan>{}</cyan> : {}", name, ty),
+            "const" => cprintln!("<yellow>{}</yellow> : {}", name, ty),
+            _ => unreachable!(),
         }
-
-        // Display type
-        cprintln!(" : {}", type_str);
     }
 
-    println!("+--------+------------------------------------------------------------------------");
+    println!("{}", "-".repeat(60));
 }
