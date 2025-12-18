@@ -885,6 +885,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Expr::NumberLit(val))
                 }
 
+                // Char literal
+                Char(ch) => {
+                    expect!(self, Char(_))?;
+                    Ok(Expr::CharLit(ch))
+                }
+
                 // Struct literal
                 LCurly => {
                     let fields = self.parse_struct_literal()?;

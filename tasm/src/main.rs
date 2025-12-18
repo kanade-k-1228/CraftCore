@@ -75,14 +75,22 @@ fn main() {
     for (name, fixed_addr) in &asms.0 {
         if let Some(code) = codes.get(name) {
             let addr = fixed_addr.map(|a| a as u16);
-            inst_items.insert(name.clone(), (code.instructions.len() as u16, addr));
+            // Count only actual instructions, not labels or directives
+            let inst_count = code.instructions.iter().filter(|line| {
+                matches!(line.inst, tasm::link::structs::AsmInst::Inst(_))
+            }).count() as u16;
+            inst_items.insert(name.clone(), (inst_count, addr));
         }
     }
 
     // Add functions without fixed addresses
     for (name, code) in &codes {
         if !asms.0.contains_key(name) {
-            inst_items.insert(name.clone(), (code.instructions.len() as u16, None));
+            // Count only actual instructions, not labels or directives
+            let inst_count = code.instructions.iter().filter(|line| {
+                matches!(line.inst, tasm::link::structs::AsmInst::Inst(_))
+            }).count() as u16;
+            inst_items.insert(name.clone(), (inst_count, None));
         }
     }
 
@@ -117,8 +125,36 @@ fn main() {
         dmap.insert(name, addr);
     }
 
+    // Calculate addresses for labels within assembly blocks and functions
+    for (code_name, code) in &codes {
+        if let Some(&base_addr) = imap.get_by_left(code_name) {
+            let mut current_addr = base_addr;
+            for inst_line in &code.instructions {
+                match &inst_line.inst {
+                    tasm::link::structs::AsmInst::Label(label_name) => {
+                        // Register label address
+                        // If another label exists at this address, remove it first
+                        // (BiMap doesn't allow multiple keys for the same value)
+                        // This prioritizes user-defined labels over block names
+                        if let Some(old_name) = imap.get_by_right(&current_addr).cloned() {
+                            imap.remove_by_left(&old_name);
+                        }
+                        imap.insert(label_name.clone(), current_addr);
+                    }
+                    tasm::link::structs::AsmInst::Inst(_) => {
+                        // Each instruction takes 4 bytes (1 word = 32 bits)
+                        current_addr += 1;
+                    }
+                    tasm::link::structs::AsmInst::Org(addr) => {
+                        current_addr = *addr;
+                    }
+                }
+            }
+        }
+    }
+
     // 6. Resolve symbols
-    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap);
+    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &consts);
 
     if args.verbose {
         print_binary(&imap, &dmap, &codes, &statics, &consts, &asms, &funcs);

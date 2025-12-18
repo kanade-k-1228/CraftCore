@@ -109,11 +109,28 @@ impl<'a> LineLexer<'a> {
 
             // 4. Char literal
             if ch0 == '\'' {
-                self.consume();
+                self.consume(); // consume opening '
                 let (_, ch1) = self.consume().unwrap();
-                let (_, ch2) = self.consume().unwrap();
-                assert!(ch2 == '\'');
-                tokens.push(Token::new(TokenKind::Char(ch1), pos));
+
+                let ch_value = if ch1 == '\\' {
+                    // Handle escape sequences
+                    let (_, ch2) = self.consume().unwrap();
+                    match ch2 {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        '\\' => '\\',
+                        '\'' => '\'',
+                        '0' => '\0',
+                        _ => panic!("Invalid escape sequence: \\{}", ch2),
+                    }
+                } else {
+                    ch1
+                };
+
+                let (_, ch_close) = self.consume().unwrap();
+                assert!(ch_close == '\'', "Expected closing ' but got {}", ch_close);
+                tokens.push(Token::new(TokenKind::Char(ch_value), pos));
                 continue;
             }
 

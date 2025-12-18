@@ -1,0 +1,16 @@
+asm reset @ 0x0000 {
+    jump(main)
+}
+
+asm intr @ 0x0001 {
+    addi(t0, t0, 0x0001)
+    iret()
+}
+
+asm main {
+    loadi(t0, 0x0000)
+  loop:
+    nop()
+    nop()
+    jump(loop)
+}
