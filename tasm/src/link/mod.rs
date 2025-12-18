@@ -28,7 +28,10 @@ pub fn resolve_symbols(
 
             // Try to resolve symbol - check constants first (for immediate values),
             // then program memory (functions/labels), then data memory (statics)
-            let addr = consts.0.get(symbol).and_then(|(_, const_expr, _)| {
+            let addr = consts
+                .0
+                .get(symbol)
+                .and_then(|(_, const_expr, _)| {
                     // Check if it's a constant - use its value directly
                     if let crate::eval::constexpr::ConstExpr::Number(n) = const_expr {
                         Some(*n as u16)

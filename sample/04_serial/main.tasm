@@ -1,6 +1,6 @@
-static serial_tx @ 0x1000 : int;
+static@0x1000 serial_tx : int;
 
-asm reset @ 0x0000 {
+asm@0x0000 reset {
     loadi(t0, 'H')
     store(t0, z, serial_tx)
     loadi(t0, 'e')

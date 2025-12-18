@@ -1,13 +1,13 @@
-static hoge @0x0200 : int;
-static fuga @0x0123 : int;
-static piyo @0x4567 : int;
-static foo  @0x89AB : int;
-static bar  @0xcdef : int;
-static exit @0x0010 : int;
+static@0x0200 hoge : int;
+static@0x0123 fuga : int;
+static@0x4567 piyo : int;
+static@0x89AB foo : int;
+static@0xcdef bar : int;
+static@0x0010 exit : int;
 
 const cst = 0x0100;
 
-asm reset @ 0x0000 {
+asm@0x0000 reset {
     add(t2, t0, t1)
     sub(t2, t0, t1)
     and(t2, t0, t1)

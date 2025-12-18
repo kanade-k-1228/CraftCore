@@ -31,7 +31,9 @@ fn generate_asm_block(asm_name: String, body: &[ast::AsmStmt]) -> Vec<AsmLine> {
 
     // Add entry label for the assembly block if no labels in body
     // (for backward compatibility and to ensure block has an entry point)
-    let has_labels = body.iter().any(|stmt| matches!(stmt, ast::AsmStmt::Label(_)));
+    let has_labels = body
+        .iter()
+        .any(|stmt| matches!(stmt, ast::AsmStmt::Label(_)));
     if !has_labels {
         instructions.push(AsmLine {
             inst: AsmInst::Label(asm_name.clone()),

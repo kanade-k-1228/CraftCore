@@ -76,9 +76,11 @@ fn main() {
         if let Some(code) = codes.get(name) {
             let addr = fixed_addr.map(|a| a as u16);
             // Count only actual instructions, not labels or directives
-            let inst_count = code.instructions.iter().filter(|line| {
-                matches!(line.inst, tasm::link::structs::AsmInst::Inst(_))
-            }).count() as u16;
+            let inst_count = code
+                .instructions
+                .iter()
+                .filter(|line| matches!(line.inst, tasm::link::structs::AsmInst::Inst(_)))
+                .count() as u16;
             inst_items.insert(name.clone(), (inst_count, addr));
         }
     }
@@ -87,9 +89,11 @@ fn main() {
     for (name, code) in &codes {
         if !asms.0.contains_key(name) {
             // Count only actual instructions, not labels or directives
-            let inst_count = code.instructions.iter().filter(|line| {
-                matches!(line.inst, tasm::link::structs::AsmInst::Inst(_))
-            }).count() as u16;
+            let inst_count = code
+                .instructions
+                .iter()
+                .filter(|line| matches!(line.inst, tasm::link::structs::AsmInst::Inst(_)))
+                .count() as u16;
             inst_items.insert(name.clone(), (inst_count, None));
         }
     }

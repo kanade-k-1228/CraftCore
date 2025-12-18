@@ -1,8 +1,8 @@
-asm reset @ 0x0000 {
+asm@0x0000 reset {
     jump(main)
 }
 
-asm intr @ 0x0001 {
+asm@0x0001 intr {
     addi(t0, t0, 0x0001)
     iret()
 }

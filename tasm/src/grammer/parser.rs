@@ -193,11 +193,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Const
-    /// `const <ident> ?( @ <expr> ) = <expr> ;`
+    /// `const ?( @ <expr> ) <ident> = <expr>;`
     fn parse_const(&mut self) -> Result<(String, Option<Expr>, Option<Type>, Expr), ParseError> {
         expect!(self, KwConst)?;
+
+        // Check if @ comes before identifier (syntax: const@0x1000 name)
+        let addr = if check!(self, Atmark) {
+            expect!(self, Atmark)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
         let name = self.parse_ident()?;
-        let addr = optional!(self, Atmark, self.parse_expr()?);
+
         // Type annotation is no longer allowed for const - type is always inferred from the initial value
         expect!(self, Equal)?;
         let expr = self.parse_expr()?;
@@ -285,15 +294,19 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Assembly
-    /// `asm <ident> ?( <args> ) ?(@ <expr>) { <asm-stmts> ... }`
+    /// `asm ?( @ <expr> ) <ident> { <asm-stmts> ... }`
     fn parse_asm(&mut self) -> Result<(String, Option<Expr>, Vec<AsmStmt>), ParseError> {
         expect!(self, KwAsm)?;
+
+        let addr = if check!(self, Atmark) {
+            expect!(self, Atmark)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
         let name = self.parse_ident()?;
-        // Optional arguments (currently ignored)
-        if check!(self, LParen) {
-            let _args = self.parse_args()?;
-        }
-        let addr = optional!(self, Atmark, self.parse_expr()?);
+
         let body = self.parse_asm_block()?;
         Ok((name, addr, body))
     }
@@ -469,11 +482,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Static variable definition
-    /// `static <ident> ?( @ <expr> ) : <type> ;`
+    /// `static ?( @ <expr> ) <ident> : <type> ;`
     fn parse_static(&mut self) -> Result<(String, Option<Expr>, Type), ParseError> {
         expect!(self, KwStatic)?;
+
+        // Check if @ comes before identifier (syntax: static@0x1000 name)
+        let addr = if check!(self, Atmark) {
+            expect!(self, Atmark)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
         let name = self.parse_ident()?;
-        let addr = optional!(self, Atmark, self.parse_expr()?);
+
         expect!(self, Colon)?;
         let typ = self.parse_type()?;
         expect!(self, Semicolon)?;
