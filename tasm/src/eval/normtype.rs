@@ -28,78 +28,24 @@ impl NormType {
 }
 
 impl NormType {
-    pub fn pprint(&self) {
-        println!("{}", self.format_pretty(0));
-    }
-
-    pub fn format_pretty(&self, indent: usize) -> String {
-        let indent_str = "  ".repeat(indent);
-        match self {
-            NormType::Int => format!("{}int", indent_str),
-            NormType::Addr(inner) => {
-                format!("{}*{}", indent_str, inner.format_inline())
-            }
-            NormType::Array(len, elem) => {
-                format!("{}[{}]{}", indent_str, len, elem.format_inline())
-            }
-            NormType::Struct(fields) => {
-                if fields.is_empty() {
-                    format!("{}{{}}", indent_str)
-                } else {
-                    let mut result = format!("{}{{\n", indent_str);
-                    for (name, field_type) in fields {
-                        result.push_str(&format!(
-                            "{}  {}: {},\n",
-                            indent_str,
-                            name,
-                            field_type.format_inline()
-                        ));
-                    }
-                    result.push_str(&format!("{}}}", indent_str));
-                    result
-                }
-            }
-            NormType::Func(params, ret) => {
-                if params.is_empty() {
-                    format!("{}() -> {}", indent_str, ret.format_inline())
-                } else {
-                    let mut result = format!("{}(\n", indent_str);
-                    for (name, param_type) in params {
-                        result.push_str(&format!(
-                            "{}  {}: {},\n",
-                            indent_str,
-                            name,
-                            param_type.format_inline()
-                        ));
-                    }
-                    result.push_str(&format!("{}) -> {}", indent_str, ret.format_inline()));
-                    result
-                }
-            }
-            NormType::Error => format!("{}error", indent_str),
-        }
-    }
-
-    pub fn format_inline(&self) -> String {
+    pub fn fmt(&self) -> String {
         match self {
             NormType::Int => "int".to_string(),
-            NormType::Addr(inner) => format!("*{}", inner.format_inline()),
-            NormType::Array(len, elem) => format!("{}[{}]", elem.format_inline(), len),
+            NormType::Addr(inner) => format!("*{}", inner.fmt()),
+            NormType::Array(len, elem) => format!("{}[{}]", elem.fmt(), len),
             NormType::Struct(fields) => {
-                if fields.is_empty() {
-                    "{}".to_string()
-                } else if fields.len() <= 3 {
-                    let field_strs: Vec<String> = fields
-                        .iter()
-                        .map(|(name, ty)| format!("{}: {}", name, ty.format_inline()))
-                        .collect();
-                    format!("{{{}}}", field_strs.join(", "))
-                } else {
-                    format!("{{...{} fields}}", fields.len())
+                let mut strs: Vec<String> = Vec::new();
+                for (name, ty) in fields {
+                    strs.push(format!("{}: {}", name, ty.fmt()));
                 }
+                format!("{{{}}}", strs.join(", "))
             }
-            NormType::Func(params, ret) => {
-                format!("fn({}) -> {}", params.len(), ret.format_inline())
+            NormType::Func(args, ret) => {
+                let mut strs: Vec<String> = Vec::new();
+                for (name, ty) in args {
+                    strs.push(format!("{}: {}", name, ty.fmt()));
+                }
+                format!("fn({}) -> {}", strs.join(", "), ret.fmt())
             }
             NormType::Error => "error".to_string(),
         }

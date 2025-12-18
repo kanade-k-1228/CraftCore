@@ -15,13 +15,13 @@ fn main() {
   return {x: sum.x, y: sum.y, z: sum.z};
 }
 
-static pwcsr @ 0x0010 : int; // Power Control Register
+static @ 0x0010 pwcsr : int; // Power Control Register
 
 fn halt() {
   pwcsr = 0x0001;
 }
 
-asm reset @ 0x0000 {
+asm @ 0x0000 reset  {
   call(main);
   call(halt);
 }

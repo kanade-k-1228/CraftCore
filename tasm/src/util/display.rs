@@ -1,12 +1,13 @@
 use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap};
 use crate::convert::Code;
+use crate::link::structs::AsmInst;
 use bimap::BiMap;
 use color_print::{cprint, cprintln};
 use std::collections::HashMap;
 
-pub fn print_binary(
-    pmmap: &BiMap<String, u16>,
-    dmmap: &BiMap<String, u16>,
+pub fn binprint(
+    imap: &BiMap<String, u16>,
+    dmap: &BiMap<String, u16>,
     codes: &HashMap<String, Code>,
     statics: &StaticMap,
     consts: &ConstMap,
@@ -14,57 +15,72 @@ pub fn print_binary(
     funcs: &FuncMap,
 ) {
     // Program Memory Layout
-    println!("+-[Inst]----------+---------------------------------------------------------------");
-
-    let mut prog_entries: Vec<_> = pmmap
+    println!("+-[Inst]-+------------------------------------------------------------------------");
+    let mut iblocks: Vec<_> = imap
         .iter()
         .map(|(name, addr)| {
             let code = codes.get(name);
-            let size = code.map_or(0, |c| c.instructions.len()) as u16;
-            let end_addr = if size > 0 { addr + size - 1 } else { *addr };
-
+            let size = code.map_or(0, |c| {
+                c.instructions
+                    .iter()
+                    .filter(|line| matches!(line.inst, AsmInst::Inst(_)))
+                    .count()
+            }) as u16;
             // Get type information
             let (type_info, signature) = if asms.0.contains_key(name) {
                 ("asm", String::new())
             } else if let Some((func_type, _)) = funcs.0.get(name) {
-                ("func", func_type.format_inline())
+                ("func", func_type.fmt())
             } else {
                 ("unknown", String::new())
             };
 
-            (name.clone(), *addr, end_addr, type_info, signature)
+            (name.clone(), *addr, size, type_info, signature, code)
         })
         .collect();
-    prog_entries.sort_by_key(|(_, addr, _, _, _)| *addr);
+    iblocks.sort_by_key(|(_, addr, _, _, _, _)| *addr);
 
-    for (name, addr, end_addr, type_info, signature) in prog_entries {
-        cprint!("| 0x{:04X} : 0x{:04X} | ", addr, end_addr);
-
-        // Display colored name
-        match type_info {
-            "asm" => cprint!("<red>{}</red>", name),
-            "func" => cprint!("<green>{}</green>", name),
-            _ => cprint!("{}", name),
+    for (name, addr, size, kind, signature, code) in iblocks {
+        match kind {
+            "asm" => cprintln!("+--------+ <red>{}</red>", name),
+            "func" => cprintln!("+--------+ <green>{}</green> : {}", name, signature),
+            _ => unreachable!(),
         }
 
-        // Display type signature for functions
-        if !signature.is_empty() {
-            cprintln!(" : {}", signature);
+        if let Some(code) = code {
+            let mut current_addr = addr;
+            for line in &code.instructions {
+                match &line.inst {
+                    AsmInst::Inst(inst) => {
+                        let asm_text = inst.cformat();
+                        cprintln!("| 0x{:04X} : {}", current_addr, asm_text);
+                        current_addr += 1;
+                    }
+                    AsmInst::Label(label) => {
+                        cprintln!("| <m>{}</m>:", label);
+                    }
+                    AsmInst::Org(new_addr) => {
+                        current_addr = *new_addr;
+                    }
+                }
+            }
         } else {
-            cprintln!("");
+            for a in addr..(addr + size) {
+                println!("| 0x{:04X} : ", a);
+            }
         }
     }
 
     // Data Memory Layout
-    println!("+-[Data]----------+---------------------------------------------------------------");
+    println!("+-[Data]-+------------------------------------------------------------------------");
 
-    let mut data_entries: Vec<_> = dmmap
+    let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, type_str, is_static) = if let Some((norm_type, _)) = statics.0.get(name) {
-                (norm_type.sizeof() as u16, norm_type.format_inline(), true)
-            } else if let Some((norm_type, _, _)) = consts.0.get(name) {
-                (norm_type.sizeof() as u16, norm_type.format_inline(), false)
+            let (size, type_str, is_static) = if let Some((ty, _)) = statics.0.get(name) {
+                (ty.sizeof() as u16, ty.fmt(), true)
+            } else if let Some((ty, _, _)) = consts.0.get(name) {
+                (ty.sizeof() as u16, ty.fmt(), false)
             } else {
                 (0, "unknown".to_string(), false)
             };
@@ -72,9 +88,9 @@ pub fn print_binary(
             (name.clone(), *addr, end_addr, type_str, is_static)
         })
         .collect();
-    data_entries.sort_by_key(|(_, addr, _, _, _)| *addr);
+    dblocks.sort_by_key(|(_, addr, _, _, _)| *addr);
 
-    for (name, addr, end_addr, type_str, is_static) in data_entries {
+    for (name, addr, end_addr, type_str, is_static) in dblocks {
         cprint!("| 0x{:04X} : 0x{:04X} | ", addr, end_addr);
 
         // Display colored name
@@ -88,5 +104,5 @@ pub fn print_binary(
         cprintln!(" : {}", type_str);
     }
 
-    println!("+-----------------+---------------------------------------------------------------");
+    println!("+--------+------------------------------------------------------------------------");
 }

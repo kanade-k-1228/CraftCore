@@ -8,7 +8,7 @@ use tasm::allocate::allocator::allocate;
 use tasm::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
 use tasm::grammer::lexer::LineLexer;
 use tasm::grammer::parser::Parser as TasmParser;
-use tasm::util::display::print_binary;
+use tasm::util::display::binprint;
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
@@ -161,7 +161,7 @@ fn main() {
     let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &consts);
 
     if args.verbose {
-        print_binary(&imap, &dmap, &codes, &statics, &consts, &asms, &funcs);
+        binprint(&imap, &dmap, &codes, &statics, &consts, &asms, &funcs);
     }
 
     // 7. Generate binary
