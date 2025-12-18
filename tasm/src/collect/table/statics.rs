@@ -1,7 +1,8 @@
 use crate::{
     collect::{utils::CollectError, ConstMap, TypeMap},
     eval::{
-        constexpr::{eval, ConstExpr},
+        constexpr::ConstExpr,
+        eval::eval,
         normtype::{collect_type, NormType},
     },
     grammer::ast,
@@ -21,7 +22,11 @@ impl StaticMap {
         for def in &ast.0 {
             if let ast::Def::Static(name, addr, ty) = def {
                 let resolved_ty = collect_type(&ty, consts, types)?;
-                let addr = addr.as_ref().and_then(|e| match eval(e, consts) {
+                // Create closure for eval
+                let env = |name: &str| -> Option<ConstExpr> {
+                    consts.0.get(name).map(|(_, lit, _)| lit.clone())
+                };
+                let addr = addr.as_ref().and_then(|e| match eval(e, &env) {
                     Ok(expr) => match expr {
                         ConstExpr::Number(n) => Some(n),
                         _ => None,

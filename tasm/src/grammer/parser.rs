@@ -787,7 +787,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Unary expression
-    /// `+ <expr>` | `- <expr>` | `* <expr>` | `& <expr>` | `@ <expr>` | `! <expr>`
+    /// `+ <expr>` | `- <expr>` | `! <expr>`
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if let Some(token) = self.tokens.peek() {
             match token.kind {
@@ -801,16 +801,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     let expr = self.parse_unary()?;
                     return Ok(Expr::Unary(UnaryOp::Neg, Box::new(expr)));
                 }
-                Star => {
-                    expect!(self, Star)?;
-                    let expr = self.parse_unary()?;
-                    return Ok(Expr::Unary(UnaryOp::Deref, Box::new(expr)));
-                }
-                Atmark => {
-                    expect!(self, Atmark)?;
-                    let expr = self.parse_unary()?;
-                    return Ok(Expr::Unary(UnaryOp::Ref, Box::new(expr)));
-                }
                 Excl => {
                     expect!(self, Excl)?;
                     let expr = self.parse_unary()?;
@@ -823,7 +813,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Postfix expression
-    /// `<expr> ( <expr> , <expr> , ... )` | `<expr> [ <expr> ]` | `<expr> . <ident>`
+    /// `<expr> ( <expr> , <expr> , ... )` | `<expr> [ <expr> ]` | `<expr> . <ident>` | `<expr> *` | `<expr> @`
     fn parse_post(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_prim()?;
         loop {
@@ -848,6 +838,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 expect!(self, Period)?;
                 let field = self.parse_ident()?;
                 expr = Expr::Member(Box::new(expr), field);
+                continue;
+            }
+
+            // Dereference (postfix *)
+            if check!(self, Star) {
+                expect!(self, Star)?;
+                expr = Expr::Unary(UnaryOp::Deref, Box::new(expr));
+                continue;
+            }
+
+            // Address-of (postfix @)
+            if check!(self, Atmark) {
+                expect!(self, Atmark)?;
+                expr = Expr::Unary(UnaryOp::Ref, Box::new(expr));
                 continue;
             }
 

@@ -1,4 +1,4 @@
 pub mod constexpr;
+pub mod eval;
 pub mod normtype;
-pub mod typeeval;
-pub mod valeval;
+pub mod r#typeof;

@@ -1,7 +1,8 @@
 use crate::{
     collect::{utils::CollectError, TypeMap},
     eval::{
-        constexpr::{eval, ConstExpr},
+        constexpr::ConstExpr,
+        eval::eval,
         normtype::{collect_type, NormType},
     },
     grammer::ast,
@@ -38,7 +39,11 @@ impl ConstMap {
                 }
 
                 // Try to collect this const
-                match eval(&expr, &result) {
+                // Create closure for eval
+                let env = |name: &str| -> Option<ConstExpr> {
+                    result.0.get(name).map(|(_, lit, _)| lit.clone())
+                };
+                match eval(&expr, &env) {
                     Ok(lit) => {
                         // If type is provided, use it; otherwise infer from literal
                         let ty_result = if let Some(t) = ty {

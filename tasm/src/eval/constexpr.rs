@@ -1,8 +1,4 @@
-use crate::{
-    collect::{utils::CollectError, ConstMap},
-    eval::normtype::NormType,
-    grammer::ast,
-};
+use crate::{collect::utils::CollectError, eval::normtype::NormType};
 
 #[derive(Debug, Clone)]
 pub enum ConstExpr {
@@ -11,31 +7,6 @@ pub enum ConstExpr {
     Array(Vec<ConstExpr>),            // array literal   | [expr1, expr2, ...]
     Char(char),                       // char literal    | 'A'
     String(String),                   // string literal  | "ABC"
-}
-
-pub fn eval(expr: &ast::Expr, consts: &ConstMap) -> Result<ConstExpr, CollectError> {
-    Ok(match expr {
-        ast::Expr::NumberLit(n) => ConstExpr::Number(*n),
-        ast::Expr::CharLit(c) => ConstExpr::Char(*c),
-        ast::Expr::StringLit(s) => ConstExpr::String(s.clone()),
-        ast::Expr::Ident(name) => match consts.0.get(name) {
-            Some((_, lit, _)) => lit.clone(),
-            None => return Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
-        },
-        ast::Expr::StructLit(fields) => ConstExpr::Struct(
-            fields
-                .iter()
-                .map(|(name, expr)| Ok((name.clone(), eval(expr, consts)?)))
-                .collect::<Result<_, _>>()?,
-        ),
-        ast::Expr::ArrayLit(elems) => ConstExpr::Array(
-            elems
-                .iter()
-                .map(|expr| eval(expr, consts))
-                .collect::<Result<_, _>>()?,
-        ),
-        _ => return Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
-    })
 }
 
 impl ConstExpr {

@@ -6,34 +6,36 @@
 
 |            | 記法                                               |
 | ---------- | -------------------------------------------------- |
-| 型         | `type hoge : {x : int, y : int};`                  |
-| 定数       | `const hoge : int = 123 @ 0x0000;`                 |
+| 型         | `type hoge = {x : int, y : int};`                  |
+| 定数       | `const hoge @ 0x0000 = 123;`                       |
 | 変数       | `static hoge : int @ 0x0000;`                      |
 | アセンブリ | `asm hoge @ 0x0000 { t0 = a; }`                    |
 | 関数       | `fn hoge(a : int, b : int) -> int { return a+b; }` |
 
 ```
 def  =
- | type   = 'type' ident ':' type ';'
- | const  = 'const'  ident ':' type '=' expr ?('@' expr ) ';'
- | static = 'static'  ident ':' type ?('@' expr ) ';'
- | asm    = 'asm' ident '@' expr stmt
- | func   = 'fn' ident '(' args ')' '->' type stmt
+ | type   = 'type' ident '=' type ';'
+ | const  = 'const' ident ?('@' expr) '=' expr ';'
+ | static = 'static' ident ?('@' expr) ':' type ';'
+ | asm    = 'asm' ident ?('(' args ')') ?('@' expr) '{' asm_stmt* '}'
+ | func   = 'fn' ident '(' args ')' ?('->' type) stmt
 ```
 
 ### 型定義
 
 独自の型は `type` 文で定義します。
 
-`type hoge : {x : int, y : int};`
+`type hoge = {x : int, y : int};`
 
 ### 定数定義
 
-定数は `const` 文で定義します。
+定数は `const` 文で定義します。型は初期値から推論されます。
 
-`var hoge : int;`
+`const hoge = 123;`
 
-変数の型はコロンの後に書きます。
+オプションで `@` を使ってアドレスを指定できます。
+
+`const hoge @ 0x0000 = 123;`
 
 ### グローバル変数定義
 
@@ -51,7 +53,7 @@ def  =
 | アドレス型 | `*int`                 |
 | 配列型     | `[N]int`               |
 | 構造体型   | `{m0 : int, m1 : int}` |
-| 関数型     | `(arg : int) => int`   |
+| 関数型     | `(arg : int) -> int`   |
 
 ```
 type =
@@ -60,7 +62,7 @@ type =
  | prim   = ident | '(' type ')'
  | arr    = '[' expr ']' type
  | struct = '{' (ident ':' type) % ',' '}'
- | func   = '(' (ident ':' type) % ',' ')' '=>' type
+ | func   = '(' (ident ':' type) % ',' ')' '->' type
 ```
 
 ### データ型
@@ -81,7 +83,7 @@ type =
 
 ### 関数型
 
-`(arg1: T1, arg2: T2) => Ret` - 明示的な型を持つ固定数の引数を受け取り、Ret 型の値を返す関数を表します。
+`(arg1: T1, arg2: T2) -> Ret` - 明示的な型を持つ固定数の引数を受け取り、Ret 型の値を返す関数を表します。
 
 ### 型のサイズ
 
@@ -94,36 +96,29 @@ tasm は Data = 16 bit / Addres = 16 bit のシステム向けに設計されて
 <*T> = 1
 <[N]T> = N × <T>
 <{f₁: T₁, f₂: T₂, ...}> = <T₁> + <T₂> + ...
-<(args) => Ret> = 0
+<(args) -> Ret> = 0
 ```
 
-これらの規則により、型のサイズは常にコンパイル時に計算可能です。sizeof 演算子は型が使用するメモリを 16bit 単位で返します。
+これらの規則により、型のサイズは常にコンパイル時に計算可能です。sizeof 演算子 `<>` は型が使用するメモリを 16bit 単位で返します。
 
 
 ### 参照演算子・アドレス演算子
 
-`a*` で `a` をポインタとみなして、`a` の指す値を得ます。
+`a*` で `a` をポインタとみなして、`a` の指す値を得ます。(後置演算子)
 
 `a : *int` → `a* : int`
 
-`a@` で `a` のアドレスを得ます。
+`a@` で `a` のアドレスを得ます。(後置演算子)
 
 `a : int` → `a@ : *int`
 
 ### キャスト演算子
 
-変数の後にコロンと型を書いてキャストをします。
+現在のパーサー実装では、キャスト演算子は構文の曖昧性を避けるため無効化されています。
 
-`var a:TA;`
-`var b:TB = a:TB;`
+将来的には、式の後にコロンと型を書いてキャストを行う構文が検討されています。
 
-メモリ上でサイズが同じ型どうしでキャストができます。
-
-`<a> == <TB>`
-
-後置演算子 `$` で変数をブーリアン型にします。
-
-`a : int = 0` → `a$ = false`
+`expr : Type`
 
 ### 整数型
 
@@ -136,7 +131,7 @@ tasm は Data = 16 bit / Addres = 16 bit のシステム向けに設計されて
 ポインタ型は 16bit のアドレスです。
 これはアドレス空間が 16bit であることに由来します。
 
-アクセス演算子を適用すると、ベース型になります。
+デリファレンス演算子を適用すると、ベース型になります。
 
 `hoge : *int` → `hoge* : int`
 
@@ -182,11 +177,11 @@ C 言語と異なり、配列とポインタの暗黙のキャストは行いま
 
 関数呼び出し演算子を適用すると、返り値の型になります。
 
-`hoge : (arg : Arg) => Ret` → `hoge(arg) : Ret`
+`hoge : (arg : Arg) -> Ret` → `hoge(arg) : Ret`
 
 関数型の変数は定義できません。かわりに関数ポインタ型を使います。
 
-`var hoge_p : *(arg : Arg) => Ret = hoge@;` → `hoge_p*(arg) : Ret`
+`var hoge_p : *(arg : Arg) -> Ret = hoge@;` → `(hoge_p*)(arg) : Ret`
 
 関数ポインタには関数のアドレスが入ってます。
 
@@ -199,19 +194,17 @@ C 言語と異なり、配列とポインタの暗黙のキャストは行いま
 block = '{' stmt* '}'
 
 stmt =
- | void     = ';'            # 空文
- | block    = '{' stmt* '}'  # 複文
- | expr     = expr ';'       # 式文
- | var      = 'var' ident ':' type ';' # ローカル変数定義
- | assign   = expr '=' expr ';' # 代入文
+ | void     = ';'                     # 空文
+ | block    = '{' stmt* '}'           # 複文
+ | expr     = expr ';'                # 式文
+ | var      = 'var' ident ?(':' type) ?('=' expr) ';' # ローカル変数定義
+ | assign   = expr '=' expr ';'       # 代入文
 # 制御文
  | if       = 'if' '(' expr ')' stmt
  | if_else  = 'if' '(' expr ')' stmt 'else' stmt
- | return   = 'return' expr ';'
+ | return   = 'return' ?( expr ) ';'
 # 繰り返し文
- | while    = 'while' ?( ':' ident ) '(' expr ')' stmt
- | continue = 'continue' ?( ident ) ';'
- | break    = 'break' ?( ident ) ';'
+ | while    = 'while' '(' expr ')' stmt
 ```
 
 ### 式文
@@ -237,15 +230,26 @@ stmt =
 ### 演算
 
 ```
-expr = cond = or ('?' expr ':' cond)?
-or  = xor ('|' xor)*
-xor = and ('^' and)*
-and = equal ('&' equal)*
-equal = relat ('==' relat | '!=' relat)*
-relat = shift ('<' shift | '<=' shift | '>' shift | '>=' shift)*
-shift = (shift '<<' | shift '>>')? add
+expr = or
+or   = xor ('|' xor)*
+xor  = and ('^' and)*
+and  = eq ('&' eq)*
+eq   = relat ('==' relat | '!=' relat)*
+relat = shift ('<' shift | '<=' shift | '>' shift | '>=' shift)?
+shift = add ('<<' add | '>>' add)?
 add   = mul ('+' mul | '-' mul)*
-mul   = prim ('**' prim | '//' prim | '%%' prim)*
+mul   = cast ('*' cast | '/' cast | '%' cast)?
+cast  = unary
+```
+
+### 単項演算子
+
+```
+unary =
+ | post
+ | pos    = '+' unary
+ | neg    = '-' unary
+ | not    = '!' unary
 ```
 
 ### 後置演算子
@@ -253,24 +257,39 @@ mul   = prim ('**' prim | '//' prim | '%%' prim)*
 ```
 post =
  | prim
- | cast   = post ':' type
- | ref    = post '*'
- | addr   = post '@'
- | array  = post '[' expr ']'
+ | call   = post '(' expr % ',' ')'
+ | index  = post '[' expr ']'
  | member = post '.' ident
- | call   = post '(' expr % ',' )'
+ | deref  = post '*'
+ | ref    = post '@'
 ```
 
 ## 値
 
 ```
 prim =
- | num
- | ident
- | '(' expr ')'
- | '<' type '>' // sizeof
+ | number      # 数値リテラル
+ | string      # 文字列リテラル
+ | ident       # 識別子
+ | '(' expr ')' # 括弧付き式
+ | '{' (ident ':' expr) % ',' '}' # 構造体リテラル
+ | '[' expr % ',' ']' # 配列リテラル
 ```
 
 ## アセンブリ
 
 `asm` ブロック中では次の記述ができます。
+
+```
+asm_stmt =
+ | label = ident ':'
+ | inst  = ident ?('(' expr % ',' ')') ?( ';' )
+```
+
+### ラベル
+
+`label:` の形式でラベルを定義します。
+
+### 命令
+
+`inst(arg1, arg2, ...)` の形式で命令を記述します。引数は式として評価されます。
