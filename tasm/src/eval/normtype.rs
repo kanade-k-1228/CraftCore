@@ -76,7 +76,7 @@ pub fn collect_type(
                     },
                     None => return Err(CollectError::TODO),
                 },
-                _ => return Err(CollectError::NonLiteralArrayLength(Box::new(len.clone()))),
+                _ => return Err(CollectError::NonLiteralArrayLength(format!("{:?}", len))),
             };
             let ty = collect_type(ty, consts, types)?;
             Ok(NormType::Array(len, Box::new(ty)))

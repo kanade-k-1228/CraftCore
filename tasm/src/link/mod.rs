@@ -2,6 +2,7 @@ pub mod structs;
 
 use crate::collect::ConstMap;
 use crate::convert::types::Code;
+use crate::error::LinkError;
 use bimap::BiMap;
 use std::collections::HashMap;
 
@@ -84,7 +85,7 @@ pub fn resolve_symbols(
 pub fn generate_program_binary(
     resolved: &HashMap<String, Code>,
     pmmap: &BiMap<String, u16>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, LinkError> {
     let mut binary = Vec::new();
 
     // Sort codes by their addresses
@@ -115,7 +116,7 @@ pub fn generate_program_binary(
 pub fn generate_data_binary(
     consts: &ConstMap,
     dmmap: &BiMap<String, u16>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, LinkError> {
     let mut binary = Vec::new();
 
     // Sort constants by their addresses

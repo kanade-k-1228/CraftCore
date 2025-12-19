@@ -375,6 +375,7 @@ dependencies = [
  "clap",
  "color-print",
  "indexmap",
+ "thiserror",
 ]
 
 [[package]]

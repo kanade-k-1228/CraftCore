@@ -80,7 +80,7 @@ impl ConstMap {
         if !unresolved.is_empty() {
             // Return error for the first unresolved const
             if let Some((_name, _, _, expr)) = unresolved.first() {
-                return Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone())));
+                return Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)));
             }
         }
 

@@ -1,8 +1,9 @@
+use crate::error::BinGenError;
 use crate::link::structs::*;
 use std::collections::HashMap;
 
 /// Generate binary from allocated sections
-pub fn generate(allocated: &Allocated) -> Result<Vec<u8>, String> {
+pub fn generate(allocated: &Allocated) -> Result<Vec<u8>, BinGenError> {
     // Create a memory map (address -> data)
     let mut memory: HashMap<usize, Vec<u8>> = HashMap::new();
 
@@ -62,7 +63,7 @@ pub fn generate(allocated: &Allocated) -> Result<Vec<u8>, String> {
 fn resolve_instruction(
     line: &AsmLine,
     _symbols: &HashMap<String, usize>,
-) -> Result<AsmInst, String> {
+) -> Result<AsmInst, BinGenError> {
     // For now, we'll just return the instruction as-is
     // In a full implementation, we would:
     // 1. Check if the instruction references any symbols
@@ -74,7 +75,7 @@ fn resolve_instruction(
 }
 
 /// Convert instruction to 32-bit binary
-fn inst_to_binary(inst: &AsmInst) -> Result<u32, String> {
+fn inst_to_binary(inst: &AsmInst) -> Result<u32, BinGenError> {
     match inst {
         AsmInst::Inst(i) => {
             // Convert instruction to Op, then to binary

@@ -30,7 +30,7 @@ pub fn typeof_expr(
         }
 
         Expr::Ident(name) => {
-            env(name).ok_or_else(|| CollectError::UnsupportedConstExpr(Box::new(expr.clone())))
+            env(name).ok_or_else(|| CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
         }
 
         Expr::Unary(op, operand) => match op {
@@ -38,14 +38,14 @@ pub fn typeof_expr(
                 let operand_type = typeof_expr(operand, env)?;
                 match operand_type {
                     NormType::Int => Ok(NormType::Int),
-                    _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                    _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 }
             }
             UnaryOp::Deref => {
                 let operand_type = typeof_expr(operand, env)?;
                 match operand_type {
                     NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                    _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 }
             }
             UnaryOp::Ref => {
@@ -70,7 +70,7 @@ pub fn typeof_expr(
                 | BinaryOp::Shl
                 | BinaryOp::Shr => match (lhs_type, rhs_type) {
                     (NormType::Int, NormType::Int) => Ok(NormType::Int),
-                    _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                    _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 },
                 BinaryOp::Eq
                 | BinaryOp::Ne
@@ -79,7 +79,7 @@ pub fn typeof_expr(
                 | BinaryOp::Gt
                 | BinaryOp::Ge => match (lhs_type, rhs_type) {
                     (NormType::Int, NormType::Int) => Ok(NormType::Int),
-                    _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                    _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 },
             }
         }
@@ -93,9 +93,9 @@ pub fn typeof_expr(
                             return Ok(ty);
                         }
                     }
-                    Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone())))
+                    Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
                 }
-                _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
             }
         }
 
@@ -103,7 +103,7 @@ pub fn typeof_expr(
             let base_type = typeof_expr(base, env)?;
             match base_type {
                 NormType::Array(_, elem_type) => Ok(*elem_type),
-                _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
             }
         }
 
@@ -120,13 +120,11 @@ pub fn typeof_expr(
                 crate::grammer::ast::Type::Addr(inner) => {
                     let inner_type = match inner.as_ref() {
                         crate::grammer::ast::Type::Int => NormType::Int,
-                        _ => {
-                            return Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone())))
-                        }
+                        _ => return Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                     };
                     Ok(NormType::Addr(Box::new(inner_type)))
                 }
-                _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
             }
         }
 
@@ -134,11 +132,11 @@ pub fn typeof_expr(
             let func_type = typeof_expr(func, env)?;
             match func_type {
                 NormType::Func(_, ret) => Ok(*ret),
-                _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
             }
         }
 
-        Expr::Error => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+        Expr::Error => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
     }
 }
 

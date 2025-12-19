@@ -9,3 +9,4 @@ clap = { version = "4.5.36", features = ["derive"] }
 bimap = "0.6"
 color-print = "0.3"
 indexmap = "2.0"
+thiserror = "2.0"

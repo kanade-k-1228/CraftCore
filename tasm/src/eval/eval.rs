@@ -30,7 +30,7 @@ pub fn eval(
         }
 
         Expr::Ident(name) => {
-            env(name).ok_or_else(|| CollectError::UnsupportedConstExpr(Box::new(expr.clone())))
+            env(name).ok_or_else(|| CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
         }
 
         Expr::Unary(op, operand) => match (op, eval(operand, env)?) {
@@ -40,9 +40,9 @@ pub fn eval(
             }
             (UnaryOp::Not, ConstExpr::Number(n)) => Ok(ConstExpr::Number((!n) & 0xFFFF)),
             (UnaryOp::Deref, _) | (UnaryOp::Ref, _) => {
-                Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone())))
+                Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
             }
-            _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+            _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
         Expr::Binary(op, lhs, rhs) => match (op, eval(lhs, env)?, eval(rhs, env)?) {
@@ -56,11 +56,11 @@ pub fn eval(
                 Ok(ConstExpr::Number((l.wrapping_mul(r)) & 0xFFFF))
             }
             (BinaryOp::Div, ConstExpr::Number(l), ConstExpr::Number(r)) => match r {
-                0 => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                0 => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 r => Ok(ConstExpr::Number(l / r)),
             },
             (BinaryOp::Mod, ConstExpr::Number(l), ConstExpr::Number(r)) => match r {
-                0 => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                0 => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 r => Ok(ConstExpr::Number(l % r)),
             },
             (BinaryOp::And, ConstExpr::Number(l), ConstExpr::Number(r)) => {
@@ -96,7 +96,7 @@ pub fn eval(
             (BinaryOp::Ge, ConstExpr::Number(l), ConstExpr::Number(r)) => {
                 Ok(ConstExpr::Number(if l >= r { 1 } else { 0 }))
             }
-            _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+            _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
         Expr::Member(base, field) => match eval(base, env)? {
@@ -106,21 +106,21 @@ pub fn eval(
                         return Ok(value);
                     }
                 }
-                Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone())))
+                Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
             }
-            _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+            _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
         Expr::Index(base, index) => match (eval(base, env)?, eval(index, env)?) {
             (ConstExpr::Array(elems), ConstExpr::Number(idx)) => match idx < elems.len() {
                 true => Ok(elems[idx].clone()),
-                false => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                false => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
             },
             (ConstExpr::String(s), ConstExpr::Number(idx)) => match idx < s.len() {
                 true => Ok(ConstExpr::Char(s.chars().nth(idx).unwrap())),
-                false => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+                false => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
             },
-            _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+            _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
         Expr::Cond(cond, true_expr, false_expr) => match eval(cond, env)? {
@@ -128,13 +128,13 @@ pub fn eval(
                 true => eval(true_expr, env),
                 false => eval(false_expr, env),
             },
-            _ => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+            _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
         Expr::Cast(expr, _typ) => eval(expr, env),
 
-        Expr::Call(_, _) => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
-        Expr::Error => Err(CollectError::UnsupportedConstExpr(Box::new(expr.clone()))),
+        Expr::Call(_, _) => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
+        Expr::Error => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
     }
 }
 

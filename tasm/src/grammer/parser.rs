@@ -1,20 +1,11 @@
 use super::ast::{AsmStmt, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
 use super::token::{Token, TokenKind::*};
+use crate::error::ParseError;
 use std::iter::Peekable;
 
 pub struct Parser<I: Iterator<Item = Token>> {
     tokens: Peekable<I>,
     errors: Vec<ParseError>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ParseError {
-    TODO,
-    UnexpectedEOF,
-    UnexpectedToken(Token),
-    InvalidType(Token),
-    InvalidFunction(Token),
-    InvalidVariable(Token),
 }
 
 impl<I: Iterator<Item = Token>> Parser<I> {
@@ -69,7 +60,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 self.tokens.next();
                 Ok(token)
             } else {
-                Err(ParseError::UnexpectedToken(token))
+                Err(ParseError::UnexpectedToken(format!("{:?}", token)))
             }
         } else {
             Err(ParseError::UnexpectedEOF)
@@ -173,7 +164,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
                 _ => {
                     let token = self.tokens.next().unwrap();
-                    self.errors.push(ParseError::UnexpectedToken(token));
+                    self.errors
+                        .push(ParseError::UnexpectedToken(format!("{:?}", token)));
                     continue;
                 }
             }
@@ -262,7 +254,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => Err(ParseError::UnexpectedToken(token.clone())),
+                _ => Err(ParseError::UnexpectedToken(format!("{:?}", token))),
             }
         } else {
             Err(ParseError::UnexpectedEOF)
@@ -391,7 +383,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 }
 
                 _ => {
-                    return Err(ParseError::UnexpectedToken(token));
+                    return Err(ParseError::UnexpectedToken(format!("{:?}", token)));
                 }
             }
         }
@@ -444,7 +436,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     return Ok(args);
                 }
                 _ => {
-                    return Err(ParseError::UnexpectedToken(token.clone()))?;
+                    return Err(ParseError::UnexpectedToken(format!("{:?}", token)))?;
                 }
             }
         }
@@ -474,7 +466,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     return Ok(fields);
                 }
                 _ => {
-                    return Err(ParseError::UnexpectedToken(token.clone()))?;
+                    return Err(ParseError::UnexpectedToken(format!("{:?}", token)))?;
                 }
             }
         }
@@ -931,7 +923,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     return Ok(Expr::StringLit(s));
                 }
 
-                _ => Err(ParseError::UnexpectedToken(token.clone())),
+                _ => Err(ParseError::UnexpectedToken(format!("{:?}", token))),
             }
         } else {
             Err(ParseError::UnexpectedEOF)
