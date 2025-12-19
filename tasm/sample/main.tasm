@@ -1,0 +1,27 @@
+type Vec3 = {x: int, y: int, z: int};
+
+const p = [
+  {x: 1, y: 2, z: 3},
+  {x: 4, y: 5, z: 6},
+  {x: 7, y: 8, z: 9},
+];
+
+fn add(a: Vec3, b: Vec3) -> Vec3 {
+  return {x: a.x + b.x, y: a.y + b.y, z: a.z + b.z};
+}
+
+fn main() {
+  var sum = add(add(p[0], p[1]), p[2]);
+  return {x: sum.x, y: sum.y, z: sum.z};
+}
+
+static @ 0x0010 pwcsr : int; // Power Control Register
+
+fn halt() {
+  pwcsr = 0x0001;
+}
+
+asm @ 0x0000 reset  {
+  call(main);
+  call(halt);
+}

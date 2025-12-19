@@ -1,0 +1,38 @@
+name: coverage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Add LLVM tools
+        run: rustup component add llvm-tools-preview --toolchain stable
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --version "^0.6" --locked
+
+      - name: Generate coverage report
+        workdir: ./tasm
+        run: cargo llvm-cov --no-report --output-path target/coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        workdir: ./tasm
+        with:
+          files: target/coverage/*.json
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true

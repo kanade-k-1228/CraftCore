@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arch = { path = "../arch" }
 clap = { version = "4.5.36", features = ["derive"] }
+bimap = "0.6"
+color-print = "0.3"
+indexmap = "2.0"

@@ -1,21 +1,13 @@
-mod label;
-mod msg;
-mod parser;
+use rkasm::error::Error;
+use rkasm::ident::{Ident, Idents};
+use rkasm::parser::Stmt;
+use rkasm::util;
 
-use color_print::cformat;
-
-const HELP_TEMPLATE: &str = "\
-{before-help}{bin} {version}
-  {author}
-  {about}
-
-{usage-heading}
-{tab}{usage}
-
-{all-args}{after-help}";
+use indexmap::IndexMap;
+use std::{fs::File, io::BufReader};
 
 #[derive(Debug, clap::Parser)]
-#[clap(author, version, about,help_template = HELP_TEMPLATE)]
+#[clap(author, version, about)]
 struct Args {
     /// Input files
     #[clap(default_value = "main.rk")]
@@ -30,70 +22,161 @@ struct Args {
     dump: bool,
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     use clap::Parser;
     use std::io::{BufRead, Write};
 
     let args: Args = Args::parse();
     println!("RK16 Assembler by kanade-k-1228");
 
-    println!("1. Read Files and Parse Lines");
-
-    let mut lines = vec![];
-    let mut pc: u16 = 0;
-    let mut labels = label::Labels::new();
-
-    for path in &args.input {
-        println!("  < {}", path);
-        let file =
-            std::fs::File::open(path).expect(&cformat!("<r,s>Failed to open File</>: {}", path));
-        for (idx, raw) in std::io::BufReader::new(file).lines().enumerate() {
-            let raw = raw.expect(&cformat!("Failed to read line"));
-            let (line, msgs) = parser::Line::parse(path, idx, &raw, pc);
-            if let Some(_) = line.get_op() {
-                pc += 1;
+    println!("1. Read files");
+    let files = {
+        let mut files: IndexMap<String, Vec<String>> = IndexMap::new(); // (file, lines)
+        for path in &args.input {
+            println!("  < {}", path);
+            let file = File::open(path).map_err(|e| Error::FileOpen(path.clone(), e))?;
+            let mut lines = vec![];
+            for line in BufReader::new(file).lines() {
+                let raw = line.map_err(|e| Error::FileRead(e))?;
+                lines.push(raw);
             }
-
-            // Collect Label
-            if let Some(lab) = &line.get_label() {
-                if let Some(prev) = labels.insert(lab.get_key(), line.clone()) {
-                    msg::Msg::Warn(format!("Re-defined label: `{}`", lab.get_key()))
-                        .diag(line.get_info());
-                    msg::Msg::Note(format!("Already defined here. The value has been overridden. If this is not intentional, please reorder the sourcefile."))
-                        .diag(prev.get_info());
-                }
-            }
-
-            // Print Messages
-            for msg in msgs {
-                msg.diag(line.get_info());
-            }
-            lines.push(line);
+            files.insert(path.clone(), lines);
         }
-    }
+        files
+    };
 
-    println!("2. Resolve Label & Generate Binary");
-    println!("  > {}", &args.output);
-    let mut file = std::fs::File::create(&args.output)
-        .expect(&cformat!("<r,s>Failed to create File</>: {}", &args.output));
-    for line in &lines {
-        if let Some(asm) = &line.get_op() {
-            let bin = match asm.resolve(&labels) {
-                Some(ok) => ok.to_op().clone().to_bin(),
-                None => {
-                    msg::Msg::Error(format!("Undefined label")).diag(line.get_info());
-                    continue;
+    println!("2. Parse lines");
+    let parsed: IndexMap<String, Vec<(Option<Stmt>, Option<String>)>> = {
+        let mut result = IndexMap::new();
+
+        for (file, lines) in &files {
+            let mut parsed = vec![];
+
+            for (idx, raw) in lines.iter().enumerate() {
+                // Split comment
+                let (code, comment) = match raw.split_once(';') {
+                    Some((code, comment)) => (code.to_string(), Some(comment.to_string())),
+                    None => (raw.to_string(), None),
+                };
+
+                // Parse content
+                let (stmt, errors) = Stmt::parse(&code);
+
+                for e in errors {
+                    e.cprint(&files, file.as_str(), idx);
                 }
-            };
-            file.write(&bin.to_le_bytes())
-                .expect(&cformat!("<r,s>Failed to write File</>: {}", &args.output));
+
+                parsed.push((stmt, comment));
+            }
+
+            result.insert(file.clone(), parsed);
+        }
+
+        result
+    };
+
+    println!("3. Collect idents and calculate PC");
+    let (parsed, idents) = {
+        let mut pc: u16 = 0;
+        let mut resolved = IndexMap::new();
+        let mut idents = Idents::new();
+
+        for (path, parsed_lines) in parsed {
+            let mut updated_lines = vec![];
+            for (idx, (content, comment)) in parsed_lines.into_iter().enumerate() {
+                let pcfilled = match content {
+                    Some(Stmt::Label(key)) => {
+                        if let Some(_) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Label, pc)
+                        {
+                            Error::RedefinedLabel(key.clone()).cprint(&files, &path, idx);
+                        }
+                        Some(Stmt::Label(key))
+                    }
+                    Some(Stmt::Static(key, val)) => {
+                        if let Some(_) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Static, val)
+                        {
+                            Error::RedefinedLabel(key.clone()).cprint(&files, &path, idx);
+                        }
+                        Some(Stmt::Static(key, val))
+                    }
+                    Some(Stmt::Const(key, val)) => {
+                        if let Some(_) =
+                            idents.insert(key.clone(), (path.clone(), idx), Ident::Const, val)
+                        {
+                            Error::RedefinedLabel(key.clone()).cprint(&files, &path, idx);
+                        }
+                        Some(Stmt::Const(key, val))
+                    }
+                    Some(Stmt::Code(asm, _)) => {
+                        pc += 1;
+                        Some(Stmt::Code(asm, Some(pc - 1)))
+                    }
+                    None => None,
+                };
+
+                updated_lines.push((pcfilled, comment));
+            }
+
+            resolved.insert(path, updated_lines);
+        }
+
+        (resolved, idents)
+    };
+
+    println!("4. Resolve labels");
+    let resolved: IndexMap<String, Vec<(Option<Stmt>, Option<String>)>> = {
+        let mut resolved = IndexMap::new();
+        for (path, parsed) in &parsed {
+            let mut resolved_lines = vec![];
+
+            for (idx, (stmt, comment)) in parsed.iter().enumerate() {
+                if let Some(Stmt::Code(code, pc)) = stmt {
+                    match code.resolve(&idents) {
+                        Ok(_) => {
+                            resolved_lines
+                                .push((Some(Stmt::Code(code.clone(), *pc)), comment.clone()));
+                        }
+                        Err(err) => {
+                            err.cprint(&files, path.as_str(), idx);
+                            resolved_lines
+                                .push((Some(Stmt::Code(code.clone(), *pc)), comment.clone()));
+                        }
+                    }
+                } else {
+                    resolved_lines.push((stmt.clone(), comment.clone()));
+                }
+            }
+
+            resolved.insert(path.clone(), resolved_lines);
+        }
+
+        resolved
+    };
+
+    // Pass 5: Generate binary
+    println!("5. Generate binary");
+    println!("  > {}", &args.output);
+    let mut file =
+        File::create(&args.output).map_err(|e| Error::FileCreate(args.output.clone(), e))?;
+
+    // Extract and write instructions from the resolved structure
+    for (_, resolved_lines) in &resolved {
+        for (_, (content, _)) in resolved_lines.iter().enumerate() {
+            if let Some(Stmt::Code(asm, _)) = content {
+                if let Ok(inst) = asm.resolve(&idents) {
+                    let bin = inst.to_op().to_bin();
+                    file.write(&bin.to_le_bytes())
+                        .map_err(|e| Error::FileWrite(args.output.clone(), e))?;
+                }
+            }
         }
     }
 
     if args.dump {
-        for line in &lines {
-            println!("{}", line.cformat(&labels));
-        }
-        println!("-------------------+-----------------------------------------------------");
+        util::print_dump(&resolved, &idents);
     }
+
+    Ok(())
 }

@@ -1,0 +1,6 @@
+static@0x0010 halt : int;
+
+asm@0x0000 reset {
+    loadi(t0, 0x0001)
+    store(t0, z, halt)
+}

@@ -1,0 +1,61 @@
+static@0x0200 hoge : int;
+static@0x0123 fuga : int;
+static@0x4567 piyo : int;
+static@0x89AB foo : int;
+static@0xcdef bar : int;
+static@0x0010 exit : int;
+
+const cst = 0x0100;
+
+asm@0x0000 reset {
+    add(t2, t0, t1)
+    sub(t2, t0, t1)
+    and(t2, t0, t1)
+    or(t2, t0, t1)
+    xor(t2, t0, t1)
+
+    eq(t2, t0, t1)
+    neq(t2, t0, t1)
+    lt(t2, t0, t1)
+    lts(t2, t0, t1)
+
+    sr(t2, t0)
+    srs(t2, t0)
+    srr(t2, t0)
+    sl(t2, t0)
+    slr(t2, t0)
+
+    nop()
+    mov(s0, s1)
+
+    addi(t2, t0, cst)
+    subi(t2, t0, hoge)
+    andi(t2, t0, fuga)
+    ori(t2, t0, 0x0000)
+    xori(t2, t0, 0x0110)
+
+    eqi(t2, t0, 0x1100)
+    neqi(t2, t0, 0x1100)
+    lti(t2, t0, 0xf000)
+    ltsi(t2, t0, 0xf000)
+
+    not(t2, t0)
+    loadi(t0, 0x0123)
+
+    load(t2, t0, hoge)
+    store(t2, t0, fuga)
+
+  a:
+    if(t1, b)
+    ifr(t1, b)
+    jump(e)
+    jumpr(1)
+  b:
+    call(c)
+  c:
+    ret()
+  d:
+    iret()
+  e:
+    jump(e)
+}

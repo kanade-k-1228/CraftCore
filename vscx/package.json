@@ -1,0 +1,49 @@
+{
+  "name": "tasm-lang",
+  "displayName": "TASM Language Support",
+  "description": "Syntax highlighting and language support for TASM (Typed Assembly) language",
+  "version": "1.0.0",
+  "publisher": "craftcore",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tasm",
+        "aliases": [
+          "TASM",
+          "tasm"
+        ],
+        "extensions": [
+          ".tasm"
+        ],
+        "configuration": "./language-configuration/tasm-language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tasm",
+        "scopeName": "source.tasm",
+        "path": "./syntaxes/tasm.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "vsce package",
+    "package": "vsce package"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/craftcore/tasm"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.7.1"
+  }
+}

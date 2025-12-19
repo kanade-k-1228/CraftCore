@@ -1,5 +1,3 @@
-// token.rs
-
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
@@ -51,10 +49,11 @@ pub enum TokenKind {
 
     // Keywords
     KwFunc,     // "fn"
+    KwAsm,      // "asm"
     KwReturn,   // "return"
     KwVar,      // "var"
-    KwLet,      // "let"
     KwStatic,   // "static"
+    KwConst,    // "const"
     KwInt,      // "int"
     KwType,     // "type"
     KwIf,       // "if"
@@ -62,14 +61,14 @@ pub enum TokenKind {
     KwWhile,    // "while"
     KwBreak,    // "break"
     KwContinue, // "continue"
-    KwSizeof,   // "sizeof"
 
     // Identifier
     Ident(String),
 
     // Literals
-    LitNumber(i64),
-    LitString(String),
+    Number(String, usize),
+    Text(String),
+    Char(char),
 
     // Special
     Comment(String), // Comment
