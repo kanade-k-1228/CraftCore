@@ -5,12 +5,12 @@ use crate::{
 };
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct FuncMap(pub HashMap<String, (NormType, Option<usize>)>);
+#[derive(Debug)]
+pub struct FuncMap<'a>(pub HashMap<String, (NormType, Option<usize>, &'a ast::Def)>);
 
-impl FuncMap {
+impl<'a> FuncMap<'a> {
     pub fn collect(
-        ast: &ast::AST,
+        ast: &'a ast::AST,
         consts: &ConstMap,
         types: &TypeMap,
         _statics: &StaticMap,
@@ -19,8 +19,8 @@ impl FuncMap {
         let mut result = HashMap::new();
 
         for def in defs {
-            if let ast::Def::Func(name, args, ty, _) = def.clone() {
-                if result.contains_key(&name) {
+            if let ast::Def::Func(name, args, ty, _) = def {
+                if result.contains_key(name) {
                     return Err(CollectError::Duplicate(name.clone()));
                 }
 
@@ -37,7 +37,7 @@ impl FuncMap {
                 let func_type = NormType::Func(resolved_args, Box::new(resolved_ret));
 
                 // For now, addr is None (will be determined in link phase)
-                result.insert(name, (func_type, None));
+                result.insert(name.clone(), (func_type, None, def));
             }
         }
         Ok(FuncMap(result))

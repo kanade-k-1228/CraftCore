@@ -55,12 +55,12 @@ fn main() {
     let consts = ConstMap::collect(&ast).unwrap();
     let types = TypeMap::collect(&ast, &consts).unwrap();
     let statics = StaticMap::collect(&ast, &consts, &types).unwrap();
-    let asms = AsmMap::collect(&ast).unwrap();
+    let asms = AsmMap::collect(&ast, &consts).unwrap();
     let funcs = FuncMap::collect(&ast, &consts, &types, &statics).unwrap();
 
     // 4. Generate code from functions and assembly blocks
     let func_codes = tasm::convert::func2code(&ast, &consts, &types, &statics, &funcs);
-    let asm_codes = tasm::convert::asm2code(&ast, &asms, &consts);
+    let asm_codes = tasm::convert::asm2code(&asms, &consts);
 
     // Combine function and assembly codes
     let mut codes: HashMap<String, tasm::convert::Code> = HashMap::new();
@@ -72,15 +72,11 @@ fn main() {
     let mut inst_items = IndexMap::new();
 
     // Add assembly blocks with their fixed addresses (first, to maintain priority)
-    for (name, fixed_addr) in &asms.0 {
+    for (name, (fixed_addr, _def)) in &asms.0 {
         if let Some(code) = codes.get(name) {
             let addr = fixed_addr.map(|a| a as u16);
-            // Count only actual instructions, not labels or directives
-            let inst_count = code
-                .instructions
-                .iter()
-                .filter(|line| matches!(line.inst, tasm::link::structs::AsmInst::Inst(_)))
-                .count() as u16;
+            // Count only actual instructions
+            let inst_count = code.0.len() as u16;
             inst_items.insert(name.clone(), (inst_count, addr));
         }
     }
@@ -88,12 +84,8 @@ fn main() {
     // Add functions without fixed addresses
     for (name, code) in &codes {
         if !asms.0.contains_key(name) {
-            // Count only actual instructions, not labels or directives
-            let inst_count = code
-                .instructions
-                .iter()
-                .filter(|line| matches!(line.inst, tasm::link::structs::AsmInst::Inst(_)))
-                .count() as u16;
+            // Count only actual instructions
+            let inst_count = code.0.len() as u16;
             inst_items.insert(name.clone(), (inst_count, None));
         }
     }
@@ -102,13 +94,13 @@ fn main() {
     let mut data_items = IndexMap::new();
 
     // Add statics with their fixed addresses (first, to maintain priority)
-    for (name, (norm_type, fixed_addr)) in statics.0.iter() {
+    for (name, (norm_type, fixed_addr, _def)) in statics.0.iter() {
         let addr = fixed_addr.map(|a| a as u16);
         data_items.insert(name.clone(), (norm_type.sizeof() as u16, addr));
     }
 
     // Add constants without fixed addresses
-    for (name, (norm_type, _, _)) in consts.0.iter() {
+    for (name, (norm_type, _, _, _def)) in consts.0.iter() {
         if !statics.0.contains_key(name) {
             data_items.insert(name.clone(), (norm_type.sizeof() as u16, None));
         }
@@ -129,33 +121,8 @@ fn main() {
         dmap.insert(name, addr);
     }
 
-    // Calculate addresses for labels within assembly blocks and functions
-    for (code_name, code) in &codes {
-        if let Some(&base_addr) = imap.get_by_left(code_name) {
-            let mut current_addr = base_addr;
-            for inst_line in &code.instructions {
-                match &inst_line.inst {
-                    tasm::link::structs::AsmInst::Label(label_name) => {
-                        // Register label address
-                        // If another label exists at this address, remove it first
-                        // (BiMap doesn't allow multiple keys for the same value)
-                        // This prioritizes user-defined labels over block names
-                        if let Some(old_name) = imap.get_by_right(&current_addr).cloned() {
-                            imap.remove_by_left(&old_name);
-                        }
-                        imap.insert(label_name.clone(), current_addr);
-                    }
-                    tasm::link::structs::AsmInst::Inst(_) => {
-                        // Each instruction takes 4 bytes (1 word = 32 bits)
-                        current_addr += 1;
-                    }
-                    tasm::link::structs::AsmInst::Org(addr) => {
-                        current_addr = *addr;
-                    }
-                }
-            }
-        }
-    }
+    // Note: Label addresses are no longer tracked in Code type
+    // Labels should be resolved during code generation phase
 
     // 6. Resolve symbols
     let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &consts);

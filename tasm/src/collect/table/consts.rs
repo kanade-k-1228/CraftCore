@@ -9,17 +9,17 @@ use crate::{
 };
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct ConstMap(pub HashMap<String, (NormType, ConstExpr, Option<usize>)>);
+#[derive(Debug)]
+pub struct ConstMap<'a>(pub HashMap<String, (NormType, ConstExpr, Option<usize>, &'a ast::Def)>);
 
-impl ConstMap {
-    pub fn collect(ast: &ast::AST) -> Result<Self, CollectError> {
+impl<'a> ConstMap<'a> {
+    pub fn collect(ast: &'a ast::AST) -> Result<Self, CollectError> {
         let mut unresolved: Vec<_> = ast
             .0
             .iter()
             .filter_map(|def| match def {
                 ast::Def::Const(name, addr, ty, expr) => {
-                    Some((name.clone(), addr.clone(), ty.clone(), expr.clone()))
+                    Some((name.clone(), addr.clone(), ty.clone(), expr.clone(), def))
                 }
                 _ => None,
             })
@@ -31,7 +31,7 @@ impl ConstMap {
         // Process consts in dependency order
         while !unresolved.is_empty() && made_progress {
             made_progress = false;
-            unresolved.retain(|(name, addr, ty, expr)| {
+            unresolved.retain(|(name, addr, ty, expr, def)| {
                 // Check for duplicates
                 if result.0.contains_key(name) {
                     // Already processed or duplicate - skip
@@ -41,7 +41,7 @@ impl ConstMap {
                 // Try to collect this const
                 // Create closure for eval
                 let env = |name: &str| -> Option<ConstExpr> {
-                    result.0.get(name).map(|(_, lit, _)| lit.clone())
+                    result.0.get(name).map(|(_, lit, _, _)| lit.clone())
                 };
                 match eval(&expr, &env) {
                     Ok(lit) => {
@@ -63,7 +63,7 @@ impl ConstMap {
                             });
                             result
                                 .0
-                                .insert(name.clone(), (resolved_ty, lit, addr_value));
+                                .insert(name.clone(), (resolved_ty, lit, addr_value, *def));
                             made_progress = true;
                             return false; // Remove from pending list
                         }
@@ -79,7 +79,7 @@ impl ConstMap {
         // Check if we have unresolved const dependencies
         if !unresolved.is_empty() {
             // Return error for the first unresolved const
-            if let Some((_name, _, _, expr)) = unresolved.first() {
+            if let Some((_name, _, _, expr, _)) = unresolved.first() {
                 return Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)));
             }
         }

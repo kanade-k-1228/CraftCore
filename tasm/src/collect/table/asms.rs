@@ -1,12 +1,15 @@
 use crate::collect::utils::CollectError;
+use crate::collect::ConstMap;
+use crate::eval::constexpr::ConstExpr;
+use crate::eval::eval::eval;
 use crate::grammer::ast;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct AsmMap(pub HashMap<String, Option<usize>>);
+#[derive(Debug)]
+pub struct AsmMap<'a>(pub HashMap<String, (Option<usize>, &'a ast::Def)>);
 
-impl AsmMap {
-    pub fn collect(ast: &ast::AST) -> Result<Self, CollectError> {
+impl<'a> AsmMap<'a> {
+    pub fn collect(ast: &'a ast::AST, consts: &ConstMap) -> Result<Self, CollectError> {
         let ast::AST(defs) = ast;
         let mut result = HashMap::new();
 
@@ -15,15 +18,30 @@ impl AsmMap {
                 if result.contains_key(name) {
                     return Err(CollectError::Duplicate(name.clone()));
                 }
-                let addr = maybe_addr.as_ref().and_then(|e| {
-                    match e {
-                        ast::Expr::NumberLit(n) => Some(*n),
-                        // For now, we don't resolve const references here
-                        // This can be done in the link phase
-                        _ => None,
+
+                // Evaluate address expression using constants
+                let addr = if let Some(expr) = maybe_addr {
+                    // Create environment closure that looks up constants
+                    let env = |name: &str| -> Option<ConstExpr> {
+                        consts
+                            .0
+                            .get(name)
+                            .map(|(_, const_expr, _, _)| const_expr.clone())
+                    };
+
+                    // Evaluate the expression
+                    match eval(expr, &env) {
+                        Ok(ConstExpr::Number(n)) => Some(n),
+                        Ok(_) => {
+                            return Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
+                        }
+                        Err(e) => return Err(e),
                     }
-                });
-                result.insert(name.clone(), addr);
+                } else {
+                    None
+                };
+
+                result.insert(name.clone(), (addr, def));
             }
         }
         Ok(AsmMap(result))

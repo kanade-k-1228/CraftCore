@@ -60,7 +60,7 @@ pub fn collect_type(
     match ty {
         ast::Type::Int => Ok(NormType::Int),
         ast::Type::Custom(name) => match types.0.get(name) {
-            Some((flat, _)) => Ok(flat.clone()),
+            Some((flat, _, _)) => Ok(flat.clone()),
             None => Err(CollectError::TODO),
         },
         ast::Type::Addr(inner) => Ok(NormType::Addr(Box::new(collect_type(
@@ -70,7 +70,7 @@ pub fn collect_type(
             let len = match len {
                 ast::Expr::NumberLit(n) => *n,
                 ast::Expr::Ident(name) => match consts.0.get(name) {
-                    Some((_, expr, _)) => match expr {
+                    Some((_, expr, _, _)) => match expr {
                         ConstExpr::Number(n) => *n,
                         _ => return Err(CollectError::TODO),
                     },

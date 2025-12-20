@@ -1,7 +1,6 @@
 use crate::{
     collect::{ConstMap, FuncMap, StaticMap, TypeMap},
     grammer::ast,
-    link::structs::{AsmInst, AsmLine},
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
@@ -14,7 +13,7 @@ struct CodeGenContext {
     /// Current stack frame size
     stack_size: i16,
     /// Generated instruction sequence
-    instructions: Vec<AsmLine>,
+    instructions: Vec<(Inst, Option<String>)>,
     /// Positions that need patching for forward jumps
     /// (instruction_index, target_instruction_index)
     #[allow(dead_code)]
@@ -34,26 +33,12 @@ impl CodeGenContext {
 
     /// Emit a raw instruction
     fn emit_inst(&mut self, inst: Inst) {
-        self.instructions.push(AsmLine {
-            inst: AsmInst::Inst(inst),
-            symbols: Vec::new(),
-        });
+        self.instructions.push((inst, None));
     }
 
     /// Emit an instruction with symbol references
-    fn emit_inst_with_symbols(&mut self, inst: Inst, symbols: Vec<String>) {
-        self.instructions.push(AsmLine {
-            inst: AsmInst::Inst(inst),
-            symbols,
-        });
-    }
-
-    /// Emit a label (only for function entry)
-    fn emit_label(&mut self, label: String) {
-        self.instructions.push(AsmLine {
-            inst: AsmInst::Label(label),
-            symbols: Vec::new(),
-        });
+    fn emit_inst_with_symbol(&mut self, inst: Inst, symbol: String) {
+        self.instructions.push((inst, Some(symbol)));
     }
 
     /// Get the current instruction position
@@ -78,16 +63,11 @@ impl CodeGenContext {
         let offset = (target_pos as i32 - jump_pos as i32) as u16;
 
         // Replace the instruction at jump_pos with the correct offset
-        if let AsmLine {
-            inst: AsmInst::Inst(ref mut inst),
-            ..
-        } = &mut self.instructions[jump_pos]
-        {
-            match inst {
-                Inst::JUMPR(_) => *inst = Inst::JUMPR(offset),
-                Inst::IFR(reg, _) => *inst = Inst::IFR(*reg, offset),
-                _ => {} // Should not happen
-            }
+        let (ref mut inst, _) = &mut self.instructions[jump_pos];
+        match inst {
+            Inst::JUMPR(_) => *inst = Inst::JUMPR(offset),
+            Inst::IFR(reg, _) => *inst = Inst::IFR(*reg, offset),
+            _ => {} // Should not happen
         }
     }
 
@@ -119,8 +99,7 @@ pub fn func2code(
         if let ast::Def::Func(func_name, args, ret_type, body) = def {
             // Generate instructions for this function
             let instructions = generate_function(func_name.clone(), args, ret_type, body);
-            let code = crate::convert::types::Code::new_function(func_name.clone(), instructions);
-            result.insert(func_name.clone(), code);
+            result.insert(func_name.clone(), crate::convert::types::Code(instructions));
         }
     }
 
@@ -133,11 +112,8 @@ fn generate_function(
     args: &Vec<(String, ast::Type)>,
     _ret_type: &ast::Type,
     body: &ast::Stmt,
-) -> Vec<AsmLine> {
+) -> Vec<(Inst, Option<String>)> {
     let mut ctx = CodeGenContext::new(func_name.clone());
-
-    // Function entry label
-    ctx.emit_label(func_name.clone());
 
     // Function prologue
     // Save return address and frame pointer
@@ -301,9 +277,9 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
         ast::Expr::StringLit(_s) => {
             // String literals would need to be stored in data section
             // For now, just load address placeholder
-            ctx.emit_inst_with_symbols(
+            ctx.emit_inst_with_symbol(
                 Inst::LOADI(target_reg, 0), // Address will be resolved later
-                vec!["string_placeholder".to_string()],
+                "string_placeholder".to_string(),
             );
             target_reg
         }
@@ -313,9 +289,9 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
                 ctx.emit_inst(Inst::LOAD(target_reg, Reg::FP, offset as u16));
             } else {
                 // Could be a global/static - emit with symbol reference
-                ctx.emit_inst_with_symbols(
+                ctx.emit_inst_with_symbol(
                     Inst::LOADI(target_reg, 0), // Address will be resolved later
-                    vec![name.clone()],
+                    name.clone(),
                 );
             }
             target_reg
@@ -404,9 +380,9 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
 
             // Call the function
             if let ast::Expr::Ident(func_name) = &**func_expr {
-                ctx.emit_inst_with_symbols(
+                ctx.emit_inst_with_symbol(
                     Inst::CALL(0), // Address will be resolved later
-                    vec![func_name.clone()],
+                    func_name.clone(),
                 );
             } else {
                 // Indirect call through register
@@ -476,9 +452,9 @@ fn compile_lvalue(ctx: &mut CodeGenContext, lvalue: &ast::Expr, value_reg: Reg) 
                 ctx.emit_inst(Inst::STORE(value_reg, Reg::FP, offset as u16));
             } else {
                 // Global/static variable - emit with symbol reference
-                ctx.emit_inst_with_symbols(
+                ctx.emit_inst_with_symbol(
                     Inst::STORE(value_reg, Reg::Z, 0), // Address will be resolved later
-                    vec![name.clone()],
+                    name.clone(),
                 );
             }
         }

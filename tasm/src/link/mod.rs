@@ -1,5 +1,3 @@
-pub mod structs;
-
 use crate::collect::ConstMap;
 use crate::convert::types::Code;
 use crate::error::LinkError;
@@ -16,38 +14,31 @@ pub fn resolve_symbols(
     let mut resolved = HashMap::new();
 
     for (name, code) in codes {
-        let mut resolved_code = code.clone();
+        let mut resolved_insts = Vec::new();
 
         // Resolve symbols in each instruction
-        for inst in &mut resolved_code.instructions {
-            if inst.symbols.is_empty() {
-                continue;
-            }
+        for (inst, symbol_opt) in &code.0 {
+            if let Some(symbol) = symbol_opt {
+                // Try to resolve symbol - check constants first (for immediate values),
+                // then program memory (functions/labels), then data memory (statics)
+                let addr = consts
+                    .0
+                    .get(symbol)
+                    .and_then(|(_, const_expr, _, _)| {
+                        // Check if it's a constant - use its value directly
+                        if let crate::eval::constexpr::ConstExpr::Number(n) = const_expr {
+                            Some(*n as u16)
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| pmmap.get_by_left(symbol).copied())
+                    .or_else(|| dmmap.get_by_left(symbol).copied());
 
-            // Get the symbol (assuming one symbol per instruction)
-            let symbol = &inst.symbols[0];
-
-            // Try to resolve symbol - check constants first (for immediate values),
-            // then program memory (functions/labels), then data memory (statics)
-            let addr = consts
-                .0
-                .get(symbol)
-                .and_then(|(_, const_expr, _)| {
-                    // Check if it's a constant - use its value directly
-                    if let crate::eval::constexpr::ConstExpr::Number(n) = const_expr {
-                        Some(*n as u16)
-                    } else {
-                        None
-                    }
-                })
-                .or_else(|| pmmap.get_by_left(symbol).copied())
-                .or_else(|| dmmap.get_by_left(symbol).copied());
-
-            if let Some(resolved_addr) = addr {
-                // Update instruction with resolved address
-                if let structs::AsmInst::Inst(inner_inst) = &inst.inst {
+                if let Some(resolved_addr) = addr {
+                    // Update instruction with resolved address
                     use arch::inst::Inst;
-                    let updated_inst = match inner_inst {
+                    let updated_inst = match inst {
                         Inst::LOADI(rd, _) => Inst::LOADI(*rd, resolved_addr),
                         Inst::STORE(rs2, rs1, _) => Inst::STORE(*rs2, *rs1, resolved_addr),
                         Inst::LOAD(rd, rs, _) => Inst::LOAD(*rd, *rs, resolved_addr),
@@ -65,17 +56,20 @@ pub fn resolve_symbols(
                         Inst::NEQI(rd, rs, _) => Inst::NEQI(*rd, *rs, resolved_addr),
                         Inst::LTI(rd, rs, _) => Inst::LTI(*rd, *rs, resolved_addr),
                         Inst::LTSI(rd, rs, _) => Inst::LTSI(*rd, *rs, resolved_addr),
-                        _ => inner_inst.clone(),
+                        _ => inst.clone(),
                     };
-                    inst.inst = structs::AsmInst::Inst(updated_inst);
-                    // Clear symbols after resolution
-                    inst.symbols.clear();
+                    resolved_insts.push((updated_inst, None));
+                } else {
+                    // Symbol not found - keep original
+                    resolved_insts.push((inst.clone(), Some(symbol.clone())));
                 }
+            } else {
+                // No symbol to resolve
+                resolved_insts.push((inst.clone(), None));
             }
-            // If symbol not found, it will remain unresolved (error handling needed)
         }
 
-        resolved.insert(name.clone(), resolved_code);
+        resolved.insert(name.clone(), Code(resolved_insts));
     }
 
     resolved
@@ -97,15 +91,12 @@ pub fn generate_program_binary(
 
     // Generate binary for each code block
     for (_addr, code) in sorted_codes {
-        for line in &code.instructions {
-            if let structs::AsmInst::Inst(inst) = &line.inst {
-                // Convert instruction to binary
-                let op = inst.clone().to_op();
-                let bin = op.to_bin();
-                // Convert u32 to bytes (little-endian)
-                binary.extend_from_slice(&bin.to_le_bytes());
-            }
-            // Skip labels and other non-instructions
+        for (inst, _symbol) in &code.0 {
+            // Convert instruction to binary
+            let op = inst.clone().to_op();
+            let bin = op.to_bin();
+            // Convert u32 to bytes (little-endian)
+            binary.extend_from_slice(&bin.to_le_bytes());
         }
     }
 
@@ -123,7 +114,7 @@ pub fn generate_data_binary(
     let mut sorted_consts: Vec<_> = consts
         .0
         .iter()
-        .filter_map(|(name, (_, value, _))| dmmap.get_by_left(name).map(|addr| (*addr, value)))
+        .filter_map(|(name, (_, value, _, _))| dmmap.get_by_left(name).map(|addr| (*addr, value)))
         .collect();
     sorted_consts.sort_by_key(|(addr, _)| *addr);
 

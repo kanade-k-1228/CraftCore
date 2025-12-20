@@ -5,11 +5,11 @@ use crate::{
 };
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct TypeMap(pub HashMap<String, (NormType, usize)>);
+#[derive(Debug)]
+pub struct TypeMap<'a>(pub HashMap<String, (NormType, usize, &'a ast::Def)>);
 
-impl TypeMap {
-    pub fn collect(ast: &ast::AST, consts: &ConstMap) -> Result<Self, CollectError> {
+impl<'a> TypeMap<'a> {
+    pub fn collect(ast: &'a ast::AST, consts: &ConstMap) -> Result<Self, CollectError> {
         let ast::AST(defs) = ast;
         let mut result = HashMap::new();
 
@@ -20,7 +20,7 @@ impl TypeMap {
                 }
                 let resolved_ty = collect_type(&ty, consts, &TypeMap(result.clone()))?;
                 let size = resolved_ty.sizeof();
-                result.insert(name.clone(), (resolved_ty, size));
+                result.insert(name.clone(), (resolved_ty, size, def));
             }
         }
         Ok(TypeMap(result))

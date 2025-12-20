@@ -1,6 +1,5 @@
 use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap};
 use crate::convert::Code;
-use crate::link::structs::AsmInst;
 use bimap::BiMap;
 use color_print::cprintln;
 use std::collections::HashMap;
@@ -19,16 +18,11 @@ pub fn binprint(
         .iter()
         .map(|(name, addr)| {
             let code = codes.get(name);
-            let size = code.map_or(0, |c| {
-                c.instructions
-                    .iter()
-                    .filter(|line| matches!(line.inst, AsmInst::Inst(_)))
-                    .count()
-            }) as u16;
+            let size = code.map_or(0, |c| c.0.len()) as u16;
             // Get type information
             let (type_info, signature) = if asms.0.contains_key(name) {
                 ("asm", String::new())
-            } else if let Some((func_type, _)) = funcs.0.get(name) {
+            } else if let Some((func_type, _, _)) = funcs.0.get(name) {
                 ("func", func_type.fmt())
             } else {
                 ("unknown", String::new())
@@ -49,25 +43,20 @@ pub fn binprint(
 
         if let Some(code) = code {
             let mut current_addr = addr;
-            for line in &code.instructions {
-                match &line.inst {
-                    AsmInst::Inst(inst) => {
-                        let asm_text = inst.cformat();
-                        let bin = inst.clone().to_op().to_bin();
-                        let bytes = bin.to_le_bytes();
-                        cprintln!(
-                            "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",
-                            current_addr,
-                            bytes[0],
-                            bytes[1],
-                            bytes[2],
-                            bytes[3],
-                            asm_text
-                        );
-                        current_addr += 1;
-                    }
-                    _ => {}
-                }
+            for (inst, _symbol) in &code.0 {
+                let asm_text = inst.cformat();
+                let bin = inst.clone().to_op().to_bin();
+                let bytes = bin.to_le_bytes();
+                cprintln!(
+                    "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",
+                    current_addr,
+                    bytes[0],
+                    bytes[1],
+                    bytes[2],
+                    bytes[3],
+                    asm_text
+                );
+                current_addr += 1;
             }
         } else {
             for a in addr..(addr + size) {
@@ -81,9 +70,9 @@ pub fn binprint(
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, ty, kind) = if let Some((ty, _)) = statics.0.get(name) {
+            let (size, ty, kind) = if let Some((ty, _, _)) = statics.0.get(name) {
                 (ty.sizeof() as u16, ty.fmt(), "static")
-            } else if let Some((ty, _, _)) = consts.0.get(name) {
+            } else if let Some((ty, _, _, _)) = consts.0.get(name) {
                 (ty.sizeof() as u16, ty.fmt(), "const")
             } else {
                 (0, "unknown".to_string(), "unknown")
