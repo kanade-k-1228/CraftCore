@@ -1,49 +1,44 @@
 use crate::{
     collect::{ConstMap, FuncMap, StaticMap, TypeMap},
+    convert::types::Code,
+    error::FuncGenError,
+    eval::normtype::{collect_type, NormType},
     grammer::ast,
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-struct CodeGenContext {
+struct CodeGenContext<'a> {
+    lvars: HashMap<String, i16>, // Local variable offsets
+    stack_size: i16,             // Current stack frame size
+    insts: Vec<(Inst, Option<String>)>,
     #[allow(dead_code)]
-    func_name: String,
-    /// Local variable offsets (stack-relative)
-    locals: HashMap<String, i16>,
-    /// Current stack frame size
-    stack_size: i16,
-    /// Generated instruction sequence
-    instructions: Vec<(Inst, Option<String>)>,
-    /// Positions that need patching for forward jumps
-    /// (instruction_index, target_instruction_index)
-    #[allow(dead_code)]
-    forward_jumps: Vec<(usize, usize)>,
+    funcs: &'a FuncMap<'a>, // Function type information for calls
 }
 
-impl CodeGenContext {
-    fn new(func_name: String) -> Self {
+impl<'a> CodeGenContext<'a> {
+    fn new(funcs: &'a FuncMap<'a>) -> Self {
         Self {
-            func_name,
-            locals: HashMap::new(),
+            lvars: HashMap::new(),
             stack_size: 0,
-            instructions: Vec::new(),
-            forward_jumps: Vec::new(),
+            insts: Vec::new(),
+            funcs,
         }
     }
 
     /// Emit a raw instruction
     fn emit_inst(&mut self, inst: Inst) {
-        self.instructions.push((inst, None));
+        self.insts.push((inst, None));
     }
 
     /// Emit an instruction with symbol references
     fn emit_inst_with_symbol(&mut self, inst: Inst, symbol: String) {
-        self.instructions.push((inst, Some(symbol)));
+        self.insts.push((inst, Some(symbol)));
     }
 
     /// Get the current instruction position
     fn current_pos(&self) -> usize {
-        self.instructions.len()
+        self.insts.len()
     }
 
     /// Emit a placeholder jump that will be patched later
@@ -63,7 +58,7 @@ impl CodeGenContext {
         let offset = (target_pos as i32 - jump_pos as i32) as u16;
 
         // Replace the instruction at jump_pos with the correct offset
-        let (ref mut inst, _) = &mut self.instructions[jump_pos];
+        let (ref mut inst, _) = &mut self.insts[jump_pos];
         match inst {
             Inst::JUMPR(_) => *inst = Inst::JUMPR(offset),
             Inst::IFR(reg, _) => *inst = Inst::IFR(*reg, offset),
@@ -74,79 +69,193 @@ impl CodeGenContext {
     /// Allocate stack space for a local variable
     fn alloc_local(&mut self, name: String, size: i16) {
         self.stack_size += size;
-        self.locals.insert(name, -self.stack_size);
+        self.lvars.insert(name, -self.stack_size);
     }
 
     /// Get the stack offset for a local variable
     fn get_local_offset(&self, name: &str) -> Option<i16> {
-        self.locals.get(name).copied()
+        self.lvars.get(name).copied()
     }
 }
 
-/// Generate code from all functions in the AST
-pub fn func2code(
-    ast: &ast::AST,
+/// Generate function prologue from function type information
+///
+/// Prologue saves the caller's state and sets up the stack frame:
+/// 1. Save return address (RA) and frame pointer (FP)
+/// 2. Update FP to point to current stack frame
+/// 3. Allocate space for local variables and arguments
+///
+/// Stack layout after prologue:
+/// ```
+/// [SP] -> local variables...
+///         saved arguments...
+///         saved FP
+///         saved RA
+/// [FP] -> (points to saved RA position)
+/// ```
+fn generate_prologue(
+    args: &[(String, NormType)],
     _consts: &ConstMap,
     _types: &TypeMap,
-    _statics: &StaticMap,
-    _funcs: &FuncMap,
-) -> HashMap<String, crate::convert::types::Code> {
-    let mut result = HashMap::new();
+) -> Vec<(Inst, Option<String>)> {
+    let mut insts = Vec::new();
 
-    // Process each function definition in the AST
-    let ast::AST(defs) = ast;
-    for def in defs {
-        if let ast::Def::Func(func_name, args, ret_type, body) = def {
-            // Generate instructions for this function
-            let instructions = generate_function(func_name.clone(), args, ret_type, body);
-            result.insert(func_name.clone(), crate::convert::types::Code(instructions));
-        }
+    // Calculate total size needed for saved registers (RA + FP)
+    let saved_regs_size = 2u16;
+
+    // Calculate size needed for arguments on stack
+    let mut args_stack_size = 0u16;
+    for (_name, arg_type) in args {
+        args_stack_size += arg_type.sizeof() as u16;
     }
 
-    result
-}
+    // Total stack allocation for prologue
+    let stack_alloc = saved_regs_size + args_stack_size;
 
-/// Generate instructions for a function from its AST
-fn generate_function(
-    func_name: String,
-    args: &Vec<(String, ast::Type)>,
-    _ret_type: &ast::Type,
-    body: &ast::Stmt,
-) -> Vec<(Inst, Option<String>)> {
-    let mut ctx = CodeGenContext::new(func_name.clone());
+    // 1. Allocate stack space
+    if stack_alloc > 0 {
+        insts.push((Inst::SUBI(Reg::SP, Reg::SP, stack_alloc), None));
+    }
 
-    // Function prologue
-    // Save return address and frame pointer
-    ctx.emit_inst(Inst::SUBI(Reg::SP, Reg::SP, 2));
-    ctx.emit_inst(Inst::STORE(Reg::RA, Reg::SP, 0));
-    ctx.emit_inst(Inst::STORE(Reg::FP, Reg::SP, 1));
-    ctx.emit_inst(Inst::MOV(Reg::FP, Reg::SP));
+    // 2. Save return address and frame pointer
+    insts.push((Inst::STORE(Reg::RA, Reg::SP, 0), None));
+    insts.push((Inst::STORE(Reg::FP, Reg::SP, 1), None));
 
-    // Allocate space for arguments as local variables
-    for (i, (arg_name, _arg_type)) in args.iter().enumerate() {
-        ctx.alloc_local(arg_name.clone(), 1);
-        // Copy argument from register to local variable
-        // First 2 arguments are passed in A0-A1
+    // 3. Set new frame pointer
+    insts.push((Inst::MOV(Reg::FP, Reg::SP), None));
+
+    // 4. Save arguments to stack
+    // First 2 arguments come in A0, A1 registers
+    // Additional arguments are already on the stack (passed by caller)
+    let mut offset = saved_regs_size;
+    for (i, (_name, arg_type)) in args.iter().enumerate() {
+        let arg_size = arg_type.sizeof() as u16;
+
         if i < 2 {
+            // Arguments in registers - save them to stack
             let arg_reg = match i {
                 0 => Reg::A0,
                 1 => Reg::A1,
                 _ => unreachable!(),
             };
-            let offset = ctx.get_local_offset(arg_name).unwrap();
-            ctx.emit_inst(Inst::STORE(arg_reg, Reg::FP, offset as u16));
-        } else {
-            // Additional arguments are on the stack
-            // Load from caller's stack and store to local
-            let stack_offset = (i - 2) as u16;
-            ctx.emit_inst(Inst::LOAD(Reg::T0, Reg::FP, 2 + stack_offset));
-            let offset = ctx.get_local_offset(arg_name).unwrap();
-            ctx.emit_inst(Inst::STORE(Reg::T0, Reg::FP, offset as u16));
+
+            // Store each word of the argument
+            for j in 0..arg_size {
+                if j == 0 {
+                    insts.push((Inst::STORE(arg_reg, Reg::FP, offset + j), None));
+                } else {
+                    // For multi-word arguments, would need to handle appropriately
+                    // For now, assume single-word arguments
+                }
+            }
         }
+        // Arguments beyond the first 2 are already on the stack (caller pushed them)
+
+        offset += arg_size;
+    }
+
+    insts
+}
+
+/// Generate function epilogue from function type information
+///
+/// Epilogue restores the caller's state and returns:
+/// 1. Restore stack pointer to frame pointer position
+/// 2. Restore saved FP and RA
+/// 3. Deallocate stack frame
+/// 4. Return to caller
+///
+/// Return value (if any) should be in A0 register before calling epilogue
+fn generate_epilogue(
+    args: &[(String, NormType)],
+    _ret_type: &NormType,
+) -> Vec<(Inst, Option<String>)> {
+    let mut insts = Vec::new();
+
+    // Calculate stack sizes
+    let saved_regs_size = 2u16;
+    let mut args_stack_size = 0u16;
+    for (_name, arg_type) in args {
+        args_stack_size += arg_type.sizeof() as u16;
+    }
+    let stack_alloc = saved_regs_size + args_stack_size;
+
+    // 1. Restore stack pointer (discard local variables)
+    insts.push((Inst::MOV(Reg::SP, Reg::FP), None));
+
+    // 2. Restore frame pointer and return address
+    insts.push((Inst::LOAD(Reg::FP, Reg::SP, 1), None));
+    insts.push((Inst::LOAD(Reg::RA, Reg::SP, 0), None));
+
+    // 3. Deallocate stack frame
+    if stack_alloc > 0 {
+        insts.push((Inst::ADDI(Reg::SP, Reg::SP, stack_alloc), None));
+    }
+
+    // 4. Return to caller
+    insts.push((Inst::RET(), None));
+
+    insts
+}
+
+/// Generate code from all functions in the AST
+pub fn func2code(
+    types: &TypeMap,
+    consts: &ConstMap,
+    statics: &StaticMap,
+    funcs: &FuncMap,
+) -> Result<HashMap<String, Code>, FuncGenError> {
+    let mut result = HashMap::new();
+    for (name, (_, _, def)) in &funcs.0 {
+        if let ast::Def::Func(_, args, ret, stmt) = def {
+            result.insert(
+                name.clone(),
+                gen_func(args, ret, stmt, consts, types, statics, funcs)?,
+            );
+        }
+    }
+    Ok(result)
+}
+
+/// Generate instructions for a function from its AST
+fn gen_func(
+    args: &Vec<(String, ast::Type)>,
+    ret: &ast::Type,
+    stmt: &ast::Stmt,
+    consts: &ConstMap,
+    types: &TypeMap,
+    _statics: &StaticMap,
+    funcs: &FuncMap,
+) -> Result<Code, FuncGenError> {
+    let mut ctx = CodeGenContext::new(funcs);
+
+    // Convert AST types to normalized types for prologue/epilogue generation
+    let mut norm_args = Vec::new();
+    for (name, arg_type) in args {
+        let norm_type = collect_type(arg_type, consts, types)
+            .map_err(|_| FuncGenError::TypeCollectionFailed(name.clone()))?;
+        norm_args.push((name.clone(), norm_type));
+    }
+
+    let norm_ret_type = collect_type(ret, consts, types)
+        .map_err(|_| FuncGenError::TypeCollectionFailed("return type".to_string()))?;
+
+    // Generate function prologue
+    let prologue = generate_prologue(&norm_args, consts, types);
+    for inst in prologue {
+        ctx.insts.push(inst);
+    }
+
+    // Set up local variable tracking for arguments
+    let saved_regs_size = 2;
+    let mut offset = saved_regs_size;
+    for (name, norm_type) in &norm_args {
+        ctx.lvars.insert(name.clone(), offset as i16);
+        offset += norm_type.sizeof() as i16;
     }
 
     // Compile function body
-    let epilogue_pos = compile_stmt(&mut ctx, body);
+    let epilogue_pos = compile_stmt(&mut ctx, stmt)?;
 
     // Function epilogue
     // Any return statement jumps here
@@ -154,43 +263,42 @@ fn generate_function(
         // Patch any return jumps to point here
     }
 
-    ctx.emit_inst(Inst::MOV(Reg::SP, Reg::FP));
-    ctx.emit_inst(Inst::LOAD(Reg::FP, Reg::SP, 1));
-    ctx.emit_inst(Inst::LOAD(Reg::RA, Reg::SP, 0));
-    ctx.emit_inst(Inst::ADDI(Reg::SP, Reg::SP, 2));
-    ctx.emit_inst(Inst::RET());
+    let epilogue = generate_epilogue(&norm_args, &norm_ret_type);
+    for inst in epilogue {
+        ctx.insts.push(inst);
+    }
 
-    ctx.instructions
+    Ok(Code(ctx.insts))
 }
 
 /// Compile a statement into instructions
 /// Returns the position after the last instruction
-fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> usize {
+fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> Result<usize, FuncGenError> {
     match stmt {
         ast::Stmt::Block(stmts) => {
             for s in stmts {
-                compile_stmt(ctx, s);
+                compile_stmt(ctx, s)?;
             }
         }
         ast::Stmt::Expr(expr) => {
-            compile_expr(ctx, expr, None);
+            compile_expr(ctx, expr, None)?;
         }
         ast::Stmt::Assign(lhs, rhs) => {
             // Compile RHS and get result in a register
-            let rhs_reg = compile_expr(ctx, rhs, Some(Reg::T0));
+            let rhs_reg = compile_expr(ctx, rhs, Some(Reg::T0))?;
             // Store to LHS
-            compile_lvalue(ctx, lhs, rhs_reg);
+            compile_lvalue(ctx, lhs, rhs_reg)?;
         }
         ast::Stmt::Cond(cond, then_stmt, else_stmt) => {
             // Compile condition
-            let cond_reg = compile_expr(ctx, cond, Some(Reg::T0));
+            let cond_reg = compile_expr(ctx, cond, Some(Reg::T0))?;
 
             // Branch to else if condition is false
             ctx.emit_inst(Inst::NOT(Reg::T1, cond_reg));
             let else_jump = ctx.emit_placeholder_jump(true, Some(Reg::T1));
 
             // Then branch
-            compile_stmt(ctx, then_stmt);
+            compile_stmt(ctx, then_stmt)?;
 
             if let Some(else_stmt) = else_stmt {
                 // Jump over else branch
@@ -200,7 +308,7 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> usize {
                 let else_pos = ctx.current_pos();
                 ctx.patch_jump(else_jump, else_pos);
 
-                compile_stmt(ctx, else_stmt);
+                compile_stmt(ctx, else_stmt)?;
 
                 // End of if-else
                 let end_pos = ctx.current_pos();
@@ -215,14 +323,14 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> usize {
             let loop_start = ctx.current_pos();
 
             // Compile condition
-            let cond_reg = compile_expr(ctx, cond, Some(Reg::T0));
+            let cond_reg = compile_expr(ctx, cond, Some(Reg::T0))?;
 
             // Exit loop if condition is false
             ctx.emit_inst(Inst::NOT(Reg::T1, cond_reg));
             let exit_jump = ctx.emit_placeholder_jump(true, Some(Reg::T1));
 
             // Loop body
-            compile_stmt(ctx, body);
+            compile_stmt(ctx, body)?;
 
             // Jump back to start (calculate relative offset)
             let current = ctx.current_pos();
@@ -236,7 +344,7 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> usize {
         ast::Stmt::Return(expr) => {
             if let Some(expr) = expr {
                 // Compile return value into A0 (return value register)
-                compile_expr(ctx, expr, Some(Reg::A0));
+                compile_expr(ctx, expr, Some(Reg::A0))?;
             }
             // Jump to function epilogue (calculate offset at runtime)
             // For now, we'll need to count instructions to epilogue
@@ -249,8 +357,10 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> usize {
 
             // Initialize if provided
             if let Some(init_expr) = init {
-                let init_reg = compile_expr(ctx, init_expr, Some(Reg::T0));
-                let offset = ctx.get_local_offset(name).unwrap();
+                let init_reg = compile_expr(ctx, init_expr, Some(Reg::T0))?;
+                let offset = ctx
+                    .get_local_offset(name)
+                    .ok_or_else(|| FuncGenError::UndefinedVariable(name.clone()))?;
                 ctx.emit_inst(Inst::STORE(init_reg, Reg::FP, offset as u16));
             }
         }
@@ -258,14 +368,18 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> usize {
             // Skip error nodes
         }
     }
-    ctx.current_pos()
+    Ok(ctx.current_pos())
 }
 
 /// Compile an expression into a register
-fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>) -> Reg {
+fn compile_expr(
+    ctx: &mut CodeGenContext,
+    expr: &ast::Expr,
+    target: Option<Reg>,
+) -> Result<Reg, FuncGenError> {
     let target_reg = target.unwrap_or(Reg::T0);
 
-    match expr {
+    Ok(match expr {
         ast::Expr::NumberLit(n) => {
             ctx.emit_inst(Inst::LOADI(target_reg, *n as u16));
             target_reg
@@ -298,9 +412,9 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
         }
         ast::Expr::Binary(op, lhs, rhs) => {
             // Compile left operand
-            let lhs_reg = compile_expr(ctx, lhs, Some(Reg::T0));
+            let lhs_reg = compile_expr(ctx, lhs, Some(Reg::T0))?;
             // Compile right operand
-            let rhs_reg = compile_expr(ctx, rhs, Some(Reg::T1));
+            let rhs_reg = compile_expr(ctx, rhs, Some(Reg::T1))?;
 
             // Generate instruction based on operator
             match op {
@@ -333,7 +447,7 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
             target_reg
         }
         ast::Expr::Unary(op, operand) => {
-            let operand_reg = compile_expr(ctx, operand, Some(Reg::T0));
+            let operand_reg = compile_expr(ctx, operand, Some(Reg::T0))?;
 
             match op {
                 ast::UnaryOp::Neg => {
@@ -360,7 +474,7 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
         ast::Expr::Call(func_expr, args) => {
             // Evaluate arguments and push onto stack or registers
             for (i, arg) in args.iter().enumerate() {
-                let arg_reg = compile_expr(ctx, arg, Some(Reg::T0));
+                let arg_reg = compile_expr(ctx, arg, Some(Reg::T0))?;
                 // For simplicity, pass first 2 args in A0-A1
                 if i < 2 {
                     let dest_reg = match i {
@@ -386,7 +500,7 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
                 );
             } else {
                 // Indirect call through register
-                let _func_reg = compile_expr(ctx, func_expr, Some(Reg::T0));
+                let _func_reg = compile_expr(ctx, func_expr, Some(Reg::T0))?;
                 // Would need a CALLR instruction for indirect calls
                 // For now, just use placeholder
                 ctx.emit_inst(Inst::NOP());
@@ -406,14 +520,14 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
         }
         ast::Expr::Cond(cond, then_expr, else_expr) => {
             // Ternary conditional expression
-            let cond_reg = compile_expr(ctx, cond, Some(Reg::T0));
+            let cond_reg = compile_expr(ctx, cond, Some(Reg::T0))?;
 
             // Jump to else if false
             ctx.emit_inst(Inst::NOT(Reg::T1, cond_reg));
             let else_jump = ctx.emit_placeholder_jump(true, Some(Reg::T1));
 
             // Then expression
-            let then_reg = compile_expr(ctx, then_expr, Some(target_reg));
+            let then_reg = compile_expr(ctx, then_expr, Some(target_reg))?;
             if then_reg != target_reg {
                 ctx.emit_inst(Inst::MOV(target_reg, then_reg));
             }
@@ -425,7 +539,7 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
             let else_pos = ctx.current_pos();
             ctx.patch_jump(else_jump, else_pos);
 
-            let else_reg = compile_expr(ctx, else_expr, Some(target_reg));
+            let else_reg = compile_expr(ctx, else_expr, Some(target_reg))?;
             if else_reg != target_reg {
                 ctx.emit_inst(Inst::MOV(target_reg, else_reg));
             }
@@ -441,11 +555,15 @@ fn compile_expr(ctx: &mut CodeGenContext, expr: &ast::Expr, target: Option<Reg>)
             ctx.emit_inst(Inst::LOADI(target_reg, 0));
             target_reg
         }
-    }
+    })
 }
 
 /// Compile an lvalue (left-hand side of assignment)
-fn compile_lvalue(ctx: &mut CodeGenContext, lvalue: &ast::Expr, value_reg: Reg) {
+fn compile_lvalue(
+    ctx: &mut CodeGenContext,
+    lvalue: &ast::Expr,
+    value_reg: Reg,
+) -> Result<(), FuncGenError> {
     match lvalue {
         ast::Expr::Ident(name) => {
             if let Some(offset) = ctx.get_local_offset(name) {
@@ -460,14 +578,14 @@ fn compile_lvalue(ctx: &mut CodeGenContext, lvalue: &ast::Expr, value_reg: Reg) 
         }
         ast::Expr::Unary(ast::UnaryOp::Deref, addr_expr) => {
             // Store through pointer
-            let addr_reg = compile_expr(ctx, addr_expr, Some(Reg::T1));
+            let addr_reg = compile_expr(ctx, addr_expr, Some(Reg::T1))?;
             ctx.emit_inst(Inst::STORE(value_reg, addr_reg, 0));
         }
         ast::Expr::Index(array_expr, index_expr) => {
             // Compile array base address
-            let array_reg = compile_expr(ctx, array_expr, Some(Reg::T1));
+            let array_reg = compile_expr(ctx, array_expr, Some(Reg::T1))?;
             // Compile index
-            let index_reg = compile_expr(ctx, index_expr, Some(Reg::T2));
+            let index_reg = compile_expr(ctx, index_expr, Some(Reg::T2))?;
             // Add index to base address
             ctx.emit_inst(Inst::ADD(Reg::T1, array_reg, index_reg));
             // Store value
@@ -476,11 +594,12 @@ fn compile_lvalue(ctx: &mut CodeGenContext, lvalue: &ast::Expr, value_reg: Reg) 
         ast::Expr::Member(struct_expr, _field_name) => {
             // Would need type information to calculate field offset
             // For now, just store at base address
-            let struct_reg = compile_expr(ctx, struct_expr, Some(Reg::T1));
+            let struct_reg = compile_expr(ctx, struct_expr, Some(Reg::T1))?;
             ctx.emit_inst(Inst::STORE(value_reg, struct_reg, 0));
         }
         _ => {
-            // Other lvalue types not yet implemented
+            return Err(FuncGenError::InvalidLValue(format!("{:?}", lvalue)));
         }
     }
+    Ok(())
 }

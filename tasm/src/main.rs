@@ -59,7 +59,7 @@ fn main() {
     let funcs = FuncMap::collect(&ast, &consts, &types, &statics).unwrap();
 
     // 4. Generate code from functions and assembly blocks
-    let func_codes = tasm::convert::func2code(&ast, &consts, &types, &statics, &funcs);
+    let func_codes = tasm::convert::func2code(&types, &consts, &statics, &funcs).unwrap();
     let asm_codes = tasm::convert::asm2code(&asms, &consts).unwrap();
 
     // Combine function and assembly codes

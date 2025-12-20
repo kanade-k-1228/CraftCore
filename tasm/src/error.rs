@@ -17,6 +17,12 @@ pub enum Error {
 
     #[error(transparent)]
     BinGen(#[from] BinGenError),
+
+    #[error(transparent)]
+    Asm(#[from] AsmError),
+
+    #[error(transparent)]
+    FuncGen(#[from] FuncGenError),
 }
 
 // Parse errors
@@ -126,4 +132,26 @@ pub enum AsmError {
 
     #[error("Label redefinition: {0}")]
     LabelRedefinition(String),
+}
+
+// Function code generation errors
+#[derive(Debug, Error, Clone)]
+pub enum FuncGenError {
+    #[error("Type collection failed for: {0}")]
+    TypeCollectionFailed(String),
+
+    #[error("Invalid lvalue in assignment: {0}")]
+    InvalidLValue(String),
+
+    #[error("Unsupported expression type: {0}")]
+    UnsupportedExpression(String),
+
+    #[error("Unsupported statement type: {0}")]
+    UnsupportedStatement(String),
+
+    #[error("Undefined variable: {0}")]
+    UndefinedVariable(String),
+
+    #[error("Invalid function call: {0}")]
+    InvalidFunctionCall(String),
 }
