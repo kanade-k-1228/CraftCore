@@ -84,6 +84,9 @@ pub enum LinkError {
 
     #[error("Address space overflow: Cannot allocate {1} bytes for {0}")]
     AddressSpaceOverflow(String, usize),
+
+    #[error("Address out of range: {0} at 0x{1:04X}-0x{2:04X} is outside allowed range 0x{3:04X}-0x{4:04X}")]
+    AddressOutOfRange(String, usize, usize, usize, usize),
 }
 
 // Allocation errors

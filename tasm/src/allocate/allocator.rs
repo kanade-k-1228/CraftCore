@@ -3,6 +3,7 @@ use indexmap::IndexMap;
 
 pub fn allocate(
     items: IndexMap<String, (usize, Option<usize>)>,
+    range: (usize, usize), // (start_address, end_address_inclusive)
 ) -> Result<IndexMap<String, usize>, LinkError> {
     let mut result = IndexMap::new();
     let mut occupied = Vec::new(); // (begin, end)
@@ -13,28 +14,54 @@ pub fn allocate(
     // 1. Allocate items with fixed addresses
     for (name, (size, addr)) in fixed {
         let addr = addr.unwrap();
-        let range = (addr, addr + size - 1);
+
+        // Check if address is within the allowed range
+        let (range_start, range_end) = range;
+        if addr < range_start || addr + size - 1 > range_end {
+            return Err(LinkError::AddressOutOfRange(
+                name.to_string(),
+                addr,
+                addr + size - 1,
+                range_start,
+                range_end,
+            ));
+        }
+
+        let alloc_range = (addr, addr + size - 1);
         for (begin, end) in &occupied {
-            if overlaps(range, (*begin, *end)) {
+            if overlaps(alloc_range, (*begin, *end)) {
                 return Err(LinkError::FixedAddressOverlapped(
                     name.to_string(),
-                    range.0,
-                    range.1,
+                    alloc_range.0,
+                    alloc_range.1,
                 ));
             }
         }
         result.insert(name.clone(), addr);
-        occupied.push(range);
+        occupied.push(alloc_range);
     }
 
     // 2. Sort occupied ranges
     occupied.sort_by_key(|(start, _)| *start);
 
     // 3. Allocate rest items
-    let mut next_free_addr = 0usize;
+    let (range_start, range_end) = range;
+    let mut next_free_addr = range_start;
+
     for (name, (size, _)) in free {
-        // Find next available address
+        // Find next available address within the allowed range
         let addr = find_next_free_address(next_free_addr, *size, &occupied);
+
+        // Check if address is within the allowed range
+        if addr < range_start || addr + size - 1 > range_end {
+            return Err(LinkError::AddressOutOfRange(
+                name.clone(),
+                addr,
+                addr + size - 1,
+                range_start,
+                range_end,
+            ));
+        }
 
         // Check for address space overflow
         if addr.saturating_add(*size) > usize::MAX {
@@ -42,13 +69,13 @@ pub fn allocate(
         }
 
         result.insert(name.clone(), addr);
-        let range = (addr, addr + size - 1);
+        let alloc_range = (addr, addr + size - 1);
 
         // Insert the new range in sorted order
         let insert_pos = occupied
             .binary_search_by_key(&addr, |(start, _)| *start)
             .unwrap_or_else(|pos| pos);
-        occupied.insert(insert_pos, range);
+        occupied.insert(insert_pos, alloc_range);
 
         next_free_addr = addr + size;
     }

@@ -1,6 +1,6 @@
 use crate::convert::types::Code;
 use crate::error::LinkError;
-use crate::symbols::ConstMap;
+use crate::symbols::Symbols;
 use bimap::BiMap;
 use std::collections::HashMap;
 
@@ -9,7 +9,7 @@ pub fn resolve_symbols<'a>(
     codes: &HashMap<&'a str, Code>,
     imap: &BiMap<String, usize>,
     dmap: &BiMap<String, usize>,
-    consts: &ConstMap,
+    symbols: &Symbols,
 ) -> HashMap<&'a str, Code> {
     let mut resolved = HashMap::new();
 
@@ -21,7 +21,8 @@ pub fn resolve_symbols<'a>(
             if let Some(symbol) = symbol_opt {
                 // Try to resolve symbol - check constants first (for immediate values),
                 // then program memory (functions/labels), then data memory (statics)
-                let addr = consts
+                let addr = symbols
+                    .consts
                     .0
                     .get(symbol.as_str())
                     .and_then(|(_, const_expr, _, _)| {
@@ -110,13 +111,14 @@ pub fn generate_program_binary<'a>(
 
 /// Generate data binary from constants
 pub fn generate_data_binary(
-    consts: &ConstMap,
+    symbols: &Symbols,
     dmmap: &BiMap<String, usize>,
 ) -> Result<Vec<u8>, LinkError> {
     let mut binary = Vec::new();
 
     // Sort constants by their addresses
-    let mut sorted_consts: Vec<_> = consts
+    let mut sorted_consts: Vec<_> = symbols
+        .consts
         .0
         .iter()
         .filter_map(|(&name, (_, value, _, _))| dmmap.get_by_left(name).map(|addr| (*addr, value)))
@@ -129,7 +131,7 @@ pub fn generate_data_binary(
         // This is simplified - actual implementation would handle different types
         match value {
             crate::eval::constexpr::ConstExpr::Number(n) => {
-                binary.extend_from_slice(&(*n as usize).to_le_bytes());
+                binary.extend_from_slice(&(*n as u32).to_le_bytes());
             }
             _ => {
                 // Handle other constant types

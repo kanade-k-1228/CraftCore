@@ -375,6 +375,8 @@ dependencies = [
  "clap",
  "color-print",
  "indexmap",
+ "serde",
+ "serde_yaml",
  "thiserror",
 ]
 

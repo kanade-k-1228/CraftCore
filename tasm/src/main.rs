@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 
 use bimap::BiMap;
@@ -7,6 +7,7 @@ use clap::Parser;
 use indexmap::IndexMap;
 
 use tasm::allocate::allocator::allocate;
+use tasm::gen::maps::{generate_data_map, generate_function_map, generate_static_map};
 use tasm::grammer::lexer::LineLexer;
 use tasm::grammer::parser::Parser as TasmParser;
 use tasm::symbols::Symbols;
@@ -17,11 +18,11 @@ use tasm::util::display::binprint;
 struct Args {
     /// Input files
     #[clap(default_value = "main.tasm")]
-    input: Vec<String>,
+    src: Vec<String>,
 
     /// Output file
-    #[clap(short, long, default_value = "main.bin")]
-    output: String,
+    #[clap(short, long, default_value = "out")]
+    out: String,
 
     /// Enable verbose output
     #[clap(short, long)]
@@ -33,7 +34,7 @@ fn main() {
 
     // 1. Parse input files and tokenize
     let mut tokens = vec![];
-    for (ifile, input) in args.input.iter().enumerate() {
+    for (ifile, input) in args.src.iter().enumerate() {
         let file = File::open(&input).expect(&format!("Failed to open file: {}", input));
         let reader = BufReader::new(file);
         for (iline, line) in reader.lines().enumerate() {
@@ -92,41 +93,36 @@ fn main() {
     };
 
     // 6. Allocate objects
-    let iallocs = allocate(iitems).expect("Failed to allocate instruction memory");
-    let dallocs = allocate(ditems).expect("Failed to allocate data memory");
+    let iallocs = allocate(iitems, (0, usize::MAX)).expect("Failed to allocate instruction memory");
+    let dallocs = allocate(ditems, (0, usize::MAX)).expect("Failed to allocate data memory");
     let imap: BiMap<String, usize> = iallocs.into_iter().collect();
     let dmap: BiMap<String, usize> = dallocs.into_iter().collect();
 
     // 7. Resolve symbols
-    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &symbols.consts);
+    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &symbols);
     if args.verbose {
         binprint(&imap, &dmap, &codes, &symbols);
     }
 
     // 8. Generate binary
-    let ibin = tasm::link::generate_program_binary(&resolved, &imap).unwrap();
-    let dbin = tasm::link::generate_data_binary(&symbols.consts, &dmap).unwrap();
+    let ibin = tasm::link::generate_program_binary(&resolved, &imap).unwrap(); // Instruction binary
+    let cbin = tasm::link::generate_data_binary(&symbols, &dmap).unwrap(); // Constant binary
 
-    // 9. Write output to file
-    std::fs::write(&args.output, ibin).expect(&format!("Failed to write to file: {}", args.output));
+    // 9. Generate map files
+    let fmap = generate_function_map(&symbols, &imap);
+    let smap = generate_static_map(&symbols, &dmap);
+    let dmap_content = generate_data_map(&dmap);
 
-    // Write data binary if exists
-    if !dbin.is_empty() {
-        let data_output = args.output.replace(".bin", ".data.bin");
-        std::fs::write(&data_output, dbin)
-            .expect(&format!("Failed to write data file: {}", data_output));
-
-        println!(
-            "Successfully compiled {} to {} and {}",
-            args.input.join(", "),
-            args.output,
-            data_output
-        );
-    } else {
-        println!(
-            "Successfully compiled {} to {}",
-            args.input.join(", "),
-            args.output
-        );
-    }
+    // 10. Write output to file
+    fs::create_dir(&args.out).expect(&format!("Failed to create directory: {}", args.out));
+    fs::write(&format!("{}/i.bin", args.out), ibin)
+        .expect(&format!("Failed to write to file: {}/i.bin", args.out));
+    fs::write(&format!("{}/c.bin", args.out), cbin)
+        .expect(&format!("Failed to write to file: {}/c.bin", args.out));
+    fs::write(&format!("{}/f.yaml", args.out), fmap)
+        .expect(&format!("Failed to write to file: {}/f.yaml", args.out));
+    fs::write(&format!("{}/s.yaml", args.out), smap)
+        .expect(&format!("Failed to write to file: {}/s.yaml", args.out));
+    fs::write(&format!("{}/d.yaml", args.out), dmap_content)
+        .expect(&format!("Failed to write to file: {}/d.yaml", args.out));
 }
