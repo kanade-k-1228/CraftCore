@@ -60,7 +60,7 @@ fn main() {
 
     // 4. Generate code from functions and assembly blocks
     let func_codes = tasm::convert::func2code(&ast, &consts, &types, &statics, &funcs);
-    let asm_codes = tasm::convert::asm2code(&asms, &consts);
+    let asm_codes = tasm::convert::asm2code(&asms, &consts).unwrap();
 
     // Combine function and assembly codes
     let mut codes: HashMap<String, tasm::convert::Code> = HashMap::new();

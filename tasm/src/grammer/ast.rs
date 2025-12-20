@@ -6,8 +6,8 @@ pub enum Def {
     Type(String, Type),                              // name, type
     Const(String, Option<Expr>, Option<Type>, Expr), // name, addr, type, value
     Static(String, Option<Expr>, Type),              // name, addr, type
-    Asm(String, Option<Expr>, Vec<AsmStmt>),         // name, addr, body
-    Func(String, Vec<(String, Type)>, Type, Stmt),   // name, arg, ret, body
+    Asm(String, Option<Expr>, Vec<AsmStmt>),         // name, addr, stmts
+    Func(String, Vec<(String, Type)>, Type, Stmt),   // name, arg, ret, stmt
 }
 
 #[derive(Debug, Clone)]

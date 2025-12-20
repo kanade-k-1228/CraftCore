@@ -102,3 +102,28 @@ pub enum BinGenError {
     #[error("Invalid binary data")]
     InvalidBinaryData,
 }
+
+// Assembly code generation errors
+#[derive(Debug, Error, Clone)]
+pub enum AsmError {
+    #[error("Invalid instruction: {0}")]
+    InvalidInstruction(String),
+
+    #[error("Invalid register: {0}")]
+    InvalidRegister(String),
+
+    #[error("Invalid operand count for instruction {0}: expected {1}, got {2}")]
+    InvalidOperandCount(String, usize, usize),
+
+    #[error("Invalid operand type for instruction {0}")]
+    InvalidOperandType(String),
+
+    #[error("Undefined label: {0}")]
+    UndefinedLabel(String),
+
+    #[error("Invalid immediate value: {0}")]
+    InvalidImmediate(String),
+
+    #[error("Label redefinition: {0}")]
+    LabelRedefinition(String),
+}
