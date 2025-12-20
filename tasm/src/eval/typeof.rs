@@ -1,5 +1,5 @@
 use crate::{
-    collect::utils::CollectError,
+    error::CollectError,
     eval::normtype::NormType,
     grammer::ast::{BinaryOp, Expr, UnaryOp},
 };

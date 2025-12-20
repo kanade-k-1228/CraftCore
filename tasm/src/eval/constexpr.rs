@@ -1,4 +1,4 @@
-use crate::{collect::utils::CollectError, eval::normtype::NormType};
+use crate::{error::CollectError, eval::normtype::NormType};
 
 #[derive(Debug, Clone)]
 pub enum ConstExpr {

@@ -1,13 +1,15 @@
-use bimap::BiMap;
-use clap::Parser;
-use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+
+use bimap::BiMap;
+use clap::Parser;
+use indexmap::IndexMap;
+
 use tasm::allocate::allocator::allocate;
-use tasm::collect::{AsmMap, ConstMap, FuncMap, StaticMap, TypeMap};
 use tasm::grammer::lexer::LineLexer;
 use tasm::grammer::parser::Parser as TasmParser;
+use tasm::symbols::Symbols;
 use tasm::util::display::binprint;
 
 #[derive(Debug, clap::Parser)]
@@ -31,15 +33,16 @@ fn main() {
 
     // 1. Parse input files and tokenize
     let mut tokens = vec![];
-    for (file_idx, input) in args.input.iter().enumerate() {
+    for (ifile, input) in args.input.iter().enumerate() {
         let file = File::open(&input).expect(&format!("Failed to open file: {}", input));
         let reader = BufReader::new(file);
-        for (line_idx, line) in reader.lines().enumerate() {
+        for (iline, line) in reader.lines().enumerate() {
             let line = line.expect("Failed to read line");
-            let toks = LineLexer::new(&line, file_idx, line_idx).parse();
+            let toks = LineLexer::new(&line, ifile, iline).parse();
             tokens.extend(toks);
         }
     }
+    let tokens = tokens;
 
     // 2. Parse tokens into AST
     let (ast, errors) = TasmParser::new(tokens.into_iter()).parse();
@@ -51,91 +54,60 @@ fn main() {
         std::process::exit(1);
     }
 
-    // 3. Collect global symbols
-    let consts = ConstMap::collect(&ast).unwrap();
-    let types = TypeMap::collect(&ast, &consts).unwrap();
-    let statics = StaticMap::collect(&ast, &consts, &types).unwrap();
-    let asms = AsmMap::collect(&ast, &consts).unwrap();
-    let funcs = FuncMap::collect(&ast, &consts, &types, &statics).unwrap();
+    // 3. Collect symbols
+    let symbols = Symbols::collect(&ast).unwrap();
 
     // 4. Generate code from functions and assembly blocks
-    let func_codes = tasm::convert::func2code(&types, &consts, &statics, &funcs).unwrap();
-    let asm_codes = tasm::convert::asm2code(&asms, &consts).unwrap();
+    let func_codes = tasm::convert::func2code(&symbols).unwrap();
+    let asm_codes = tasm::convert::asm2code(&symbols).unwrap();
+    let codes: HashMap<_, _> = func_codes.into_iter().chain(asm_codes).collect();
 
-    // Combine function and assembly codes
-    let mut codes: HashMap<String, tasm::convert::Code> = HashMap::new();
-    codes.extend(func_codes);
-    codes.extend(asm_codes);
-
-    // 5. Allocate global objects
-    // Prepare instruction memory items for allocation
-    let mut inst_items = IndexMap::new();
-
-    // Add assembly blocks with their fixed addresses (first, to maintain priority)
-    for (name, (fixed_addr, _def)) in &asms.0 {
-        if let Some(code) = codes.get(name) {
-            let addr = fixed_addr.map(|a| a as u16);
-            // Count only actual instructions
-            let inst_count = code.0.len() as u16;
-            inst_items.insert(name.clone(), (inst_count, addr));
+    // 5. Collect global objects
+    // TODO: Remove unused objects
+    let iitems = {
+        let mut iitems = IndexMap::new();
+        for (&name, (addr, _)) in &symbols.asms.0 {
+            if let Some(code) = codes.get(name) {
+                iitems.insert(name.to_string(), (code.0.len(), *addr));
+            }
         }
-    }
-
-    // Add functions without fixed addresses
-    for (name, code) in &codes {
-        if !asms.0.contains_key(name) {
-            // Count only actual instructions
-            let inst_count = code.0.len() as u16;
-            inst_items.insert(name.clone(), (inst_count, None));
+        for (&name, code) in &codes {
+            if !symbols.asms.0.contains_key(name) {
+                iitems.insert(name.to_string(), (code.0.len(), None));
+            }
         }
-    }
-
-    // Prepare data memory items for allocation
-    let mut data_items = IndexMap::new();
-
-    // Add statics with their fixed addresses (first, to maintain priority)
-    for (name, (norm_type, fixed_addr, _def)) in statics.0.iter() {
-        let addr = fixed_addr.map(|a| a as u16);
-        data_items.insert(name.clone(), (norm_type.sizeof() as u16, addr));
-    }
-
-    // Add constants without fixed addresses
-    for (name, (norm_type, _, _, _def)) in consts.0.iter() {
-        if !statics.0.contains_key(name) {
-            data_items.insert(name.clone(), (norm_type.sizeof() as u16, None));
+        iitems
+    };
+    let ditems = {
+        let mut ditems = IndexMap::new();
+        for (&name, (ty, addr, _)) in symbols.statics.0.iter() {
+            ditems.insert(name.to_string(), (ty.sizeof(), *addr));
         }
-    }
+        for (&name, (ty, _, _, _)) in symbols.consts.0.iter() {
+            if !symbols.statics.0.contains_key(name) {
+                ditems.insert(name.to_string(), (ty.sizeof(), None));
+            }
+        }
+        ditems
+    };
 
-    // Allocate memory using the allocate function
-    let inst_allocations = allocate(inst_items).expect("Failed to allocate instruction memory");
-    let data_allocations = allocate(data_items).expect("Failed to allocate data memory");
+    // 6. Allocate objects
+    let iallocs = allocate(iitems).expect("Failed to allocate instruction memory");
+    let dallocs = allocate(ditems).expect("Failed to allocate data memory");
+    let imap: BiMap<String, usize> = iallocs.into_iter().collect();
+    let dmap: BiMap<String, usize> = dallocs.into_iter().collect();
 
-    // Convert allocations to BiMaps
-    let mut imap: BiMap<String, u16> = BiMap::new(); // Inst memory map
-    let mut dmap: BiMap<String, u16> = BiMap::new(); // Data memory map
-
-    for (name, addr) in inst_allocations {
-        imap.insert(name, addr);
-    }
-    for (name, addr) in data_allocations {
-        dmap.insert(name, addr);
-    }
-
-    // Note: Label addresses are no longer tracked in Code type
-    // Labels should be resolved during code generation phase
-
-    // 6. Resolve symbols
-    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &consts);
-
+    // 7. Resolve symbols
+    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &symbols.consts);
     if args.verbose {
-        binprint(&imap, &dmap, &codes, &statics, &consts, &asms, &funcs);
+        binprint(&imap, &dmap, &codes, &symbols);
     }
 
-    // 7. Generate binary
+    // 8. Generate binary
     let ibin = tasm::link::generate_program_binary(&resolved, &imap).unwrap();
-    let dbin = tasm::link::generate_data_binary(&consts, &dmap).unwrap();
+    let dbin = tasm::link::generate_data_binary(&symbols.consts, &dmap).unwrap();
 
-    // 8. Write output to file
+    // 9. Write output to file
     std::fs::write(&args.output, ibin).expect(&format!("Failed to write to file: {}", args.output));
 
     // Write data binary if exists

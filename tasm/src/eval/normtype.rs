@@ -1,7 +1,8 @@
 use crate::{
-    collect::{utils::CollectError, ConstMap, TypeMap},
+    error::CollectError,
     eval::constexpr::ConstExpr,
     grammer::ast,
+    symbols::{ConstMap, TypeMap},
 };
 
 #[derive(Debug, Clone)]
@@ -59,7 +60,7 @@ pub fn collect_type(
 ) -> Result<NormType, CollectError> {
     match ty {
         ast::Type::Int => Ok(NormType::Int),
-        ast::Type::Custom(name) => match types.0.get(name) {
+        ast::Type::Custom(name) => match types.0.get(name.as_str()) {
             Some((flat, _, _)) => Ok(flat.clone()),
             None => Err(CollectError::TODO),
         },
@@ -69,7 +70,7 @@ pub fn collect_type(
         ast::Type::Array(len, ty) => {
             let len = match len {
                 ast::Expr::NumberLit(n) => *n,
-                ast::Expr::Ident(name) => match consts.0.get(name) {
+                ast::Expr::Ident(name) => match consts.0.get(name.as_str()) {
                     Some((_, expr, _, _)) => match expr {
                         ConstExpr::Number(n) => *n,
                         _ => return Err(CollectError::TODO),

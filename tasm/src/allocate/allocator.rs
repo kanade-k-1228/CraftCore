@@ -2,8 +2,8 @@ use crate::error::LinkError;
 use indexmap::IndexMap;
 
 pub fn allocate(
-    items: IndexMap<String, (u16, Option<u16>)>,
-) -> Result<IndexMap<String, u16>, LinkError> {
+    items: IndexMap<String, (usize, Option<usize>)>,
+) -> Result<IndexMap<String, usize>, LinkError> {
     let mut result = IndexMap::new();
     let mut occupied = Vec::new(); // (begin, end)
 
@@ -31,13 +31,13 @@ pub fn allocate(
     occupied.sort_by_key(|(start, _)| *start);
 
     // 3. Allocate rest items
-    let mut next_free_addr = 0u16;
+    let mut next_free_addr = 0usize;
     for (name, (size, _)) in free {
         // Find next available address
         let addr = find_next_free_address(next_free_addr, *size, &occupied);
 
         // Check for address space overflow
-        if addr.saturating_add(*size) > u16::MAX {
+        if addr.saturating_add(*size) > usize::MAX {
             return Err(LinkError::AddressSpaceOverflow(name.clone(), *size));
         }
 
@@ -56,11 +56,11 @@ pub fn allocate(
     Ok(result)
 }
 
-fn overlaps(range1: (u16, u16), range2: (u16, u16)) -> bool {
+fn overlaps(range1: (usize, usize), range2: (usize, usize)) -> bool {
     range1.0 <= range2.1 && range2.0 <= range1.1
 }
 
-fn find_next_free_address(start: u16, size: u16, occupied: &[(u16, u16)]) -> u16 {
+fn find_next_free_address(start: usize, size: usize, occupied: &[(usize, usize)]) -> usize {
     let mut current = start;
     for &(begin, end) in occupied {
         if current + size - 1 < begin {

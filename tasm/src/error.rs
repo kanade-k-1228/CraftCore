@@ -74,7 +74,7 @@ pub enum CollectError {
 pub enum LinkError {
     /// Address confilcted: {0} at 0x{1} to 0x{2}
     #[error("Address conflict: {0} at 0x{1:04X} to 0x{2:04X}")]
-    FixedAddressOverlapped(String, u16, u16),
+    FixedAddressOverlapped(String, usize, usize),
 
     #[error("Symbol not found: {0}")]
     SymbolNotFound(String),
@@ -83,7 +83,7 @@ pub enum LinkError {
     InvalidSectionData,
 
     #[error("Address space overflow: Cannot allocate {1} bytes for {0}")]
-    AddressSpaceOverflow(String, u16),
+    AddressSpaceOverflow(String, usize),
 }
 
 // Allocation errors

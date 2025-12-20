@@ -1,28 +1,25 @@
-use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap};
 use crate::convert::Code;
+use crate::symbols::Symbols;
 use bimap::BiMap;
 use color_print::cprintln;
 use std::collections::HashMap;
 
-pub fn binprint(
-    imap: &BiMap<String, u16>,
-    dmap: &BiMap<String, u16>,
-    codes: &HashMap<String, Code>,
-    statics: &StaticMap,
-    consts: &ConstMap,
-    asms: &AsmMap,
-    funcs: &FuncMap,
+pub fn binprint<'a>(
+    imap: &BiMap<String, usize>,
+    dmap: &BiMap<String, usize>,
+    codes: &HashMap<&'a str, Code>,
+    symbols: &Symbols<'a>,
 ) {
     // Program Memory Layout
     let mut iblocks: Vec<_> = imap
         .iter()
         .map(|(name, addr)| {
-            let code = codes.get(name);
-            let size = code.map_or(0, |c| c.0.len()) as u16;
+            let code = codes.get(name.as_str());
+            let size = code.map_or(0, |c| c.0.len());
             // Get type information
-            let (type_info, signature) = if asms.0.contains_key(name) {
+            let (type_info, signature) = if symbols.asms.0.contains_key(name.as_str()) {
                 ("asm", String::new())
-            } else if let Some((func_type, _, _)) = funcs.0.get(name) {
+            } else if let Some((func_type, _, _)) = symbols.funcs.0.get(name.as_str()) {
                 ("func", func_type.fmt())
             } else {
                 ("unknown", String::new())
@@ -70,10 +67,10 @@ pub fn binprint(
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, ty, kind) = if let Some((ty, _, _)) = statics.0.get(name) {
-                (ty.sizeof() as u16, ty.fmt(), "static")
-            } else if let Some((ty, _, _, _)) = consts.0.get(name) {
-                (ty.sizeof() as u16, ty.fmt(), "const")
+            let (size, ty, kind) = if let Some((ty, _, _)) = symbols.statics.0.get(name.as_str()) {
+                (ty.sizeof(), ty.fmt(), "static")
+            } else if let Some((ty, _, _, _)) = symbols.consts.0.get(name.as_str()) {
+                (ty.sizeof(), ty.fmt(), "const")
             } else {
                 (0, "unknown".to_string(), "unknown")
             };

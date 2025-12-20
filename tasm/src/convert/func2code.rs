@@ -1,9 +1,9 @@
 use crate::{
-    collect::{ConstMap, FuncMap, StaticMap, TypeMap},
     convert::types::Code,
     error::FuncGenError,
     eval::normtype::{collect_type, NormType},
     grammer::ast,
+    symbols::{ConstMap, FuncMap, StaticMap, Symbols, TypeMap},
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
@@ -199,18 +199,21 @@ fn generate_epilogue(
 }
 
 /// Generate code from all functions in the AST
-pub fn func2code(
-    types: &TypeMap,
-    consts: &ConstMap,
-    statics: &StaticMap,
-    funcs: &FuncMap,
-) -> Result<HashMap<String, Code>, FuncGenError> {
+pub fn func2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
     let mut result = HashMap::new();
-    for (name, (_, _, def)) in &funcs.0 {
+    for (&name, (_, _, def)) in &symbols.funcs.0 {
         if let ast::Def::Func(_, args, ret, stmt) = def {
             result.insert(
-                name.clone(),
-                gen_func(args, ret, stmt, consts, types, statics, funcs)?,
+                name,
+                gen_func(
+                    args,
+                    ret,
+                    stmt,
+                    &symbols.consts,
+                    &symbols.types,
+                    &symbols.statics,
+                    &symbols.funcs,
+                )?,
             );
         }
     }

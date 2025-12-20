@@ -1,17 +1,12 @@
-use crate::{
-    collect::{AsmMap, ConstMap},
-    convert::types::Code,
-    error::AsmError,
-    grammer::ast,
-};
+use crate::{convert::types::Code, error::AsmError, grammer::ast, symbols::Symbols};
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-pub fn asm2code(asms: &AsmMap, _consts: &ConstMap) -> Result<HashMap<String, Code>, AsmError> {
+pub fn asm2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, AsmError> {
     let mut result = HashMap::new();
-    for (name, (_addr, def)) in &asms.0 {
+    for (&name, (_addr, def)) in &symbols.asms.0 {
         if let ast::Def::Asm(_, _, stmts) = def {
-            result.insert(name.clone(), gen_asm_block(stmts)?);
+            result.insert(name, gen_asm_block(stmts)?);
         }
     }
     Ok(result)

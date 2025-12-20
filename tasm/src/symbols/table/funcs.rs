@@ -1,12 +1,15 @@
 use crate::{
-    collect::{utils::CollectError, ConstMap, StaticMap, TypeMap},
+    error::CollectError,
     eval::normtype::{collect_type, NormType},
     grammer::ast,
+    symbols::table::{consts::ConstMap, statics::StaticMap, types::TypeMap},
 };
 use std::collections::HashMap;
 
+pub type FuncEntry<'a> = (NormType, Option<usize>, &'a ast::Def);
+
 #[derive(Debug)]
-pub struct FuncMap<'a>(pub HashMap<String, (NormType, Option<usize>, &'a ast::Def)>);
+pub struct FuncMap<'a>(pub HashMap<&'a str, FuncEntry<'a>>);
 
 impl<'a> FuncMap<'a> {
     pub fn collect(
@@ -20,7 +23,7 @@ impl<'a> FuncMap<'a> {
 
         for def in defs {
             if let ast::Def::Func(name, args, ty, _) = def {
-                if result.contains_key(name) {
+                if result.contains_key(name.as_str()) {
                     return Err(CollectError::Duplicate(name.clone()));
                 }
 
@@ -37,7 +40,7 @@ impl<'a> FuncMap<'a> {
                 let func_type = NormType::Func(resolved_args, Box::new(resolved_ret));
 
                 // For now, addr is None (will be determined in link phase)
-                result.insert(name.clone(), (func_type, None, def));
+                result.insert(name.as_str(), (func_type, None, def));
             }
         }
         Ok(FuncMap(result))

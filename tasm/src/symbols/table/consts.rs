@@ -1,16 +1,19 @@
 use crate::{
-    collect::{utils::CollectError, TypeMap},
+    error::CollectError,
     eval::{
         constexpr::ConstExpr,
         eval::eval,
         normtype::{collect_type, NormType},
     },
     grammer::ast,
+    symbols::table::types::TypeMap,
 };
 use std::collections::HashMap;
 
+pub type ConstEntry<'a> = (NormType, ConstExpr, Option<usize>, &'a ast::Def);
+
 #[derive(Debug)]
-pub struct ConstMap<'a>(pub HashMap<String, (NormType, ConstExpr, Option<usize>, &'a ast::Def)>);
+pub struct ConstMap<'a>(pub HashMap<&'a str, ConstEntry<'a>>);
 
 impl<'a> ConstMap<'a> {
     pub fn collect(ast: &'a ast::AST) -> Result<Self, CollectError> {
@@ -18,9 +21,7 @@ impl<'a> ConstMap<'a> {
             .0
             .iter()
             .filter_map(|def| match def {
-                ast::Def::Const(name, addr, ty, expr) => {
-                    Some((name.clone(), addr.clone(), ty.clone(), expr.clone(), def))
-                }
+                ast::Def::Const(name, addr, ty, expr) => Some((name.as_str(), addr, ty, expr, def)),
                 _ => None,
             })
             .collect();
@@ -40,8 +41,8 @@ impl<'a> ConstMap<'a> {
 
                 // Try to collect this const
                 // Create closure for eval
-                let env = |name: &str| -> Option<ConstExpr> {
-                    result.0.get(name).map(|(_, lit, _, _)| lit.clone())
+                let env = |lookup_name: &str| -> Option<ConstExpr> {
+                    result.0.get(lookup_name).map(|(_, lit, _, _)| lit.clone())
                 };
                 match eval(&expr, &env) {
                     Ok(lit) => {
@@ -61,9 +62,7 @@ impl<'a> ConstMap<'a> {
                                 ast::Expr::NumberLit(n) => Some(*n),
                                 _ => None,
                             });
-                            result
-                                .0
-                                .insert(name.clone(), (resolved_ty, lit, addr_value, *def));
+                            result.0.insert(name, (resolved_ty, lit, addr_value, *def));
                             made_progress = true;
                             return false; // Remove from pending list
                         }
