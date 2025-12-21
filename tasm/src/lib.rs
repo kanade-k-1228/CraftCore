@@ -1,9 +1,8 @@
-pub mod allocate;
 pub mod convert;
 pub mod error;
 pub mod eval;
 pub mod gen;
 pub mod grammer;
-pub mod link;
+pub mod linker;
 pub mod symbols;
 pub mod util;

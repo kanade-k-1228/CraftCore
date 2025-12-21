@@ -2,37 +2,34 @@ use super::token::{Pos, Token, TokenKind};
 use std::iter::Peekable;
 use std::str::CharIndices;
 
-pub struct Lexer {
-    file_idx: usize,
-    lines: Vec<String>,
+pub struct Lexer<'a> {
+    file: &'a str,
+    code: &'a str,
 }
 
-impl Lexer {
-    pub fn new(file_idx: usize, code: String) -> Self {
-        Self {
-            file_idx,
-            lines: code.lines().map(|line| line.to_string()).collect(),
-        }
+impl<'a> Lexer<'a> {
+    pub fn new(file: &'a str, code: &'a str) -> Self {
+        Self { file, code }
     }
 
-    pub fn parse(self) -> Vec<Token> {
+    pub fn parse(self) -> Vec<Token<'a>> {
         let mut tokens = Vec::new();
-        for (line_idx, line) in self.lines.iter().enumerate() {
-            let line_lexer = LineLexer::new(line, self.file_idx, line_idx);
-            tokens.extend(line_lexer.parse());
+        for (col, line) in self.code.lines().enumerate() {
+            let lexer = LineLexer::new(line, self.file, col);
+            tokens.extend(lexer.parse());
         }
         tokens
     }
 }
 
-pub struct LineLexer<'a> {
+struct LineLexer<'a> {
     iter: Peekable<CharIndices<'a>>,
-    file: usize,
+    file: &'a str,
     col: usize,
 }
 
 impl<'a> LineLexer<'a> {
-    pub fn new(line: &'a str, file: usize, col: usize) -> Self {
+    fn new(line: &'a str, file: &'a str, col: usize) -> Self {
         Self {
             iter: line.char_indices().peekable(),
             file,
@@ -59,7 +56,7 @@ impl<'a> LineLexer<'a> {
 // ----------------------------------------------------------------------------
 
 impl<'a> LineLexer<'a> {
-    pub fn parse(mut self) -> Vec<Token> {
+    pub fn parse(mut self) -> Vec<Token<'a>> {
         let mut tokens = Vec::new();
         while let Some((idx, ch0)) = self.peek_nth(0) {
             // 0. Skip whitespaces

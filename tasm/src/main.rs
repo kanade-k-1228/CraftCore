@@ -1,15 +1,15 @@
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs;
 
 use bimap::BiMap;
 use clap::Parser;
 use indexmap::IndexMap;
 
-use tasm::allocate::allocator::allocate;
 use tasm::gen::maps::{generate_data_map, generate_function_map, generate_static_map};
-use tasm::grammer::lexer::LineLexer;
+use tasm::grammer::lexer::Lexer;
 use tasm::grammer::parser::Parser as TasmParser;
+use tasm::linker::allocator::Allocator;
+use tasm::linker::binary::{generate_data_binary, generate_program_binary, resolve_symbols};
 use tasm::symbols::Symbols;
 use tasm::util::display::binprint;
 
@@ -32,20 +32,29 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    // 1. Parse input files and tokenize
-    let mut tokens = vec![];
-    for (ifile, input) in args.src.iter().enumerate() {
-        let file = File::open(&input).expect(&format!("Failed to open file: {}", input));
-        let reader = BufReader::new(file);
-        for (iline, line) in reader.lines().enumerate() {
-            let line = line.expect("Failed to read line");
-            let toks = LineLexer::new(&line, ifile, iline).parse();
-            tokens.extend(toks);
-        }
-    }
-    let tokens = tokens;
+    // 1. Read source files
+    let sources: Vec<(String, String)> = args
+        .src
+        .iter()
+        .map(|path| {
+            (
+                path.clone(),
+                fs::read_to_string(path).expect(&format!("Failed to read file: {}", path)),
+            )
+        })
+        .collect();
 
-    // 2. Parse tokens into AST
+    // 2. Parse input files and tokenize
+    let tokens = {
+        let mut tokens = vec![];
+        for (path, text) in sources.iter() {
+            let lexer = Lexer::new(path, text);
+            tokens.extend(lexer.parse());
+        }
+        tokens
+    };
+
+    // 3. Parse tokens into AST
     let (ast, errors) = TasmParser::new(tokens.into_iter()).parse();
     if !errors.is_empty() {
         eprintln!("Parser errors:");
@@ -55,15 +64,15 @@ fn main() {
         std::process::exit(1);
     }
 
-    // 3. Collect symbols
+    // 4. Collect symbols
     let symbols = Symbols::collect(&ast).unwrap();
 
-    // 4. Generate code from functions and assembly blocks
+    // 5. Generate code from functions and assembly blocks
     let func_codes = tasm::convert::func2code(&symbols).unwrap();
     let asm_codes = tasm::convert::asm2code(&symbols).unwrap();
     let codes: HashMap<_, _> = func_codes.into_iter().chain(asm_codes).collect();
 
-    // 5. Collect global objects
+    // 6. Collect global objects
     // TODO: Remove unused objects
     let iitems = {
         let mut iitems = IndexMap::new();
@@ -92,28 +101,61 @@ fn main() {
         ditems
     };
 
-    // 6. Allocate objects
-    let iallocs = allocate(iitems, (0, usize::MAX)).expect("Failed to allocate instruction memory");
-    let dallocs = allocate(ditems, (0, usize::MAX)).expect("Failed to allocate data memory");
-    let imap: BiMap<String, usize> = iallocs.into_iter().collect();
-    let dmap: BiMap<String, usize> = dallocs.into_iter().collect();
+    // 7. Allocate objects
+    let mut iallocator = Allocator::new(0, usize::MAX);
+    let mut dallocator = Allocator::new(0, usize::MAX);
 
-    // 7. Resolve symbols
-    let resolved = tasm::link::resolve_symbols(&codes, &imap, &dmap, &symbols);
+    // Allocate items with fixed addresses first
+    for (name, (size, addr)) in &iitems {
+        if let Some(addr) = addr {
+            iallocator
+                .allocate(*addr, *size, name)
+                .expect("Failed to allocate instruction memory");
+        }
+    }
+    for (name, (size, addr)) in &ditems {
+        if let Some(addr) = addr {
+            dallocator
+                .allocate(*addr, *size, name)
+                .expect("Failed to allocate data memory");
+        }
+    }
+
+    // Allocate items without fixed addresses using section
+    for (name, (size, addr)) in &iitems {
+        if addr.is_none() {
+            iallocator
+                .section(0, usize::MAX, *size, name)
+                .expect("Failed to allocate instruction memory");
+        }
+    }
+    for (name, (size, addr)) in &ditems {
+        if addr.is_none() {
+            dallocator
+                .section(0, usize::MAX, *size, name)
+                .expect("Failed to allocate data memory");
+        }
+    }
+
+    let imap: BiMap<String, usize> = iallocator.allocations().into_iter().collect();
+    let dmap: BiMap<String, usize> = dallocator.allocations().into_iter().collect();
+
+    // 8. Resolve symbols
+    let resolved = resolve_symbols(&codes, &imap, &dmap, &symbols);
     if args.verbose {
         binprint(&imap, &dmap, &codes, &symbols);
     }
 
-    // 8. Generate binary
-    let ibin = tasm::link::generate_program_binary(&resolved, &imap).unwrap(); // Instruction binary
-    let cbin = tasm::link::generate_data_binary(&symbols, &dmap).unwrap(); // Constant binary
+    // 9. Generate binary
+    let ibin = generate_program_binary(&resolved, &imap).unwrap(); // Instruction binary
+    let cbin = generate_data_binary(&symbols, &dmap).unwrap(); // Constant binary
 
-    // 9. Generate map files
+    // 10. Generate map files
     let fmap = generate_function_map(&symbols, &imap);
     let smap = generate_static_map(&symbols, &dmap);
     let dmap_content = generate_data_map(&dmap);
 
-    // 10. Write output to file
+    // 11. Write output to file
     fs::create_dir(&args.out).expect(&format!("Failed to create directory: {}", args.out));
     fs::write(&format!("{}/i.bin", args.out), ibin)
         .expect(&format!("Failed to write to file: {}/i.bin", args.out));

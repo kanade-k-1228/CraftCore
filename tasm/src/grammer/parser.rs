@@ -3,12 +3,12 @@ use super::token::{Token, TokenKind::*};
 use crate::error::ParseError;
 use std::iter::Peekable;
 
-pub struct Parser<I: Iterator<Item = Token>> {
+pub struct Parser<'a, I: Iterator<Item = Token<'a>>> {
     tokens: Peekable<I>,
     errors: Vec<ParseError>,
 }
 
-impl<I: Iterator<Item = Token>> Parser<I> {
+impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     pub fn new(tokens: I) -> Self {
         Parser {
             tokens: tokens.peekable(),
@@ -27,7 +27,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 // ------------------------------------------------------------------------
 
 #[allow(dead_code)]
-impl<I: Iterator<Item = Token>> Parser<I> {
+impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     /// Check next token is match with condition
     fn check_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> bool {
         if let Some(token) = self.tokens.peek() {
@@ -39,7 +39,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Consume if next token is match with condition
-    fn consume_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Option<Token> {
+    fn consume_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Option<Token<'a>> {
         self.tokens.next_if(|token| cond(token))
     }
 
@@ -54,7 +54,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Next token must be match with condition
-    fn expect_tobe<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Result<Token, ParseError> {
+    fn expect_tobe<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Result<Token<'a>, ParseError> {
         if let Some(token) = self.tokens.peek().cloned() {
             if cond(&token) {
                 self.tokens.next();
@@ -101,7 +101,7 @@ macro_rules! recover {
 // Parsers
 // ------------------------------------------------------------------------
 
-impl<I: Iterator<Item = Token>> Parser<I> {
+impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     fn parse_program(&mut self) -> AST {
         let mut program = Vec::new();
         while let Some(token) = self.tokens.peek() {
