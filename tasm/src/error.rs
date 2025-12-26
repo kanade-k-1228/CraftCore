@@ -23,6 +23,9 @@ pub enum Error {
 
     #[error(transparent)]
     FuncGen(#[from] FuncGenError),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 // Parse errors
@@ -87,6 +90,9 @@ pub enum LinkError {
 
     #[error("Address out of range: {0} at 0x{1:04X}-0x{2:04X} is outside allowed range 0x{3:04X}-0x{4:04X}")]
     AddressOutOfRange(String, usize, usize, usize, usize),
+
+    #[error("Memory section not found: {0}")]
+    SectionNotFound(String),
 }
 
 // Allocation errors

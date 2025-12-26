@@ -1,14 +1,14 @@
 use crate::convert::types::Code;
 use crate::error::LinkError;
 use crate::symbols::Symbols;
-use bimap::BiMap;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 /// Resolve symbols in the code using the memory maps
 pub fn resolve_symbols<'a>(
     codes: &HashMap<&'a str, Code>,
-    imap: &BiMap<String, usize>,
-    dmap: &BiMap<String, usize>,
+    imap: &IndexMap<String, usize>,
+    dmap: &IndexMap<String, usize>,
     symbols: &Symbols,
 ) -> HashMap<&'a str, Code> {
     let mut resolved = HashMap::new();
@@ -33,8 +33,8 @@ pub fn resolve_symbols<'a>(
                             None
                         }
                     })
-                    .or_else(|| imap.get_by_left(symbol).copied())
-                    .or_else(|| dmap.get_by_left(symbol).copied());
+                    .or_else(|| imap.get(symbol).copied())
+                    .or_else(|| dmap.get(symbol).copied());
 
                 if let Some(resolved_addr) = addr {
                     // Update instruction with resolved address
@@ -80,18 +80,14 @@ pub fn resolve_symbols<'a>(
 /// Generate program binary from resolved code
 pub fn generate_program_binary<'a>(
     resolved: &HashMap<&'a str, Code>,
-    pmmap: &BiMap<String, usize>,
+    pmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, LinkError> {
     let mut binary = Vec::new();
 
     // Sort codes by their addresses
     let mut sorted_codes: Vec<_> = resolved
         .iter()
-        .filter_map(|(&name, code)| {
-            pmmap
-                .get_by_left(&name.to_string())
-                .map(|addr| (*addr, code))
-        })
+        .filter_map(|(&name, code)| pmmap.get(&name.to_string()).map(|addr| (*addr, code)))
         .collect();
     sorted_codes.sort_by_key(|(addr, _)| *addr);
 
@@ -112,7 +108,7 @@ pub fn generate_program_binary<'a>(
 /// Generate data binary from constants
 pub fn generate_data_binary(
     symbols: &Symbols,
-    dmmap: &BiMap<String, usize>,
+    dmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, LinkError> {
     let mut binary = Vec::new();
 
@@ -121,7 +117,7 @@ pub fn generate_data_binary(
         .consts
         .0
         .iter()
-        .filter_map(|(&name, (_, value, _, _))| dmmap.get_by_left(name).map(|addr| (*addr, value)))
+        .filter_map(|(&name, (_, value, _, _))| dmmap.get(name).map(|addr| (*addr, value)))
         .collect();
     sorted_consts.sort_by_key(|(addr, _)| *addr);
 

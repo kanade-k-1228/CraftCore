@@ -1,6 +1,6 @@
-use bimap::BiMap;
 use crate::symbols::Symbols;
-use serde::{Serialize, Deserialize};
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,7 +20,7 @@ pub struct DataMapEntry {
 }
 
 /// Generate function map (name -> address mapping for functions and asm blocks)
-pub fn generate_function_map(_symbols: &Symbols, imap: &BiMap<String, usize>) -> String {
+pub fn generate_function_map(_symbols: &Symbols, imap: &IndexMap<String, usize>) -> String {
     let mut map: BTreeMap<String, FunctionMapEntry> = BTreeMap::new();
 
     for (name, addr) in imap.iter() {
@@ -31,11 +31,11 @@ pub fn generate_function_map(_symbols: &Symbols, imap: &BiMap<String, usize>) ->
 }
 
 /// Generate static map (name -> address mapping for static variables)
-pub fn generate_static_map(symbols: &Symbols, dmap: &BiMap<String, usize>) -> String {
+pub fn generate_static_map(symbols: &Symbols, dmap: &IndexMap<String, usize>) -> String {
     let mut map: BTreeMap<String, StaticMapEntry> = BTreeMap::new();
 
     for (&name, (ty, _, _)) in symbols.statics.0.iter() {
-        if let Some(&addr) = dmap.get_by_left(name) {
+        if let Some(&addr) = dmap.get(name) {
             map.insert(
                 name.to_string(),
                 StaticMapEntry {
@@ -50,7 +50,7 @@ pub fn generate_static_map(symbols: &Symbols, dmap: &BiMap<String, usize>) -> St
 }
 
 /// Generate data map (name -> address mapping for all data including constants)
-pub fn generate_data_map(dmap: &BiMap<String, usize>) -> String {
+pub fn generate_data_map(dmap: &IndexMap<String, usize>) -> String {
     let mut map: BTreeMap<String, DataMapEntry> = BTreeMap::new();
 
     for (name, addr) in dmap.iter() {

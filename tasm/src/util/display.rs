@@ -1,12 +1,12 @@
 use crate::convert::Code;
 use crate::symbols::Symbols;
-use bimap::BiMap;
 use color_print::cprintln;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 pub fn binprint<'a>(
-    imap: &BiMap<String, usize>,
-    dmap: &BiMap<String, usize>,
+    imap: &IndexMap<String, usize>,
+    dmap: &IndexMap<String, usize>,
     codes: &HashMap<&'a str, Code>,
     symbols: &Symbols<'a>,
 ) {

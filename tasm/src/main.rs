@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 use std::fs;
 
-use bimap::BiMap;
 use clap::Parser;
 use indexmap::IndexMap;
 
+use tasm::error::Error;
 use tasm::gen::maps::{generate_data_map, generate_function_map, generate_static_map};
 use tasm::grammer::lexer::Lexer;
 use tasm::grammer::parser::Parser as TasmParser;
 use tasm::linker::allocator::Allocator;
 use tasm::linker::binary::{generate_data_binary, generate_program_binary, resolve_symbols};
+use tasm::linker::dce::DeadCodeEliminator;
+use tasm::linker::memory::Memory;
 use tasm::symbols::Symbols;
 use tasm::util::display::binprint;
 
@@ -29,20 +31,15 @@ struct Args {
     verbose: bool,
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let args = Args::parse();
 
     // 1. Read source files
-    let sources: Vec<(String, String)> = args
-        .src
-        .iter()
-        .map(|path| {
-            (
-                path.clone(),
-                fs::read_to_string(path).expect(&format!("Failed to read file: {}", path)),
-            )
-        })
-        .collect();
+    let mut sources = Vec::new();
+    for path in &args.src {
+        let content = fs::read_to_string(path)?;
+        sources.push((path.clone(), content));
+    }
 
     // 2. Parse input files and tokenize
     let tokens = {
@@ -65,24 +62,41 @@ fn main() {
     }
 
     // 4. Collect symbols
-    let symbols = Symbols::collect(&ast).unwrap();
+    let symbols = Symbols::collect(&ast)?;
 
     // 5. Generate code from functions and assembly blocks
-    let func_codes = tasm::convert::func2code(&symbols).unwrap();
-    let asm_codes = tasm::convert::asm2code(&symbols).unwrap();
+    let func_codes = tasm::convert::func2code(&symbols)?;
+    let asm_codes = tasm::convert::asm2code(&symbols)?;
     let codes: HashMap<_, _> = func_codes.into_iter().chain(asm_codes).collect();
 
-    // 6. Collect global objects
-    // TODO: Remove unused objects
+    // 6. Perform dead code elimination
+    let mut dce = DeadCodeEliminator::new();
+    dce.analyze_code(&codes);
+    dce.find_reachable();
+
+    if args.verbose {
+        let total_funcs = codes.len();
+        let (kept, removed) = dce.get_stats(total_funcs);
+        eprintln!(
+            "Dead code elimination: {} functions kept, {} removed",
+            kept, removed
+        );
+    }
+
+    // 7. Collect global objects (with DCE applied)
     let iitems = {
         let mut iitems = IndexMap::new();
         for (&name, (addr, _)) in &symbols.asms.0 {
-            if let Some(code) = codes.get(name) {
-                iitems.insert(name.to_string(), (code.0.len(), *addr));
+            // Only include if reachable
+            if dce.is_reachable(name) {
+                if let Some(code) = codes.get(name) {
+                    iitems.insert(name.to_string(), (code.0.len(), *addr));
+                }
             }
         }
         for (&name, code) in &codes {
-            if !symbols.asms.0.contains_key(name) {
+            // Only include if reachable
+            if dce.is_reachable(name) && !symbols.asms.0.contains_key(name) {
                 iitems.insert(name.to_string(), (code.0.len(), None));
             }
         }
@@ -91,80 +105,99 @@ fn main() {
     let ditems = {
         let mut ditems = IndexMap::new();
         for (&name, (ty, addr, _)) in symbols.statics.0.iter() {
-            ditems.insert(name.to_string(), (ty.sizeof(), *addr));
+            // Only include if reachable (data items referenced from reachable code)
+            if dce.is_reachable(name) {
+                ditems.insert(name.to_string(), (ty.sizeof(), *addr));
+            }
         }
-        for (&name, (ty, _, _, _)) in symbols.consts.0.iter() {
-            if !symbols.statics.0.contains_key(name) {
-                ditems.insert(name.to_string(), (ty.sizeof(), None));
+        for (&name, (ty, _, addr, _)) in symbols.consts.0.iter() {
+            // Only include if reachable
+            if dce.is_reachable(name) && !symbols.statics.0.contains_key(name) {
+                ditems.insert(name.to_string(), (ty.sizeof(), *addr));
             }
         }
         ditems
     };
 
-    // 7. Allocate objects
-    let mut iallocator = Allocator::new(0, usize::MAX);
-    let mut dallocator = Allocator::new(0, usize::MAX);
+    // 8. Allocate objects
+    let imem = Memory::new(0, 0x10000)
+        .section("reset", 0x0000, 0x0004)
+        .section("irq", 0x0004, 0x0008)
+        .section("code", 0x0008, 0x10000);
+    let dmem = Memory::new(0, 0x10000)
+        .section("reg", 0x0000, 0x0010)
+        .section("csr", 0x0010, 0x0100)
+        .section("ioreg", 0x0100, 0x1000)
+        .section("vram", 0x1000, 0x3000)
+        .section("const", 0x3000, 0x5000)
+        .section("static", 0x5000, 0x10000);
+    let mut ialoc = Allocator::new(0, 0x10000);
+    let mut daloc = Allocator::new(0, 0x10000);
 
-    // Allocate items with fixed addresses first
+    // Allocate items with fixed addresses first (for both instruction and data)
     for (name, (size, addr)) in &iitems {
         if let Some(addr) = addr {
-            iallocator
-                .allocate(*addr, *size, name)
-                .expect("Failed to allocate instruction memory");
+            ialoc.allocate(*addr, *size, name)?;
         }
     }
     for (name, (size, addr)) in &ditems {
         if let Some(addr) = addr {
-            dallocator
-                .allocate(*addr, *size, name)
-                .expect("Failed to allocate data memory");
+            daloc.allocate(*addr, *size, name)?;
         }
     }
 
-    // Allocate items without fixed addresses using section
+    // Allocate instruction items without fixed addresses
     for (name, (size, addr)) in &iitems {
         if addr.is_none() {
-            iallocator
-                .section(0, usize::MAX, *size, name)
-                .expect("Failed to allocate instruction memory");
+            ialoc.section(imem.get("code")?, *size, name)?;
         }
     }
-    for (name, (size, addr)) in &ditems {
+
+    // Allocate data items without fixed addresses to appropriate sections
+    // First, allocate consts to const section
+    for (&name, _) in symbols.consts.0.iter() {
+        if let Some((size, addr)) = ditems.get(name) {
+            if addr.is_none() {
+                daloc.section(dmem.get("const")?, *size, name)?;
+            }
+        }
+    }
+
+    for (&name, (_, addr, _)) in symbols.statics.0.iter() {
         if addr.is_none() {
-            dallocator
-                .section(0, usize::MAX, *size, name)
-                .expect("Failed to allocate data memory");
+            if let Some((size, _)) = ditems.get(name) {
+                daloc.section(dmem.get("static")?, *size, name)?;
+            }
         }
     }
 
-    let imap: BiMap<String, usize> = iallocator.allocations().into_iter().collect();
-    let dmap: BiMap<String, usize> = dallocator.allocations().into_iter().collect();
+    let imap: IndexMap<String, usize> = ialoc.allocations().into_iter().collect();
+    let dmap: IndexMap<String, usize> = daloc.allocations().into_iter().collect();
 
-    // 8. Resolve symbols
+    // 9. Resolve symbols
     let resolved = resolve_symbols(&codes, &imap, &dmap, &symbols);
     if args.verbose {
         binprint(&imap, &dmap, &codes, &symbols);
     }
 
-    // 9. Generate binary
-    let ibin = generate_program_binary(&resolved, &imap).unwrap(); // Instruction binary
-    let cbin = generate_data_binary(&symbols, &dmap).unwrap(); // Constant binary
+    // 10. Generate binary
+    let ibin = generate_program_binary(&resolved, &imap)?; // Instruction binary
+    let cbin = generate_data_binary(&symbols, &dmap)?; // Constant binary
 
-    // 10. Generate map files
+    // 11. Generate map files
     let fmap = generate_function_map(&symbols, &imap);
     let smap = generate_static_map(&symbols, &dmap);
     let dmap_content = generate_data_map(&dmap);
 
-    // 11. Write output to file
-    fs::create_dir(&args.out).expect(&format!("Failed to create directory: {}", args.out));
-    fs::write(&format!("{}/i.bin", args.out), ibin)
-        .expect(&format!("Failed to write to file: {}/i.bin", args.out));
-    fs::write(&format!("{}/c.bin", args.out), cbin)
-        .expect(&format!("Failed to write to file: {}/c.bin", args.out));
-    fs::write(&format!("{}/f.yaml", args.out), fmap)
-        .expect(&format!("Failed to write to file: {}/f.yaml", args.out));
-    fs::write(&format!("{}/s.yaml", args.out), smap)
-        .expect(&format!("Failed to write to file: {}/s.yaml", args.out));
-    fs::write(&format!("{}/d.yaml", args.out), dmap_content)
-        .expect(&format!("Failed to write to file: {}/d.yaml", args.out));
+    // 12. Write output to file
+    if !std::path::Path::new(&args.out).exists() {
+        fs::create_dir(&args.out)?;
+    }
+    fs::write(&format!("{}/i.bin", args.out), ibin)?;
+    fs::write(&format!("{}/c.bin", args.out), cbin)?;
+    fs::write(&format!("{}/f.yaml", args.out), fmap)?;
+    fs::write(&format!("{}/s.yaml", args.out), smap)?;
+    fs::write(&format!("{}/d.yaml", args.out), dmap_content)?;
+
+    Ok(())
 }
