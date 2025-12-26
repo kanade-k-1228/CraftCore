@@ -5,7 +5,6 @@ use clap::Parser;
 use indexmap::IndexMap;
 
 use tasm::error::Error;
-use tasm::gen::maps::{generate_data_map, generate_function_map, generate_static_map};
 use tasm::grammer::lexer::Lexer;
 use tasm::grammer::parser::Parser as TasmParser;
 use tasm::linker::allocator::Allocator;
@@ -14,6 +13,7 @@ use tasm::linker::deps::{dependency, filter};
 use tasm::linker::memory::Memory;
 use tasm::symbols::Symbols;
 use tasm::util::display::binprint;
+use tasm::util::maps::{generate_data_map, generate_function_map, generate_static_map};
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
