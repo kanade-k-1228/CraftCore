@@ -10,7 +10,7 @@ use tasm::grammer::lexer::Lexer;
 use tasm::grammer::parser::Parser as TasmParser;
 use tasm::linker::allocator::Allocator;
 use tasm::linker::binary::{generate_data_binary, generate_program_binary, resolve_symbols};
-use tasm::linker::dce::DeadCodeEliminator;
+use tasm::linker::deps::{dependency, filter};
 use tasm::linker::memory::Memory;
 use tasm::symbols::Symbols;
 use tasm::util::display::binprint;
@@ -70,17 +70,79 @@ fn main() -> Result<(), Error> {
     let codes: HashMap<_, _> = func_codes.into_iter().chain(asm_codes).collect();
 
     // 6. Perform dead code elimination
-    let mut dce = DeadCodeEliminator::new();
-    dce.analyze_code(&codes);
-    dce.find_reachable();
+    let deps = dependency(&codes);
+    let used = filter(deps.clone(), vec!["reset", "irq", "main"]);
 
     if args.verbose {
-        let total_funcs = codes.len();
-        let (kept, removed) = dce.get_stats(total_funcs);
+        eprintln!("=== Dead Code Elimination Report ===");
+        eprintln!();
+
+        // Calculate the maximum width for each column
+        let max_symbol_len = deps.keys().map(|s| s.len()).max().unwrap_or(6).max(6);
+        let max_deps_len = deps
+            .values()
+            .map(|v| {
+                if v.is_empty() {
+                    4 // "None"
+                } else {
+                    v.iter().map(|s| s.len()).sum::<usize>() + (v.len() - 1) * 2
+                    // +2 for ", "
+                }
+            })
+            .max()
+            .unwrap_or(12)
+            .max(12);
+
+        // Print header
         eprintln!(
-            "Dead code elimination: {} functions kept, {} removed",
-            kept, removed
+            "{:<width$} | {:^6} | {:<deps_width$}",
+            "Symbol",
+            "Kept",
+            "Dependencies",
+            width = max_symbol_len,
+            deps_width = max_deps_len
         );
+        eprintln!(
+            "{:-<width$}-+-{:-<6}-+-{:-<deps_width$}",
+            "",
+            "",
+            "",
+            width = max_symbol_len,
+            deps_width = max_deps_len
+        );
+
+        // Sort symbols for consistent output
+        let mut symbols: Vec<_> = deps.keys().collect();
+        symbols.sort();
+
+        // Print each symbol's status
+        for &symbol in &symbols {
+            let is_kept = used.contains(symbol);
+            let deps_list = deps.get(symbol).unwrap();
+            let deps_str = if deps_list.is_empty() {
+                "None".to_string()
+            } else {
+                deps_list.join(", ")
+            };
+
+            eprintln!(
+                "{:<width$} | {:^6} | {:<deps_width$}",
+                symbol,
+                if is_kept { "✓" } else { " " },
+                deps_str,
+                width = max_symbol_len,
+                deps_width = max_deps_len
+            );
+        }
+
+        eprintln!();
+        eprintln!(
+            "Total: {} symbols, {} kept, {} eliminated",
+            deps.len(),
+            used.len(),
+            deps.len() - used.len()
+        );
+        eprintln!();
     }
 
     // 7. Collect global objects (with DCE applied)
@@ -88,7 +150,7 @@ fn main() -> Result<(), Error> {
         let mut iitems = IndexMap::new();
         for (&name, (addr, _)) in &symbols.asms.0 {
             // Only include if reachable
-            if dce.is_reachable(name) {
+            if used.contains(name) {
                 if let Some(code) = codes.get(name) {
                     iitems.insert(name.to_string(), (code.0.len(), *addr));
                 }
@@ -96,7 +158,7 @@ fn main() -> Result<(), Error> {
         }
         for (&name, code) in &codes {
             // Only include if reachable
-            if dce.is_reachable(name) && !symbols.asms.0.contains_key(name) {
+            if used.contains(name) && !symbols.asms.0.contains_key(name) {
                 iitems.insert(name.to_string(), (code.0.len(), None));
             }
         }
@@ -106,13 +168,13 @@ fn main() -> Result<(), Error> {
         let mut ditems = IndexMap::new();
         for (&name, (ty, addr, _)) in symbols.statics.0.iter() {
             // Only include if reachable (data items referenced from reachable code)
-            if dce.is_reachable(name) {
+            if used.contains(name) {
                 ditems.insert(name.to_string(), (ty.sizeof(), *addr));
             }
         }
         for (&name, (ty, _, addr, _)) in symbols.consts.0.iter() {
             // Only include if reachable
-            if dce.is_reachable(name) && !symbols.statics.0.contains_key(name) {
+            if used.contains(name) && !symbols.statics.0.contains_key(name) {
                 ditems.insert(name.to_string(), (ty.sizeof(), *addr));
             }
         }
