@@ -4,17 +4,17 @@ use crate::{
     grammer::ast,
     symbols::table::consts::ConstMap,
 };
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub type TypeEntry<'a> = (NormType, usize, &'a ast::Def);
 
 #[derive(Debug)]
-pub struct TypeMap<'a>(pub HashMap<&'a str, TypeEntry<'a>>);
+pub struct TypeMap<'a>(pub IndexMap<&'a str, TypeEntry<'a>>);
 
 impl<'a> TypeMap<'a> {
     pub fn collect(ast: &'a ast::AST, consts: &ConstMap) -> Result<Self, CollectError> {
         let ast::AST(defs) = ast;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
 
         for def in defs {
             if let ast::Def::Type(name, ty) = def {

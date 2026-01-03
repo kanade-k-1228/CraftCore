@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub fn asm2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, AsmError> {
     let mut result = HashMap::new();
-    for (&name, (_addr, def)) in &symbols.asms.0 {
+    for (&name, (_, def)) in symbols.asms() {
         if let ast::Def::Asm(_, _, stmts) = def {
             result.insert(name, gen_asm_block(stmts)?);
         }

@@ -4,12 +4,12 @@ use crate::{
     grammer::ast,
     symbols::table::{consts::ConstMap, statics::StaticMap, types::TypeMap},
 };
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub type FuncEntry<'a> = (NormType, Option<usize>, &'a ast::Def);
 
 #[derive(Debug)]
-pub struct FuncMap<'a>(pub HashMap<&'a str, FuncEntry<'a>>);
+pub struct FuncMap<'a>(pub IndexMap<&'a str, FuncEntry<'a>>);
 
 impl<'a> FuncMap<'a> {
     pub fn collect(
@@ -19,7 +19,7 @@ impl<'a> FuncMap<'a> {
         _statics: &StaticMap,
     ) -> Result<Self, CollectError> {
         let ast::AST(defs) = ast;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
 
         for def in defs {
             if let ast::Def::Func(name, args, ty, _) = def {

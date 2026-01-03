@@ -1,19 +1,13 @@
-use std::collections::HashMap;
 use std::fs;
 
 use clap::Parser;
 use indexmap::IndexMap;
 
-use tasm::error::Error;
-use tasm::grammer::lexer::Lexer;
-use tasm::grammer::parser::Parser as TasmParser;
-use tasm::linker::allocator::Allocator;
-use tasm::linker::binary::{generate_data_binary, generate_program_binary, resolve_symbols};
-use tasm::linker::deps::{dependency, filter};
-use tasm::linker::memory::Memory;
-use tasm::symbols::Symbols;
-use tasm::util::display::binprint;
-use tasm::util::maps::{generate_data_map, generate_function_map, generate_static_map};
+use tasm::{
+    asm2code, binprint, dependency, func2code, generate_data_binary, generate_data_map,
+    generate_function_map, generate_program_binary, generate_static_map, print_deps,
+    resolve_symbols, search, Allocator, Error, Lexer, Memory, Symbols, TasmParser,
+};
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
@@ -54,7 +48,6 @@ fn main() -> Result<(), Error> {
     // 3. Parse tokens into AST
     let (ast, errors) = TasmParser::new(tokens.into_iter()).parse();
     if !errors.is_empty() {
-        eprintln!("Parser errors:");
         for e in &errors {
             eprintln!("  {:?}", e);
         }
@@ -62,93 +55,30 @@ fn main() -> Result<(), Error> {
     }
 
     // 4. Collect symbols
-    let symbols = Symbols::collect(&ast)?;
+    let symbols = match Symbols::collect(&ast) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("  {:?}", e);
+            std::process::exit(1);
+        }
+    };
 
     // 5. Generate code from functions and assembly blocks
-    let func_codes = tasm::convert::func2code(&symbols)?;
-    let asm_codes = tasm::convert::asm2code(&symbols)?;
-    let codes: HashMap<_, _> = func_codes.into_iter().chain(asm_codes).collect();
+    let funcs = func2code(&symbols)?;
+    let asms = asm2code(&symbols)?;
+    let codes: IndexMap<_, _> = funcs.into_iter().chain(asms).collect();
 
-    // 6. Perform dead code elimination
+    // 6. Dead code elimination
     let deps = dependency(&codes);
-    let used = filter(deps.clone(), vec!["reset", "irq", "main"]);
-
+    let used = search(deps.clone(), vec!["reset", "irq", "main"]);
     if args.verbose {
-        eprintln!("=== Dead Code Elimination Report ===");
-        eprintln!();
-
-        // Calculate the maximum width for each column
-        let max_symbol_len = deps.keys().map(|s| s.len()).max().unwrap_or(6).max(6);
-        let max_deps_len = deps
-            .values()
-            .map(|v| {
-                if v.is_empty() {
-                    4 // "None"
-                } else {
-                    v.iter().map(|s| s.len()).sum::<usize>() + (v.len() - 1) * 2
-                    // +2 for ", "
-                }
-            })
-            .max()
-            .unwrap_or(12)
-            .max(12);
-
-        // Print header
-        eprintln!(
-            "{:<width$} | {:^6} | {:<deps_width$}",
-            "Symbol",
-            "Kept",
-            "Dependencies",
-            width = max_symbol_len,
-            deps_width = max_deps_len
-        );
-        eprintln!(
-            "{:-<width$}-+-{:-<6}-+-{:-<deps_width$}",
-            "",
-            "",
-            "",
-            width = max_symbol_len,
-            deps_width = max_deps_len
-        );
-
-        // Sort symbols for consistent output
-        let mut symbols: Vec<_> = deps.keys().collect();
-        symbols.sort();
-
-        // Print each symbol's status
-        for &symbol in &symbols {
-            let is_kept = used.contains(symbol);
-            let deps_list = deps.get(symbol).unwrap();
-            let deps_str = if deps_list.is_empty() {
-                "None".to_string()
-            } else {
-                deps_list.join(", ")
-            };
-
-            eprintln!(
-                "{:<width$} | {:^6} | {:<deps_width$}",
-                symbol,
-                if is_kept { "✓" } else { " " },
-                deps_str,
-                width = max_symbol_len,
-                deps_width = max_deps_len
-            );
-        }
-
-        eprintln!();
-        eprintln!(
-            "Total: {} symbols, {} kept, {} eliminated",
-            deps.len(),
-            used.len(),
-            deps.len() - used.len()
-        );
-        eprintln!();
+        print_deps(&deps, &used);
     }
 
     // 7. Collect global objects (with DCE applied)
     let iitems = {
         let mut iitems = IndexMap::new();
-        for (&name, (addr, _)) in &symbols.asms.0 {
+        for (&name, (addr, _)) in symbols.asms() {
             // Only include if reachable
             if used.contains(name) {
                 if let Some(code) = codes.get(name) {
@@ -158,7 +88,7 @@ fn main() -> Result<(), Error> {
         }
         for (&name, code) in &codes {
             // Only include if reachable
-            if used.contains(name) && !symbols.asms.0.contains_key(name) {
+            if used.contains(name) && !symbols.asms().contains_key(name) {
                 iitems.insert(name.to_string(), (code.0.len(), None));
             }
         }
@@ -166,15 +96,15 @@ fn main() -> Result<(), Error> {
     };
     let ditems = {
         let mut ditems = IndexMap::new();
-        for (&name, (ty, addr, _)) in symbols.statics.0.iter() {
+        for (&name, (ty, addr, _)) in symbols.statics().iter() {
             // Only include if reachable (data items referenced from reachable code)
             if used.contains(name) {
                 ditems.insert(name.to_string(), (ty.sizeof(), *addr));
             }
         }
-        for (&name, (ty, _, addr, _)) in symbols.consts.0.iter() {
+        for (&name, (ty, _, addr, _)) in symbols.consts().iter() {
             // Only include if reachable
-            if used.contains(name) && !symbols.statics.0.contains_key(name) {
+            if used.contains(name) && !symbols.statics().contains_key(name) {
                 ditems.insert(name.to_string(), (ty.sizeof(), *addr));
             }
         }
@@ -217,7 +147,7 @@ fn main() -> Result<(), Error> {
 
     // Allocate data items without fixed addresses to appropriate sections
     // First, allocate consts to const section
-    for (&name, _) in symbols.consts.0.iter() {
+    for (&name, _) in symbols.consts().iter() {
         if let Some((size, addr)) = ditems.get(name) {
             if addr.is_none() {
                 daloc.section(dmem.get("const")?, *size, name)?;
@@ -225,7 +155,7 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    for (&name, (_, addr, _)) in symbols.statics.0.iter() {
+    for (&name, (_, addr, _)) in symbols.statics().iter() {
         if addr.is_none() {
             if let Some((size, _)) = ditems.get(name) {
                 daloc.section(dmem.get("static")?, *size, name)?;

@@ -34,7 +34,7 @@ pub fn generate_function_map(_symbols: &Symbols, imap: &IndexMap<String, usize>)
 pub fn generate_static_map(symbols: &Symbols, dmap: &IndexMap<String, usize>) -> String {
     let mut map: BTreeMap<String, StaticMapEntry> = BTreeMap::new();
 
-    for (&name, (ty, _, _)) in symbols.statics.0.iter() {
+    for (&name, (ty, _, _)) in symbols.statics().iter() {
         if let Some(&addr) = dmap.get(name) {
             map.insert(
                 name.to_string(),

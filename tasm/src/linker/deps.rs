@@ -1,8 +1,11 @@
 use crate::convert::Code;
-use std::collections::{HashMap, HashSet};
+use color_print::cprintln;
+use indexmap::IndexMap;
+use std::collections::HashSet;
 
-pub fn dependency<'a>(codes: &'a HashMap<&'a str, Code>) -> HashMap<&'a str, Vec<&'a str>> {
-    let mut deps = HashMap::new();
+// Generate symbol dependency graph
+pub fn dependency<'a>(codes: &'a IndexMap<&'a str, Code>) -> IndexMap<&'a str, Vec<&'a str>> {
+    let mut deps = IndexMap::new();
     for (&name, code) in codes {
         let mut refs = Vec::new();
         for (_, label) in &code.0 {
@@ -15,7 +18,8 @@ pub fn dependency<'a>(codes: &'a HashMap<&'a str, Code>) -> HashMap<&'a str, Vec
     deps
 }
 
-pub fn filter<'a>(deps: HashMap<&'a str, Vec<&'a str>>, entry: Vec<&str>) -> HashSet<&'a str> {
+// Search all used symbol
+pub fn search<'a>(deps: IndexMap<&'a str, Vec<&'a str>>, entry: Vec<&str>) -> HashSet<&'a str> {
     let mut used = HashSet::new();
     let mut worklist: Vec<&'a str> = Vec::new();
 
@@ -37,4 +41,35 @@ pub fn filter<'a>(deps: HashMap<&'a str, Vec<&'a str>>, entry: Vec<&str>) -> Has
     }
 
     used
+}
+
+// Print dependency
+pub fn print<'a>(deps: &IndexMap<&'a str, Vec<&'a str>>, used: &HashSet<&'a str>) {
+    cprintln!("<bold>=== Dead Code Elimination Report ===</bold>");
+    eprintln!();
+
+    // IndexMap preserves insertion order, so no need to sort
+    for (&symbol, deps_list) in deps {
+        let is_kept = used.contains(symbol);
+        let deps_str = if deps_list.is_empty() {
+            "None".to_string()
+        } else {
+            deps_list.join(", ")
+        };
+
+        if is_kept {
+            cprintln!("<green>✓ {:<20}</green> -> {}", symbol, deps_str);
+        } else {
+            cprintln!("<red>✗ {:<20}</red> -> {}", symbol, deps_str);
+        }
+    }
+
+    eprintln!();
+    cprintln!(
+        "Total: {} symbols, <green>{} kept</green>, <red>{} eliminated</red>",
+        deps.len(),
+        used.len(),
+        deps.len() - used.len()
+    );
+    eprintln!();
 }

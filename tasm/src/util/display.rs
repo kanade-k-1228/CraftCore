@@ -2,12 +2,11 @@ use crate::convert::Code;
 use crate::symbols::Symbols;
 use color_print::cprintln;
 use indexmap::IndexMap;
-use std::collections::HashMap;
 
 pub fn binprint<'a>(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    codes: &HashMap<&'a str, Code>,
+    codes: &IndexMap<&'a str, Code>,
     symbols: &Symbols<'a>,
 ) {
     // Program Memory Layout
@@ -17,9 +16,9 @@ pub fn binprint<'a>(
             let code = codes.get(name.as_str());
             let size = code.map_or(0, |c| c.0.len());
             // Get type information
-            let (type_info, signature) = if symbols.asms.0.contains_key(name.as_str()) {
+            let (type_info, signature) = if symbols.asms().contains_key(name.as_str()) {
                 ("asm", String::new())
-            } else if let Some((func_type, _, _)) = symbols.funcs.0.get(name.as_str()) {
+            } else if let Some((func_type, _, _)) = symbols.funcs().get(name.as_str()) {
                 ("func", func_type.fmt())
             } else {
                 ("unknown", String::new())
@@ -67,9 +66,9 @@ pub fn binprint<'a>(
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, ty, kind) = if let Some((ty, _, _)) = symbols.statics.0.get(name.as_str()) {
+            let (size, ty, kind) = if let Some((ty, _, _)) = symbols.statics().get(name.as_str()) {
                 (ty.sizeof(), ty.fmt(), "static")
-            } else if let Some((ty, _, _, _)) = symbols.consts.0.get(name.as_str()) {
+            } else if let Some((ty, _, _, _)) = symbols.consts().get(name.as_str()) {
                 (ty.sizeof(), ty.fmt(), "const")
             } else {
                 (0, "unknown".to_string(), "unknown")

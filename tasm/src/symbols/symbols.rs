@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 use crate::{
     error::CollectError,
@@ -39,7 +39,7 @@ impl<'a> Symbols<'a> {
         let funcs = FuncMap::collect(ast, &consts, &types, &statics)?;
 
         // Check for duplicate names across all symbol tables
-        let mut all_names = HashMap::new();
+        let mut all_names = IndexMap::new();
 
         // Collect types
         for &name in types.0.keys() {
@@ -118,5 +118,30 @@ impl<'a> Symbols<'a> {
             return Some(Symbol::Func(entry));
         }
         None
+    }
+
+    /// Get the asms map
+    pub fn asms(&self) -> &IndexMap<&'a str, AsmEntry<'a>> {
+        &self.asms.0
+    }
+
+    /// Get the consts map
+    pub fn consts(&self) -> &IndexMap<&'a str, ConstEntry<'a>> {
+        &self.consts.0
+    }
+
+    /// Get the statics map
+    pub fn statics(&self) -> &IndexMap<&'a str, StaticEntry<'a>> {
+        &self.statics.0
+    }
+
+    /// Get the funcs map
+    pub fn funcs(&self) -> &IndexMap<&'a str, FuncEntry<'a>> {
+        &self.funcs.0
+    }
+
+    /// Get the types map
+    pub fn types(&self) -> &IndexMap<&'a str, TypeEntry<'a>> {
+        &self.types.0
     }
 }

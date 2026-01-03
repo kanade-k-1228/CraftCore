@@ -53,7 +53,7 @@ impl Hook for Serial {
         state
     }
 
-    fn exec(&mut self, _time: u64, _addr: u16, _code: u32, mut state: State) -> State {
+    fn exec(&mut self, _: u64, _: u16, _: u32, mut state: State) -> State {
         let out = state.get(Serial::TX);
         if out != Serial::NONE {
             let c = out as u8 as char;

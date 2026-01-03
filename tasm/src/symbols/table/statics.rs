@@ -8,12 +8,12 @@ use crate::{
     grammer::ast,
     symbols::table::{consts::ConstMap, types::TypeMap},
 };
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub type StaticEntry<'a> = (NormType, Option<usize>, &'a ast::Def);
 
 #[derive(Debug)]
-pub struct StaticMap<'a>(pub HashMap<&'a str, StaticEntry<'a>>);
+pub struct StaticMap<'a>(pub IndexMap<&'a str, StaticEntry<'a>>);
 
 impl<'a> StaticMap<'a> {
     pub fn collect(
@@ -21,7 +21,7 @@ impl<'a> StaticMap<'a> {
         consts: &ConstMap,
         types: &TypeMap,
     ) -> Result<Self, CollectError> {
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         for def in &ast.0 {
             if let ast::Def::Static(name, addr, ty) = def {
                 let resolved_ty = collect_type(&ty, consts, types)?;

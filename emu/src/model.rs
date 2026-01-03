@@ -8,28 +8,28 @@ use arch::op::Op;
 use arch::reg::Reg;
 
 pub struct State {
-    rom: Vec<u32>,
-    ram: Vec<u16>,
+    imem: Vec<u32>,
+    dmem: Vec<u16>,
 }
 
 // Memory access
 impl State {
     pub fn get(&self, addr: impl Into<u16>) -> u16 {
-        self.ram[addr.into() as usize]
+        self.dmem[addr.into() as usize]
     }
 
     pub fn set(&mut self, addr: impl Into<u16>, val: u16) {
         let addr = addr.into() as usize;
         if addr != 0 {
-            self.ram[addr] = val;
+            self.dmem[addr] = val;
         }
     }
 
     fn inc_pc(&mut self) {
-        self.ram[Reg::PC as usize] += 1;
+        self.dmem[Reg::PC as usize] += 1;
     }
     fn set_pc(&mut self, val: u16) {
-        self.ram[Reg::PC as usize] = val;
+        self.dmem[Reg::PC as usize] = val;
     }
 }
 
@@ -37,7 +37,7 @@ impl State {
 impl State {
     const INTR_ADDR: u16 = 0x0001;
     pub fn interrupt(&mut self) {
-        self.ram[Reg::PC as usize] = Self::INTR_ADDR;
+        self.dmem[Reg::PC as usize] = Self::INTR_ADDR;
     }
 }
 
@@ -46,7 +46,7 @@ impl State {
     const HALT: u16 = 0x0010;
 
     pub fn halt(&self) -> bool {
-        self.ram[Self::HALT as usize] == 0x0001
+        self.dmem[Self::HALT as usize] == 0x0001
     }
 }
 
@@ -60,26 +60,38 @@ impl State {
 impl State {
     pub fn new() -> Self {
         State {
-            rom: vec![0; 65536],
-            ram: vec![0; 65536],
+            imem: vec![0; 65536],
+            dmem: vec![0; 65536],
         }
     }
 
-    pub fn load_rom_file(&mut self, fname: &str) -> io::Result<()> {
+    pub fn load_imem(&mut self, fname: &str) -> io::Result<()> {
         let mut file = File::open(fname)?;
         let mut buf = [0u8; 4];
         let mut op_cnt = 0;
         while file.read_exact(&mut buf).is_ok() {
             let word = u32::from_le_bytes(buf);
-            self.rom[op_cnt] = word;
+            self.imem[op_cnt] = word;
             op_cnt += 1;
         }
         Ok(())
     }
 
+    pub fn load_dmem(&mut self, fname: &str) -> io::Result<()> {
+        let mut file = File::open(fname)?;
+        let mut buf = [0u8; 2];
+        let mut addr = 0;
+        while file.read_exact(&mut buf).is_ok() {
+            let word = u16::from_le_bytes(buf);
+            self.dmem[addr] = word;
+            addr += 1;
+        }
+        Ok(())
+    }
+
     pub fn exec(&mut self) -> (u16, u32, Op, Inst) {
-        let pc = self.ram[Reg::PC as usize];
-        let bin = self.rom[pc as usize];
+        let pc = self.dmem[Reg::PC as usize];
+        let bin = self.imem[pc as usize];
         let op = Op::from_bin(bin);
         let inst = Inst::from_op(op.clone());
 

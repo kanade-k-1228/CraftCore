@@ -8,12 +8,12 @@ use crate::{
     grammer::ast,
     symbols::table::types::TypeMap,
 };
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub type ConstEntry<'a> = (NormType, ConstExpr, Option<usize>, &'a ast::Def);
 
 #[derive(Debug)]
-pub struct ConstMap<'a>(pub HashMap<&'a str, ConstEntry<'a>>);
+pub struct ConstMap<'a>(pub IndexMap<&'a str, ConstEntry<'a>>);
 
 impl<'a> ConstMap<'a> {
     pub fn collect(ast: &'a ast::AST) -> Result<Self, CollectError> {
@@ -26,7 +26,7 @@ impl<'a> ConstMap<'a> {
             })
             .collect();
 
-        let mut result = ConstMap(HashMap::new());
+        let mut result = ConstMap(IndexMap::new());
         let mut made_progress = true;
 
         // Process consts in dependency order
@@ -49,7 +49,7 @@ impl<'a> ConstMap<'a> {
                         // If type is provided, use it; otherwise infer from literal
                         let ty_result = if let Some(t) = ty {
                             // We need empty TypeMap for now since consts shouldn't depend on types
-                            let empty_types = TypeMap(HashMap::new());
+                            let empty_types = TypeMap(IndexMap::new());
                             collect_type(&t, &result, &empty_types)
                         } else {
                             lit.totype()

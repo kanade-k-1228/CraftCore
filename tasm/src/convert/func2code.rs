@@ -201,7 +201,7 @@ fn generate_epilogue(
 /// Generate code from all functions in the AST
 pub fn func2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
     let mut result = HashMap::new();
-    for (&name, (_, _, def)) in &symbols.funcs.0 {
+    for (&name, (_, _, def)) in symbols.funcs() {
         if let ast::Def::Func(_, args, ret, stmt) = def {
             result.insert(
                 name,

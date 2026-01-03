@@ -3,17 +3,17 @@ use crate::eval::constexpr::ConstExpr;
 use crate::eval::eval::eval;
 use crate::grammer::ast;
 use crate::symbols::table::consts::ConstMap;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub type AsmEntry<'a> = (Option<usize>, &'a ast::Def);
 
 #[derive(Debug)]
-pub struct AsmMap<'a>(pub HashMap<&'a str, AsmEntry<'a>>);
+pub struct AsmMap<'a>(pub IndexMap<&'a str, AsmEntry<'a>>);
 
 impl<'a> AsmMap<'a> {
     pub fn collect(ast: &'a ast::AST, consts: &ConstMap) -> Result<Self, CollectError> {
         let ast::AST(defs) = ast;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
 
         for def in defs {
             if let ast::Def::Asm(name, maybe_addr, _body) = def {

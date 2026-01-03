@@ -2,16 +2,15 @@ use crate::convert::types::Code;
 use crate::error::LinkError;
 use crate::symbols::Symbols;
 use indexmap::IndexMap;
-use std::collections::HashMap;
 
 /// Resolve symbols in the code using the memory maps
 pub fn resolve_symbols<'a>(
-    codes: &HashMap<&'a str, Code>,
+    codes: &IndexMap<&'a str, Code>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
     symbols: &Symbols,
-) -> HashMap<&'a str, Code> {
-    let mut resolved = HashMap::new();
+) -> IndexMap<&'a str, Code> {
+    let mut resolved = IndexMap::new();
 
     for (&name, code) in codes {
         let mut resolved_insts = Vec::new();
@@ -22,8 +21,7 @@ pub fn resolve_symbols<'a>(
                 // Try to resolve symbol - check constants first (for immediate values),
                 // then program memory (functions/labels), then data memory (statics)
                 let addr = symbols
-                    .consts
-                    .0
+                    .consts()
                     .get(symbol.as_str())
                     .and_then(|(_, const_expr, _, _)| {
                         // Check if it's a constant - use its value directly
@@ -79,7 +77,7 @@ pub fn resolve_symbols<'a>(
 
 /// Generate program binary from resolved code
 pub fn generate_program_binary<'a>(
-    resolved: &HashMap<&'a str, Code>,
+    resolved: &IndexMap<&'a str, Code>,
     pmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, LinkError> {
     let mut binary = Vec::new();
@@ -114,8 +112,7 @@ pub fn generate_data_binary(
 
     // Sort constants by their addresses
     let mut sorted_consts: Vec<_> = symbols
-        .consts
-        .0
+        .consts()
         .iter()
         .filter_map(|(&name, (_, value, _, _))| dmmap.get(name).map(|addr| (*addr, value)))
         .collect();
