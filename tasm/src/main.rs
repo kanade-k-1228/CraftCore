@@ -4,9 +4,8 @@ use clap::Parser;
 use indexmap::IndexMap;
 
 use tasm::{
-    asm2code, binprint, dependency, func2code, generate_data_binary, generate_data_map,
-    generate_function_map, generate_program_binary, generate_static_map, print_deps,
-    resolve_symbols, search, Allocator, Error, Lexer, Memory, Symbols, TasmParser,
+    asm2code, binprint, dependency, func2code, gencbin, genibin, print_deps, resolve_symbols,
+    search, Allocator, Error, Lexer, Memory, SymbolMap, Symbols, TasmParser,
 };
 
 #[derive(Debug, clap::Parser)]
@@ -16,9 +15,17 @@ struct Args {
     #[clap(default_value = "main.tasm")]
     src: Vec<String>,
 
-    /// Output file
-    #[clap(short, long, default_value = "out")]
+    /// Output binary file
+    #[clap(short, long, default_value = "main.bin", value_name = "FILE")]
     out: String,
+
+    /// Output rom file
+    #[clap(short, long, default_value = "rom.bin", value_name = "FILE")]
+    rom: String,
+
+    /// Generate map file
+    #[clap(short = 'm', long = "map", num_args = 0..=1, default_missing_value = "map.yaml", value_name = "FILE")]
+    map: Option<String>,
 
     /// Enable verbose output
     #[clap(short, long)]
@@ -173,23 +180,15 @@ fn main() -> Result<(), Error> {
     }
 
     // 10. Generate binary
-    let ibin = generate_program_binary(&resolved, &imap)?; // Instruction binary
-    let cbin = generate_data_binary(&symbols, &dmap)?; // Constant binary
+    let main_bin = genibin(&resolved, &imap)?;
+    let const_bin = gencbin(&symbols, &dmap)?;
+    let symbol_map = SymbolMap::generate(&symbols, &imap, &dmap);
 
-    // 11. Generate map files
-    let fmap = generate_function_map(&symbols, &imap);
-    let smap = generate_static_map(&symbols, &dmap);
-    let dmap_content = generate_data_map(&dmap);
-
-    // 12. Write output to file
-    if !std::path::Path::new(&args.out).exists() {
-        fs::create_dir(&args.out)?;
+    // 12. Write output files
+    fs::write(&args.out, main_bin)?;
+    fs::write(&args.rom, const_bin)?;
+    if let Some(ref file) = args.map {
+        fs::write(&file, symbol_map.to_yaml())?;
     }
-    fs::write(&format!("{}/i.bin", args.out), ibin)?;
-    fs::write(&format!("{}/c.bin", args.out), cbin)?;
-    fs::write(&format!("{}/f.yaml", args.out), fmap)?;
-    fs::write(&format!("{}/s.yaml", args.out), smap)?;
-    fs::write(&format!("{}/d.yaml", args.out), dmap_content)?;
-
     Ok(())
 }

@@ -1,13 +1,13 @@
 // Assembly error examples - various intentional errors for testing
 
-asm error_test @ 0x0000 {
-    hoge(fuga, fuga)  // Unknown operation `hoge`
-    add(z, z)         // More argument required
-    add(a0, a1, hoge) // Unknown register name
-    call(hoge)        // Undefined label
+asm @ 0x0000 reset {
+    hoge(fuga, fuga);  // Unknown operation `hoge`
+    add(z, z);         // More argument required
+    add(a0, a1, hoge); // Unknown register name
+    call(hoge);        // Undefined label
   a:                  // Defined here
-    nop()
+    nop();
   a:                  // Re-defined label
-    nop()
-    jump(a)
+    nop();
+    jump(a);
 }

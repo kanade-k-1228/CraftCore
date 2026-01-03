@@ -8,7 +8,7 @@ arch = { path = "../arch" }
 clap = { version = "4.5.36", features = ["derive"] }
 bimap = "0.6"
 color-print = "0.3"
-indexmap = "2.0"
+indexmap = { version = "2.0", features = ["serde"] }
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"

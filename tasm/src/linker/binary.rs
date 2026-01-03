@@ -75,59 +75,68 @@ pub fn resolve_symbols<'a>(
     resolved
 }
 
-/// Generate program binary from resolved code
-pub fn generate_program_binary<'a>(
-    resolved: &IndexMap<&'a str, Code>,
+pub fn genibin<'a>(
+    codes: &IndexMap<&'a str, Code>,
     pmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, LinkError> {
-    let mut binary = Vec::new();
-
-    // Sort codes by their addresses
-    let mut sorted_codes: Vec<_> = resolved
+    let max_addr = pmmap
         .iter()
-        .filter_map(|(&name, code)| pmmap.get(&name.to_string()).map(|addr| (*addr, code)))
-        .collect();
-    sorted_codes.sort_by_key(|(addr, _)| *addr);
+        .filter_map(|(name, addr)| {
+            codes.get(name.as_str()).map(|code| {
+                let size = code.0.len() * 4; // Each instruction is 4 bytes
+                addr + size
+            })
+        })
+        .max()
+        .unwrap_or(0);
 
-    // Generate binary for each code block
-    for (_addr, code) in sorted_codes {
-        for (inst, _symbol) in &code.0 {
-            // Convert instruction to binary
-            let op = inst.clone().to_op();
-            let bin = op.to_bin();
-            // Convert u32 to bytes (little-endian)
-            binary.extend_from_slice(&bin.to_le_bytes());
+    // Create binary with proper size, filled with zeros
+    let mut binary = vec![0u8; max_addr];
+
+    // Place each code block at its specified address
+    for (&name, code) in codes {
+        if let Some(&addr) = pmmap.get(&name.to_string()) {
+            let mut offset = addr;
+            for (inst, _) in &code.0 {
+                let op = inst.clone().to_op();
+                let bin = op.to_bin();
+                let bytes = bin.to_le_bytes();
+
+                // Ensure we don't write past the end of the binary
+                if offset + 4 <= binary.len() {
+                    binary[offset..offset + 4].copy_from_slice(&bytes);
+                    offset += 4;
+                }
+            }
         }
     }
 
     Ok(binary)
 }
 
-/// Generate data binary from constants
-pub fn generate_data_binary(
-    symbols: &Symbols,
-    dmmap: &IndexMap<String, usize>,
-) -> Result<Vec<u8>, LinkError> {
-    let mut binary = Vec::new();
-
-    // Sort constants by their addresses
-    let mut sorted_consts: Vec<_> = symbols
-        .consts()
+pub fn gencbin(symbols: &Symbols, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, LinkError> {
+    // Find the maximum address to determine binary size
+    let max_addr = dmmap
         .iter()
-        .filter_map(|(&name, (_, value, _, _))| dmmap.get(name).map(|addr| (*addr, value)))
-        .collect();
-    sorted_consts.sort_by_key(|(addr, _)| *addr);
+        .filter_map(|(name, addr)| {
+            symbols
+                .consts()
+                .get(name.as_str())
+                .map(|(ty, _, _, _)| addr + ty.sizeof())
+        })
+        .max()
+        .unwrap_or(0);
 
-    // Generate binary for each constant
-    for (_addr, value) in sorted_consts {
-        // Convert constant value to bytes
-        // This is simplified - actual implementation would handle different types
-        match value {
-            crate::eval::constexpr::ConstExpr::Number(n) => {
-                binary.extend_from_slice(&(*n as u32).to_le_bytes());
-            }
-            _ => {
-                // Handle other constant types
+    // Create binary with proper size, filled with zeros
+    let mut binary = vec![0u8; max_addr];
+
+    // Place each constant at its specified address
+    for (&name, (_, value, _, _)) in symbols.consts().iter() {
+        if let Some(&addr) = dmmap.get(name) {
+            let bytes = value.serialize();
+            let end = (addr + bytes.len()).min(binary.len());
+            if addr < binary.len() {
+                binary[addr..end].copy_from_slice(&bytes[..end - addr]);
             }
         }
     }

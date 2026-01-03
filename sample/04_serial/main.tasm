@@ -1,31 +1,31 @@
-static@0x1000 serial_tx : int;
+static @ 0x1000 serial_tx : int;
 
-asm@0x0000 reset {
-    loadi(t0, 'H')
-    store(t0, z, serial_tx)
-    loadi(t0, 'e')
-    store(t0, z, serial_tx)
-    loadi(t0, 'l')
-    store(t0, z, serial_tx)
-    loadi(t0, 'l')
-    store(t0, z, serial_tx)
-    loadi(t0, 'o')
-    store(t0, z, serial_tx)
-    loadi(t0, ' ')
-    store(t0, z, serial_tx)
-    loadi(t0, 'W')
-    store(t0, z, serial_tx)
-    loadi(t0, 'o')
-    store(t0, z, serial_tx)
-    loadi(t0, 'r')
-    store(t0, z, serial_tx)
-    loadi(t0, 'l')
-    store(t0, z, serial_tx)
-    loadi(t0, 'd')
-    store(t0, z, serial_tx)
-    loadi(t0, '!')
-    store(t0, z, serial_tx)
-    loadi(t0, '\n')
-    store(t0, z, serial_tx)
-    jump(0)
+asm @ 0x0000 reset {
+    loadi(t0, 'H');
+    store(t0, z, serial_tx);
+    loadi(t0, 'e');
+    store(t0, z, serial_tx);
+    loadi(t0, 'l');
+    store(t0, z, serial_tx);
+    loadi(t0, 'l');
+    store(t0, z, serial_tx);
+    loadi(t0, 'o');
+    store(t0, z, serial_tx);
+    loadi(t0, ' ');
+    store(t0, z, serial_tx);
+    loadi(t0, 'W');
+    store(t0, z, serial_tx);
+    loadi(t0, 'o');
+    store(t0, z, serial_tx);
+    loadi(t0, 'r');
+    store(t0, z, serial_tx);
+    loadi(t0, 'l');
+    store(t0, z, serial_tx);
+    loadi(t0, 'd');
+    store(t0, z, serial_tx);
+    loadi(t0, '!');
+    store(t0, z, serial_tx);
+    loadi(t0, '\n');
+    store(t0, z, serial_tx);
+    jump(reset);
 }

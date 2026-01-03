@@ -65,11 +65,16 @@ pub fn print<'a>(deps: &IndexMap<&'a str, Vec<&'a str>>, used: &HashSet<&'a str>
     }
 
     eprintln!();
+
+    // Count how many symbols from deps are actually kept
+    let kept_count = deps.keys().filter(|k| used.contains(*k)).count();
+    let eliminated_count = deps.len().saturating_sub(kept_count);
+
     cprintln!(
         "Total: {} symbols, <green>{} kept</green>, <red>{} eliminated</red>",
         deps.len(),
-        used.len(),
-        deps.len() - used.len()
+        kept_count,
+        eliminated_count
     );
     eprintln!();
 }

@@ -21,10 +21,10 @@ struct Args {
     #[arg(short, long)]
     intr_cfg: Option<String>,
 
-    #[arg(default_value = "main.i.bin")]
+    #[arg(default_value = "main.bin")]
     ibin: String,
 
-    #[arg(default_value = "main.c.bin")]
+    #[arg(default_value = "const.bin")]
     cbin: String,
 
     #[arg(long = "sin")]

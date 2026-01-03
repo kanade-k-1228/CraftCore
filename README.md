@@ -20,14 +20,14 @@ RK16 is a simple RISC ISA.
 ### Install
 
 ```
-$ cargo install --path asm
+$ cargo install --path tasm
 $ cargo install --path emu
 ```
 
 ### Assemble
 
 ```
-$ rkasm -d sample/00_asm_test/main.rk
+$ tasm sample/00_asm_test/main.tasm
 ```
 
 ![](rkasm.png)

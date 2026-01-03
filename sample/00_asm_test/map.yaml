@@ -1,0 +1,15 @@
+code:
+  reset:
+    addr: 0
+    size: 0
+    stacks: {}
+data:
+  hoge:
+    addr: 20480
+    size: 1
+  fuga:
+    addr: 20481
+    size: 1
+  cst:
+    addr: 12288
+    size: 1

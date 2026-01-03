@@ -26,7 +26,7 @@ impl State {
     }
 
     fn inc_pc(&mut self) {
-        self.dmem[Reg::PC as usize] += 1;
+        self.dmem[Reg::PC as usize] = self.dmem[Reg::PC as usize].wrapping_add(1);
     }
     fn set_pc(&mut self, val: u16) {
         self.dmem[Reg::PC as usize] = val;

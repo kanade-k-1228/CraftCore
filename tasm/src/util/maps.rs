@@ -1,61 +1,98 @@
 use crate::symbols::Symbols;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FunctionMapEntry {
-    pub address: usize,
+pub struct SymbolMap {
+    pub code: IndexMap<String, CodeEntry>,
+    pub data: IndexMap<String, DataEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StaticMapEntry {
-    pub address: usize,
+pub struct CodeEntry {
+    pub addr: usize,
+    pub size: usize,
+    pub stacks: IndexMap<String, usize>, // ローカル変数のスタックフレーム中の相対位置
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DataEntry {
+    pub addr: usize,
     pub size: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DataMapEntry {
-    pub address: usize,
-}
+impl SymbolMap {
+    pub fn generate(
+        symbols: &Symbols,
+        imap: &IndexMap<String, usize>,
+        dmap: &IndexMap<String, usize>,
+    ) -> Self {
+        // Generate code map (functions, seqs, and asm blocks)
+        let mut code_map: IndexMap<String, CodeEntry> = IndexMap::new();
 
-/// Generate function map (name -> address mapping for functions and asm blocks)
-pub fn generate_function_map(_symbols: &Symbols, imap: &IndexMap<String, usize>) -> String {
-    let mut map: BTreeMap<String, FunctionMapEntry> = BTreeMap::new();
+        // Add all code entries from imap
+        for (name, addr) in imap.iter() {
+            // Get size from the code if available
+            let size = if let Some((_, entry)) =
+                symbols.asms().iter().find(|(n, _)| **n == name.as_str())
+            {
+                // For asm blocks, we'd need to get the actual code size
+                // For now, use a placeholder
+                0
+            } else if let Some((_, _, _)) = symbols.funcs().get(name.as_str()) {
+                // For functions and seq blocks, we'd need to get the actual code size
+                0
+            } else {
+                0
+            };
 
-    for (name, addr) in imap.iter() {
-        map.insert(name.clone(), FunctionMapEntry { address: *addr });
-    }
-
-    serde_yaml::to_string(&map).unwrap_or_else(|e| format!("# Error generating YAML: {}", e))
-}
-
-/// Generate static map (name -> address mapping for static variables)
-pub fn generate_static_map(symbols: &Symbols, dmap: &IndexMap<String, usize>) -> String {
-    let mut map: BTreeMap<String, StaticMapEntry> = BTreeMap::new();
-
-    for (&name, (ty, _, _)) in symbols.statics().iter() {
-        if let Some(&addr) = dmap.get(name) {
-            map.insert(
-                name.to_string(),
-                StaticMapEntry {
-                    address: addr,
-                    size: ty.sizeof(),
+            code_map.insert(
+                name.clone(),
+                CodeEntry {
+                    addr: *addr,
+                    size,
+                    stacks: IndexMap::new(), // TODO: Local variable stack positions would go here
                 },
             );
         }
+
+        // Generate data map (statics and constants)
+        let mut data_map: IndexMap<String, DataEntry> = IndexMap::new();
+
+        // Add static variables
+        for (&name, (ty, _, _)) in symbols.statics().iter() {
+            if let Some(&addr) = dmap.get(name) {
+                data_map.insert(
+                    name.to_string(),
+                    DataEntry {
+                        addr,
+                        size: ty.sizeof(),
+                    },
+                );
+            }
+        }
+
+        // Add constants
+        for (&name, (ty, _, _, _)) in symbols.consts().iter() {
+            if let Some(&addr) = dmap.get(name) {
+                data_map.insert(
+                    name.to_string(),
+                    DataEntry {
+                        addr,
+                        size: ty.sizeof(),
+                    },
+                );
+            }
+        }
+
+        SymbolMap {
+            code: code_map,
+            data: data_map,
+        }
     }
 
-    serde_yaml::to_string(&map).unwrap_or_else(|e| format!("# Error generating YAML: {}", e))
-}
-
-/// Generate data map (name -> address mapping for all data including constants)
-pub fn generate_data_map(dmap: &IndexMap<String, usize>) -> String {
-    let mut map: BTreeMap<String, DataMapEntry> = BTreeMap::new();
-
-    for (name, addr) in dmap.iter() {
-        map.insert(name.clone(), DataMapEntry { address: *addr });
+    /// Serialize to YAML string
+    pub fn to_yaml(&self) -> String {
+        serde_yaml::to_string(self).unwrap_or_else(|e| format!("# Error generating YAML: {}", e))
     }
-
-    serde_yaml::to_string(&map).unwrap_or_else(|e| format!("# Error generating YAML: {}", e))
 }
