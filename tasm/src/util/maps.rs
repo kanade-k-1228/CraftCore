@@ -33,18 +33,17 @@ impl SymbolMap {
         // Add all code entries from imap
         for (name, addr) in imap.iter() {
             // Get size from the code if available
-            let size = if let Some((_, entry)) =
-                symbols.asms().iter().find(|(n, _)| **n == name.as_str())
-            {
-                // For asm blocks, we'd need to get the actual code size
-                // For now, use a placeholder
-                0
-            } else if let Some((_, _, _)) = symbols.funcs().get(name.as_str()) {
-                // For functions and seq blocks, we'd need to get the actual code size
-                0
-            } else {
-                0
-            };
+            let size =
+                if let Some((_, _)) = symbols.asms().iter().find(|(n, _)| **n == name.as_str()) {
+                    // For asm blocks, we'd need to get the actual code size
+                    // For now, use a placeholder
+                    0
+                } else if let Some((_, _, _)) = symbols.funcs().get(name.as_str()) {
+                    // For functions and seq blocks, we'd need to get the actual code size
+                    0
+                } else {
+                    0
+                };
 
             code_map.insert(
                 name.clone(),

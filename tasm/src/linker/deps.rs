@@ -44,7 +44,7 @@ pub fn search<'a>(deps: IndexMap<&'a str, HashSet<&'a str>>, entry: Vec<&str>) -
 }
 
 // Print dependency
-pub fn print<'a>(deps: &IndexMap<&'a str, HashSet<&'a str>>, used: &HashSet<&'a str>) {
+pub fn print_deps<'a>(deps: &IndexMap<&'a str, HashSet<&'a str>>, used: &HashSet<&'a str>) {
     println!("------------------------------------------------------------");
     for (&symbol, dep) in deps {
         let mut dep: Vec<_> = dep.iter().copied().collect();

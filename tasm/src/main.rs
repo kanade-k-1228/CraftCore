@@ -3,11 +3,6 @@ use std::fs;
 use clap::Parser;
 use indexmap::IndexMap;
 
-use tasm::{
-    asm2code, binprint, dependency, func2code, gencbin, genibin, print_deps, resolve_symbols,
-    search, Allocator, Error, Lexer, Memory, SymbolMap, Symbols, TasmParser,
-};
-
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
 struct Args {
@@ -32,7 +27,7 @@ struct Args {
     verbose: bool,
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), tasm::Error> {
     let args = Args::parse();
 
     // 1. Read source files
@@ -46,14 +41,14 @@ fn main() -> Result<(), Error> {
     let tokens = {
         let mut tokens = vec![];
         for (path, text) in sources.iter() {
-            let lexer = Lexer::new(path, text);
+            let lexer = tasm::Lexer::new(path, text);
             tokens.extend(lexer.parse());
         }
         tokens
     };
 
     // 3. Parse tokens into AST
-    let (ast, errors) = TasmParser::new(tokens.into_iter()).parse();
+    let (ast, errors) = tasm::Parser::new(tokens.into_iter()).parse();
     if !errors.is_empty() {
         for e in &errors {
             eprintln!("  {:?}", e);
@@ -62,7 +57,7 @@ fn main() -> Result<(), Error> {
     }
 
     // 4. Collect symbols
-    let symbols = match Symbols::collect(&ast) {
+    let symbols = match tasm::Symbols::collect(&ast) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("  {:?}", e);
@@ -71,15 +66,15 @@ fn main() -> Result<(), Error> {
     };
 
     // 5. Generate code from functions and assembly blocks
-    let funcs = func2code(&symbols)?;
-    let asms = asm2code(&symbols)?;
+    let funcs = tasm::func2code(&symbols)?;
+    let asms = tasm::asm2code(&symbols)?;
     let codes: IndexMap<_, _> = funcs.into_iter().chain(asms).collect();
 
     // 6. Dead code elimination
-    let deps = dependency(&codes);
-    let used = search(deps.clone(), vec!["reset", "irq", "main"]);
+    let deps = tasm::dependency(&codes);
+    let used = tasm::search(deps.clone(), vec!["reset", "irq", "main"]);
     if args.verbose {
-        print_deps(&deps, &used);
+        tasm::print_deps(&deps, &used);
     }
 
     // 7. Collect global objects
@@ -119,19 +114,19 @@ fn main() -> Result<(), Error> {
     };
 
     // 8. Allocate objects
-    let imem = Memory::new(0, 0x10000)
+    let imem = tasm::Memory::new(0, 0x10000)
         .section("reset", 0x0000, 0x0004)
         .section("irq", 0x0004, 0x0008)
         .section("code", 0x0008, 0x10000);
-    let dmem = Memory::new(0, 0x10000)
+    let dmem = tasm::Memory::new(0, 0x10000)
         .section("reg", 0x0000, 0x0010)
         .section("csr", 0x0010, 0x0100)
         .section("ioreg", 0x0100, 0x1000)
         .section("vram", 0x1000, 0x3000)
         .section("const", 0x3000, 0x5000)
         .section("static", 0x5000, 0x10000);
-    let mut ialoc = Allocator::new(0, 0x10000);
-    let mut daloc = Allocator::new(0, 0x10000);
+    let mut ialoc = tasm::Allocator::new(0, 0x10000);
+    let mut daloc = tasm::Allocator::new(0, 0x10000);
 
     // Allocate items with fixed addresses first (for both instruction and data)
     for (name, (size, addr)) in &iitems {
@@ -174,15 +169,15 @@ fn main() -> Result<(), Error> {
     let dmap: IndexMap<String, usize> = daloc.allocations().into_iter().collect();
 
     // 9. Resolve symbols
-    let resolved = resolve_symbols(&codes, &imap, &dmap, &symbols);
+    let resolved = tasm::resolve_symbols(&codes, &imap, &dmap, &symbols);
     if args.verbose {
-        binprint(&imap, &dmap, &codes, &symbols);
+        tasm::binprint(&imap, &dmap, &codes, &symbols);
     }
 
     // 10. Generate binary
-    let main_bin = genibin(&resolved, &imap)?;
-    let const_bin = gencbin(&symbols, &dmap)?;
-    let symbol_map = SymbolMap::generate(&symbols, &imap, &dmap);
+    let main_bin = tasm::genibin(&resolved, &imap)?;
+    let const_bin = tasm::gencbin(&symbols, &dmap)?;
+    let symbol_map = tasm::SymbolMap::generate(&symbols, &imap, &dmap);
 
     // 12. Write output files
     fs::write(&args.out, main_bin)?;

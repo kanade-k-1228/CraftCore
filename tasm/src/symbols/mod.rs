@@ -1,9 +1,9 @@
 mod symbols;
 mod table;
 
-pub use symbols::{Symbol, Symbols};
+pub use symbols::Symbols;
 pub use table::{
-    asms::{AsmEntry, AsmMap},
+    asms::AsmEntry,
     consts::{ConstEntry, ConstMap},
     funcs::{FuncEntry, FuncMap},
     statics::{StaticEntry, StaticMap},
