@@ -82,7 +82,7 @@ fn main() -> Result<(), Error> {
         print_deps(&deps, &used);
     }
 
-    // 7. Collect global objects (with DCE applied)
+    // 7. Collect global objects
     let iitems = {
         let mut iitems = IndexMap::new();
         for (&name, (addr, _)) in symbols.asms() {
