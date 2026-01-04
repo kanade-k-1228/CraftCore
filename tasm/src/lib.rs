@@ -9,7 +9,7 @@ mod util;
 pub use convert::{asm2code, func2code};
 pub use error::Error;
 pub use grammer::lexer::Lexer;
-pub use grammer::parser::Parser;
+pub use grammer::parsercore::Parser;
 pub use linker::allocator::Allocator;
 pub use linker::binary::{gencbin, genibin, resolve_symbols};
 pub use linker::deps::{dependency, print_deps, search};

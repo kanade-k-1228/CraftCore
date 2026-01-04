@@ -1,4 +1,47 @@
+use crate::grammer::token::{Token, TokenKind};
+use std::fmt;
 use thiserror::Error;
+
+// Token information without lifetime
+#[derive(Debug, Clone)]
+pub struct TokenInfo {
+    pub kind: TokenKind,
+    pub file: String,
+    pub row: usize,
+    pub col: usize,
+}
+
+impl fmt::Display for TokenInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} at {}:{}:{}",
+            self.kind, self.file, self.row, self.col
+        )
+    }
+}
+
+impl<'a> From<Token<'a>> for TokenInfo {
+    fn from(token: Token<'a>) -> Self {
+        TokenInfo {
+            kind: token.kind,
+            file: token.pos.file.to_string(),
+            row: token.pos.row,
+            col: token.pos.col,
+        }
+    }
+}
+
+impl<'a> From<&Token<'a>> for TokenInfo {
+    fn from(token: &Token<'a>) -> Self {
+        TokenInfo {
+            kind: token.kind.clone(),
+            file: token.pos.file.to_string(),
+            row: token.pos.row,
+            col: token.pos.col,
+        }
+    }
+}
 
 // Main error type for TASM
 #[derive(Debug, Error)]
@@ -37,8 +80,8 @@ pub enum ParseError {
     #[error("Unexpected end of file")]
     UnexpectedEOF,
 
-    #[error("Unexpected token: {0:?}")]
-    UnexpectedToken(String),
+    #[error("Unexpected token: {0}")]
+    UnexpectedToken(TokenInfo),
 
     #[error("Invalid type: {0:?}")]
     InvalidType(String),

@@ -55,11 +55,13 @@ pub fn eval_with_types(
                 Ok(ConstExpr::Number(0usize.wrapping_sub(n) & 0xFFFF))
             }
             (UnaryOp::Not, ConstExpr::Number(n)) => Ok(ConstExpr::Number((!n) & 0xFFFF)),
-            (UnaryOp::Deref, _) | (UnaryOp::Ref, _) => {
-                Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
-            }
             _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
+
+        Expr::Addr(_) | Expr::Deref(_) => {
+            // Address-of and dereference operations are not supported in const expressions
+            Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
+        }
 
         Expr::Binary(op, lhs, rhs) => match (
             op,
@@ -163,7 +165,6 @@ pub fn eval_with_types(
         }
 
         Expr::Call(_, _) => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
-        Expr::Error => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
     }
 }
 

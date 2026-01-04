@@ -1,10 +1,6 @@
 use crate::{
     error::CollectError,
-    eval::{
-        constexpr::ConstExpr,
-        eval::eval,
-        normtype::{collect_type, NormType},
-    },
+    eval::{constexpr::ConstExpr, eval::eval, normtype::NormType},
     grammer::ast,
     symbols::table::types::TypeMap,
 };
@@ -22,7 +18,7 @@ impl<'a> ConstMap<'a> {
             .0
             .iter()
             .filter_map(|def| match def {
-                ast::Def::Const(name, addr, ty, expr) => Some((name.as_str(), addr, ty, expr, def)),
+                ast::Def::Const(name, addr, expr) => Some((name.as_str(), addr, expr, def)),
                 _ => None,
             })
             .collect();
@@ -33,7 +29,7 @@ impl<'a> ConstMap<'a> {
         // Process consts in dependency order (but skip those with Sizeof)
         while !unresolved.is_empty() && made_progress {
             made_progress = false;
-            unresolved.retain(|(name, addr, ty, expr, def)| {
+            unresolved.retain(|(name, addr, expr, def)| {
                 // Check for duplicates
                 if result.0.contains_key(name) {
                     // Already processed or duplicate - skip
@@ -52,14 +48,8 @@ impl<'a> ConstMap<'a> {
                 };
                 match eval(&expr, &env) {
                     Ok(lit) => {
-                        // If type is provided, use it; otherwise infer from literal
-                        let ty_result = if let Some(t) = ty {
-                            // We need empty TypeMap for now since consts shouldn't depend on types
-                            let empty_types = TypeMap(IndexMap::new());
-                            collect_type(&t, &result, &empty_types)
-                        } else {
-                            lit.totype()
-                        };
+                        // Infer type from literal since const no longer has type field
+                        let ty_result = lit.totype();
 
                         if let Ok(resolved_ty) = ty_result {
                             // Store in result with full information
@@ -95,12 +85,12 @@ impl<'a> ConstMap<'a> {
             .0
             .iter()
             .filter_map(|def| match def {
-                ast::Def::Const(name, addr, ty, expr) => {
+                ast::Def::Const(name, addr, expr) => {
                     // Only process if not already collected
                     if self.0.contains_key(name.as_str()) {
                         None
                     } else {
-                        Some((name.as_str(), addr, ty, expr, def))
+                        Some((name.as_str(), addr, expr, def))
                     }
                 }
                 _ => None,
@@ -112,7 +102,7 @@ impl<'a> ConstMap<'a> {
         // Process remaining consts with type information
         while !unresolved.is_empty() && made_progress {
             made_progress = false;
-            unresolved.retain(|(name, addr, ty, expr, def)| {
+            unresolved.retain(|(name, addr, expr, def)| {
                 // Try to collect this const with types available
                 let env = |lookup_name: &str| -> Option<ConstExpr> {
                     self.0.get(lookup_name).map(|(_, lit, _, _)| lit.clone())
@@ -121,12 +111,8 @@ impl<'a> ConstMap<'a> {
                 // Use eval_with_types for proper Sizeof support
                 match crate::eval::eval::eval_with_types(&expr, &env, &self, types) {
                     Ok(lit) => {
-                        // If type is provided, use it; otherwise infer from literal
-                        let ty_result = if let Some(t) = ty {
-                            collect_type(&t, &self, types)
-                        } else {
-                            lit.totype()
-                        };
+                        // Infer type from literal since const no longer has type field
+                        let ty_result = lit.totype();
 
                         if let Ok(resolved_ty) = ty_result {
                             // Store in result with full information
@@ -149,7 +135,7 @@ impl<'a> ConstMap<'a> {
 
         // Now we can error on unresolved
         if !unresolved.is_empty() {
-            if let Some((_name, _, _, expr, _)) = unresolved.first() {
+            if let Some((_name, _, expr, _)) = unresolved.first() {
                 return Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr)));
             }
         }

@@ -55,12 +55,14 @@ pub enum TokenKind {
     KwStatic,   // "static"
     KwConst,    // "const"
     KwInt,      // "int"
+    KwVoid,     // "void"
     KwType,     // "type"
     KwIf,       // "if"
     KwElse,     // "else"
     KwWhile,    // "while"
     KwBreak,    // "break"
     KwContinue, // "continue"
+    KwAs,       // "as"
 
     // Identifier
     Ident(String),

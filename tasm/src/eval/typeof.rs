@@ -41,18 +41,20 @@ pub fn typeof_expr(
                     _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                 }
             }
-            UnaryOp::Deref => {
-                let operand_type = typeof_expr(operand, env)?;
-                match operand_type {
-                    NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
-                }
-            }
-            UnaryOp::Ref => {
-                let operand_type = typeof_expr(operand, env)?;
-                Ok(NormType::Addr(Box::new(operand_type)))
-            }
         },
+
+        Expr::Deref(operand) => {
+            let operand_type = typeof_expr(operand, env)?;
+            match operand_type {
+                NormType::Addr(inner) => Ok(*inner),
+                _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
+            }
+        }
+
+        Expr::Addr(operand) => {
+            let operand_type = typeof_expr(operand, env)?;
+            Ok(NormType::Addr(Box::new(operand_type)))
+        }
 
         Expr::Binary(op, lhs, rhs) => {
             let lhs_type = typeof_expr(lhs, env)?;
@@ -117,9 +119,11 @@ pub fn typeof_expr(
             // For now, simplified - you may need to call collect_type here
             match typ.as_ref() {
                 crate::grammer::ast::Type::Int => Ok(NormType::Int),
+                crate::grammer::ast::Type::Void => Ok(NormType::Void),
                 crate::grammer::ast::Type::Addr(inner) => {
                     let inner_type = match inner.as_ref() {
                         crate::grammer::ast::Type::Int => NormType::Int,
+                        crate::grammer::ast::Type::Void => NormType::Void,
                         _ => return Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
                     };
                     Ok(NormType::Addr(Box::new(inner_type)))
@@ -140,8 +144,6 @@ pub fn typeof_expr(
             // sizeof expression always returns an integer (the size)
             Ok(NormType::Int)
         }
-
-        Expr::Error => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
     }
 }
 
@@ -278,8 +280,8 @@ mod tests {
     }
 
     #[test]
-    fn test_typeof_ref() {
-        let expr = Expr::Unary(UnaryOp::Ref, Box::new(Expr::NumberLit(42)));
+    fn test_typeof_addr() {
+        let expr = Expr::Addr(Box::new(Expr::NumberLit(42)));
         let env = |_: &str| None;
         let result = typeof_expr(&expr, &env).unwrap();
         match result {
@@ -301,7 +303,7 @@ mod tests {
             }
         };
 
-        let deref_expr = Expr::Unary(UnaryOp::Deref, Box::new(expr));
+        let deref_expr = Expr::Deref(Box::new(expr));
         let result = typeof_expr(&deref_expr, &env).unwrap();
         assert!(matches!(result, NormType::Int));
     }

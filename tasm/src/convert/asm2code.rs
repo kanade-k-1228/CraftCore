@@ -23,28 +23,23 @@ fn gen_asm_block(stmts: &[ast::AsmStmt], symbols: &Symbols) -> Result<Code, AsmE
     let mut llabels: HashMap<String, u16> = HashMap::new();
     let mut pc: u16 = 0;
     for stmt in stmts {
-        match stmt {
-            ast::AsmStmt::Label(name) => {
-                llabels.insert(name.clone(), pc);
-            }
-            ast::AsmStmt::Inst(_name, _args) => {
-                pc += 1;
-            }
+        // Register all labels for this statement
+        // AsmStmt(name, args, labels)
+        for label in &stmt.2 {
+            llabels.insert(label.clone(), pc);
         }
+        // Each statement represents one instruction
+        pc += 1;
     }
 
     // 2. Generate instructions with resolved labels
     let mut insts = Vec::new();
     let mut pc: u16 = 0;
     for stmt in stmts {
-        match stmt {
-            ast::AsmStmt::Label(_) => {}
-            ast::AsmStmt::Inst(name, args) => {
-                let inst = parse_instruction(name, args, &llabels, pc, symbols)?;
-                insts.push(inst);
-                pc += 1;
-            }
-        }
+        // AsmStmt(name, args, labels)
+        let inst = parse_instruction(&stmt.0, &stmt.1, &llabels, pc, symbols)?;
+        insts.push(inst);
+        pc += 1;
     }
 
     Ok(Code(insts))
@@ -449,12 +444,23 @@ fn parse_immidiate_expr(expr: &ast::Expr, symbols: &Symbols) -> Result<Immidiate
         ast::Expr::CharLit(ch) => Ok(Immidiate::Literal(*ch as u16)),
         ast::Expr::Ident(name) => Ok(Immidiate::Symbol(name.clone(), 0)),
         ast::Expr::Unary(op, inner) => match op {
-            ast::UnaryOp::Pos => todo!(),
-            ast::UnaryOp::Neg => todo!(),
+            ast::UnaryOp::Pos => parse_immidiate_expr(inner, symbols),
+            ast::UnaryOp::Neg => {
+                // Handle negative numbers
+                if let Ok(Immidiate::Literal(val)) = parse_immidiate_expr(inner, symbols) {
+                    Ok(Immidiate::Literal((-(val as i16)) as u16))
+                } else {
+                    Err(AsmError::InvalidOperandType(
+                        "Cannot negate symbol".to_string(),
+                    ))
+                }
+            }
             ast::UnaryOp::Not => todo!(),
-            ast::UnaryOp::Deref => todo!(),
-            ast::UnaryOp::Ref => parse_immidiate_expr(inner, symbols),
         },
+        ast::Expr::Addr(inner) => parse_immidiate_expr(inner, symbols),
+        ast::Expr::Deref(_) => Err(AsmError::InvalidOperandType(
+            "Dereference operations cannot be evaluated at assembly time".to_string(),
+        )),
 
         ast::Expr::Member(base, field) => {
             match parse_immidiate_expr(base, symbols)? {

@@ -206,13 +206,13 @@ fn generate_epilogue(
 pub fn func2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
     let mut result = HashMap::new();
     for (&name, (_, _, def)) in symbols.funcs() {
-        if let ast::Def::Func(_, args, ret, stmt) = def {
+        if let ast::Def::Func(_, args, ret, stmts) = def {
             result.insert(
                 name,
                 gen_func(
                     args,
                     ret,
-                    stmt,
+                    stmts,
                     &symbols.consts,
                     &symbols.types,
                     &symbols.statics,
@@ -228,7 +228,7 @@ pub fn func2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>,
 fn gen_func(
     args: &Vec<(String, ast::Type)>,
     ret: &ast::Type,
-    stmt: &ast::Stmt,
+    stmts: &Vec<ast::Stmt>,
     consts: &ConstMap,
     types: &TypeMap,
     _statics: &StaticMap,
@@ -261,15 +261,12 @@ fn gen_func(
         offset += norm_type.sizeof() as i16;
     }
 
-    // Compile function body
-    let epilogue_pos = compile_stmt(&mut ctx, stmt)?;
-
-    // Function epilogue
-    // Any return statement jumps here
-    if epilogue_pos != ctx.current_pos() {
-        // Patch any return jumps to point here
+    // Compile function body - process all statements
+    for stmt in stmts {
+        compile_stmt(&mut ctx, stmt)?;
     }
 
+    // Function epilogue
     let epilogue = generate_epilogue(&norm_args, &norm_ret_type);
     for inst in epilogue {
         ctx.insts.push(inst);
@@ -371,9 +368,6 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> Result<usize, Fun
                 ctx.emit_inst(Inst::STORE(init_reg, Reg::FP, offset as u16));
             }
         }
-        ast::Stmt::Error => {
-            // Skip error nodes
-        }
     }
     Ok(ctx.current_pos())
 }
@@ -457,6 +451,10 @@ fn compile_expr(
             let operand_reg = compile_expr(ctx, operand, Some(Reg::T0))?;
 
             match op {
+                ast::UnaryOp::Pos => {
+                    // Positive is a no-op, just move the value
+                    ctx.emit_inst(Inst::MOV(target_reg, operand_reg));
+                }
                 ast::UnaryOp::Neg => {
                     ctx.emit_inst(Inst::LOADI(Reg::T1, 0));
                     ctx.emit_inst(Inst::SUB(target_reg, Reg::T1, operand_reg));
@@ -464,18 +462,20 @@ fn compile_expr(
                 ast::UnaryOp::Not => {
                     ctx.emit_inst(Inst::NOT(target_reg, operand_reg));
                 }
-                ast::UnaryOp::Deref => {
-                    // Load from address in operand_reg
-                    ctx.emit_inst(Inst::LOAD(target_reg, operand_reg, 0));
-                }
-                ast::UnaryOp::Ref => {
-                    // Address-of would need to handle lvalues specially
-                    ctx.emit_inst(Inst::MOV(target_reg, operand_reg));
-                }
-                _ => {
-                    ctx.emit_inst(Inst::MOV(target_reg, operand_reg));
-                }
             }
+            target_reg
+        }
+        ast::Expr::Deref(operand) => {
+            let operand_reg = compile_expr(ctx, operand, Some(Reg::T0))?;
+            // Load from address in operand_reg
+            ctx.emit_inst(Inst::LOAD(target_reg, operand_reg, 0));
+            target_reg
+        }
+        ast::Expr::Addr(operand) => {
+            // Address-of would need to handle lvalues specially
+            // For now, just compile the operand
+            let operand_reg = compile_expr(ctx, operand, Some(Reg::T0))?;
+            ctx.emit_inst(Inst::MOV(target_reg, operand_reg));
             target_reg
         }
         ast::Expr::Call(func_expr, args) => {
@@ -591,7 +591,7 @@ fn compile_lvalue(
                 );
             }
         }
-        ast::Expr::Unary(ast::UnaryOp::Deref, addr_expr) => {
+        ast::Expr::Deref(addr_expr) => {
             // Store through pointer
             let addr_reg = compile_expr(ctx, addr_expr, Some(Reg::T1))?;
             ctx.emit_inst(Inst::STORE(value_reg, addr_reg, 0));

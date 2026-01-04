@@ -290,7 +290,9 @@ fn keyword(s: &str) -> Option<TokenKind> {
         "break" => Some(TokenKind::KwBreak),
         "continue" => Some(TokenKind::KwContinue),
         "int" => Some(TokenKind::KwInt),
+        "void" => Some(TokenKind::KwVoid),
         "return" => Some(TokenKind::KwReturn),
+        "as" => Some(TokenKind::KwAs),
         _ => None,
     }
 }
