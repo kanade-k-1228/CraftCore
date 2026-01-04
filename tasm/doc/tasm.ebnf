@@ -35,15 +35,18 @@ stmt = "{" { stmt } "}"
 (* Expressions ------------------------------------------------------------- *)
 
 expr = or-expr ;
+
 or-expr = xor-expr { "|" xor-expr } ;
 xor-expr = and-expr { "^" and-expr } ;
 and-expr = eq-expr { "&" eq-expr } ;
-eq-expr = relat-expr { ( "==" | "!=" ) relat-expr } ;
-relat-expr = shift-expr [ ( "<" | "<=" | ">" | ">=" ) shift-expr ] ;
+eq-expr = rel-expr { ( "==" | "!=" ) rel-expr } ;
+rel-expr = shift-expr [ ( "<" | "<=" | ">" | ">=" ) shift-expr ] ;
 shift-expr = add-expr [ ( "<<" | ">>" ) add-expr ] ;
 add-expr = mul-expr { ( "+" | "-" ) mul-expr } ;
 mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ] ;
+
 unary-expr = ( "+" | "-" | "!" ) unary-expr | postfix-expr ;
+
 postfix-expr = prim-expr { postfix-op } ;
 postfix-op = "(" [ expr { "," expr } ] ")"
            | "[" expr "]"
@@ -57,8 +60,8 @@ prim-expr = "(" expr ")"
              | num-lit
              | char-lit
              | string-lit
-             | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
              | "[" [ expr { "," expr } ] "]"
+             | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
              | "<" type ">" ;
 
 (* Terminal Symbols -------------------------------------------------------- *)

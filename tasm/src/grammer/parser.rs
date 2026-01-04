@@ -300,20 +300,20 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
         Ok(lhs)
     }
 
-    /// eq-expr = relat-expr { ( "==" | "!=" ) relat-expr }
+    /// eq-expr = rel-expr { ( "==" | "!=" ) rel-expr }
     fn parse_eq_expr(&mut self) -> Result<Expr, ParseError> {
-        let mut lhs = self.parse_relat_expr()?;
+        let mut lhs = self.parse_rel_expr()?;
         loop {
             // Equality: expr "==" relat-expr
             if check!(self, EqualEqual) {
                 expect!(self, EqualEqual)?;
-                let rhs = self.parse_relat_expr()?;
+                let rhs = self.parse_rel_expr()?;
                 lhs = Expr::Binary(BinaryOp::Eq, Box::new(lhs), Box::new(rhs));
             }
             // Inequality: expr "!=" relat-expr
             else if check!(self, ExclEqual) {
                 expect!(self, ExclEqual)?;
-                let rhs = self.parse_relat_expr()?;
+                let rhs = self.parse_rel_expr()?;
                 lhs = Expr::Binary(BinaryOp::Ne, Box::new(lhs), Box::new(rhs));
             } else {
                 break;
@@ -322,8 +322,8 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
         Ok(lhs)
     }
 
-    /// relat-expr = shift-expr [ ( "<" | "<=" | ">" | ">=" ) shift-expr ]
-    fn parse_relat_expr(&mut self) -> Result<Expr, ParseError> {
+    /// rel-expr = shift-expr [ ( "<" | "<=" | ">" | ">=" ) shift-expr ]
+    fn parse_rel_expr(&mut self) -> Result<Expr, ParseError> {
         let lhs = self.parse_shift_expr()?;
         if let Some(token) = self.peek() {
             match token.kind {
@@ -596,11 +596,10 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
 
     /// ident = ( "A".."Z" | "a".."z" | "_" ) { "0".."9" | "A".."Z" | "a".."z" | "_" }
     fn parse_ident(&mut self) -> Result<String, ParseError> {
-        if let Some(Token { kind: Ident(s), .. }) = &self.peek().cloned() {
-            self.next();
-            return Ok(s.clone());
+        match &self.next() {
+            Some(Token { kind: Ident(s), .. }) => Ok(s.clone()),
+            _ => Err(ParseError::TODO),
         }
-        return Err(ParseError::TODO);
     }
 
     /// ident ":" type
