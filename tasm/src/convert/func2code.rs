@@ -1,5 +1,5 @@
 use crate::{
-    convert::types::Code,
+    convert::types::{Code, Immidiate},
     error::FuncGenError,
     eval::normtype::{collect_type, NormType},
     grammer::ast,
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 struct CodeGenContext<'a> {
     lvars: HashMap<String, i16>, // Local variable offsets
     stack_size: i16,             // Current stack frame size
-    insts: Vec<(Inst, Option<String>)>,
+    insts: Vec<(Inst, Option<Immidiate>)>,
     #[allow(dead_code)]
     funcs: &'a FuncMap<'a>, // Function type information for calls
 }
@@ -33,7 +33,7 @@ impl<'a> CodeGenContext<'a> {
 
     /// Emit an instruction with symbol references
     fn emit_inst_with_symbol(&mut self, inst: Inst, symbol: String) {
-        self.insts.push((inst, Some(symbol)));
+        self.insts.push((inst, Some(Immidiate::Symbol(symbol, 0))));
     }
 
     /// Get the current instruction position
@@ -97,7 +97,7 @@ fn generate_prologue(
     args: &[(String, NormType)],
     _consts: &ConstMap,
     _types: &TypeMap,
-) -> Vec<(Inst, Option<String>)> {
+) -> Vec<(Inst, Option<Immidiate>)> {
     let mut insts = Vec::new();
 
     // Calculate total size needed for saved registers (RA + FP)
@@ -169,7 +169,7 @@ fn generate_prologue(
 fn generate_epilogue(
     args: &[(String, NormType)],
     _ret_type: &NormType,
-) -> Vec<(Inst, Option<String>)> {
+) -> Vec<(Inst, Option<Immidiate>)> {
     let mut insts = Vec::new();
 
     // Calculate stack sizes

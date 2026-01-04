@@ -1,4 +1,10 @@
-use crate::{convert::types::Code, error::AsmError, grammer::ast, symbols::Symbols};
+use crate::{
+    convert::types::{Code, Immidiate},
+    error::AsmError,
+    eval::normtype::NormType,
+    grammer::ast,
+    symbols::Symbols,
+};
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
@@ -6,13 +12,13 @@ pub fn asm2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, 
     let mut result = HashMap::new();
     for (&name, (_, def)) in symbols.asms() {
         if let ast::Def::Asm(_, _, stmts) = def {
-            result.insert(name, gen_asm_block(stmts)?);
+            result.insert(name, gen_asm_block(stmts, symbols)?);
         }
     }
     Ok(result)
 }
 
-fn gen_asm_block(stmts: &[ast::AsmStmt]) -> Result<Code, AsmError> {
+fn gen_asm_block(stmts: &[ast::AsmStmt], symbols: &Symbols) -> Result<Code, AsmError> {
     // 1. Collect local labels
     let mut llabels: HashMap<String, u16> = HashMap::new();
     let mut pc: u16 = 0;
@@ -34,7 +40,7 @@ fn gen_asm_block(stmts: &[ast::AsmStmt]) -> Result<Code, AsmError> {
         match stmt {
             ast::AsmStmt::Label(_) => {}
             ast::AsmStmt::Inst(name, args) => {
-                let inst = parse_instruction(name, args, &llabels, pc)?;
+                let inst = parse_instruction(name, args, &llabels, pc, symbols)?;
                 insts.push(inst);
                 pc += 1;
             }
@@ -49,7 +55,8 @@ fn parse_instruction(
     args: &[ast::Expr],
     labels: &HashMap<String, u16>,
     pc: u16,
-) -> Result<(Inst, Option<String>), AsmError> {
+    symbols: &Symbols,
+) -> Result<(Inst, Option<Immidiate>), AsmError> {
     match inst.to_lowercase().as_str() {
         "nop" => Ok((Inst::NOP(), None)),
         "mov" if args.len() == 2 => {
@@ -66,100 +73,100 @@ fn parse_instruction(
         "addi" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::ADDI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::ADDI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("addi".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::ADDI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::ADDI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "subi" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::SUBI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::SUBI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("subi".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::SUBI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::SUBI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "andi" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::ANDI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::ANDI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("andi".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::ANDI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::ANDI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "ori" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::ORI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::ORI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("ori".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::ORI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::ORI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "xori" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::XORI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::XORI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("xori".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::XORI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::XORI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "eqi" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::EQI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::EQI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("eqi".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::EQI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::EQI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "neqi" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::NEQI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::NEQI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("neqi".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::NEQI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::NEQI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "lti" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::LTI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::LTI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("lti".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::LTI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::LTI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "ltsi" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::LTSI(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::LTSI(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("ltsi".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::LTSI(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::LTSI(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "not" if args.len() == 2 => {
@@ -169,13 +176,13 @@ fn parse_instruction(
         }
         "loadi" if args.len() == 2 => {
             let rd = parse_register(&args[0])?;
-            if let Some(imm) = parse_immediate(&args[1]) {
-                Ok((Inst::LOADI(rd, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[1] {
-                // Symbol reference - will be resolved later
-                Ok((Inst::LOADI(rd, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("loadi".to_string()))
+            // Use the new expression evaluator
+            match parse_immidiate_expr(&args[1], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::LOADI(rd, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::LOADI(rd, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "sub" if args.len() == 3 => {
@@ -254,142 +261,146 @@ fn parse_instruction(
         "load" if args.len() == 2 => {
             // load(rd, addr/imm)
             let rd = parse_register(&args[0])?;
-            // Check if second arg is an immediate or a symbol
-            if let Some(imm) = parse_immediate(&args[1]) {
-                Ok((Inst::LOADI(rd, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[1] {
-                // Symbol reference - will be resolved later
-                Ok((Inst::LOADI(rd, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("load".to_string()))
+            // Use expression evaluator for complex expressions
+            match parse_immidiate_expr(&args[1], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::LOADI(rd, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::LOADI(rd, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "load" if args.len() == 3 => {
             let rd = parse_register(&args[0])?;
             let rs = parse_register(&args[1])?;
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::LOAD(rd, rs, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                Ok((Inst::LOAD(rd, rs, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("load".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::LOAD(rd, rs, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::LOAD(rd, rs, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "store" if args.len() == 2 => {
             // store(symbol, rs)
-            if let ast::Expr::Ident(symbol) = &args[0] {
-                let rs = parse_register(&args[1])?;
-                // Symbol reference - will be resolved later
-                Ok((Inst::STORE(rs, Reg::Z, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("store".to_string()))
+            let rs = parse_register(&args[1])?;
+            match parse_immidiate_expr(&args[0], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::STORE(rs, Reg::Z, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::STORE(rs, Reg::Z, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "store" if args.len() == 3 => {
             let rs2 = parse_register(&args[0])?;
             let rs1 = parse_register(&args[1])?;
-            // Check if third arg is an immediate or a symbol
-            if let Some(imm) = parse_immediate(&args[2]) {
-                Ok((Inst::STORE(rs2, rs1, imm), None))
-            } else if let ast::Expr::Ident(symbol) = &args[2] {
-                // Symbol reference - will be resolved later
-                Ok((Inst::STORE(rs2, rs1, 0), Some(symbol.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("store".to_string()))
+            match parse_immidiate_expr(&args[2], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::STORE(rs2, rs1, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::STORE(rs2, rs1, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "if" if args.len() == 2 => {
             // if(cond_reg, label/offset)
             let cond = parse_register(&args[0])?;
-            // Check if it's a label, symbol, or immediate
-            if let Some(imm) = parse_immediate(&args[1]) {
-                // Absolute address jump
-                Ok((Inst::IF(cond, imm), None))
-            } else if let ast::Expr::Ident(label_name) = &args[1] {
-                // Check if it's a local label
+
+            // Check if it's a local label first
+            if let ast::Expr::Ident(label_name) = &args[1] {
                 if let Some(&label_pc) = labels.get(label_name) {
                     // Convert to relative jump
                     let offset = (label_pc as i32 - pc as i32) as u16;
-                    Ok((Inst::IFR(cond, offset), None))
-                } else {
-                    // External symbol - will be resolved later
-                    Ok((Inst::IF(cond, 0), Some(label_name.clone())))
+                    return Ok((Inst::IFR(cond, offset), None));
                 }
-            } else if let ast::Expr::Unary(ast::UnaryOp::Neg, inner) = &args[1] {
-                // Negative immediate for relative backward jump
+            }
+
+            // Check for negative immediate (relative jump)
+            if let ast::Expr::Unary(ast::UnaryOp::Neg, inner) = &args[1] {
                 if let Some(imm) = parse_immediate(inner) {
                     let offset = (-(imm as i16)) as u16;
-                    Ok((Inst::IFR(cond, offset), None))
-                } else {
-                    Err(AsmError::InvalidOperandType("if".to_string()))
+                    return Ok((Inst::IFR(cond, offset), None));
                 }
-            } else {
-                Err(AsmError::InvalidOperandType("if".to_string()))
+            }
+
+            // Use expression evaluator for other cases
+            match parse_immidiate_expr(&args[1], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::IF(cond, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::IF(cond, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "jump" if args.len() == 1 => {
-            // Check if it's a label, symbol, or immediate
-            if let Some(imm) = parse_immediate(&args[0]) {
-                Ok((Inst::JUMP(imm), None))
-            } else if let ast::Expr::Ident(label_name) = &args[0] {
-                // Check if it's a local label
+            // Check if it's a local label first
+            if let ast::Expr::Ident(label_name) = &args[0] {
                 if let Some(&label_pc) = labels.get(label_name) {
                     // Convert to relative jump
                     let offset = (label_pc as i32 - pc as i32) as u16;
-                    Ok((Inst::JUMPR(offset), None))
-                } else {
-                    // External symbol - will be resolved later
-                    Ok((Inst::JUMP(0), Some(label_name.clone())))
+                    return Ok((Inst::JUMPR(offset), None));
                 }
-            } else {
-                Err(AsmError::InvalidOperandType("jump".to_string()))
+            }
+
+            // Use expression evaluator for other cases
+            match parse_immidiate_expr(&args[0], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::JUMP(val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::JUMP(offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "call" if args.len() == 1 => {
-            // Check if it's a symbol or immediate
-            if let Some(imm) = parse_immediate(&args[0]) {
-                Ok((Inst::CALL(imm), None))
-            } else if let ast::Expr::Ident(func) = &args[0] {
-                // Function reference - will be resolved later (external symbol)
-                Ok((Inst::CALL(0), Some(func.clone())))
-            } else {
-                Err(AsmError::InvalidOperandType("call".to_string()))
+            // Use expression evaluator
+            match parse_immidiate_expr(&args[0], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::CALL(val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::CALL(offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "ret" if args.is_empty() => Ok((Inst::RET(), None)),
         "ifr" if args.len() == 2 => {
             let cond = parse_register(&args[0])?;
-            if let Some(imm) = parse_immediate(&args[1]) {
-                Ok((Inst::IFR(cond, imm), None))
-            } else if let ast::Expr::Ident(label_name) = &args[1] {
-                // Check if it's a local label
+
+            // Check if it's a local label first
+            if let ast::Expr::Ident(label_name) = &args[1] {
                 if let Some(&label_pc) = labels.get(label_name) {
                     // Calculate relative offset
                     let offset = (label_pc as i32 - pc as i32) as u16;
-                    Ok((Inst::IFR(cond, offset), None))
-                } else {
-                    // External symbol
-                    Ok((Inst::IFR(cond, 0), Some(label_name.clone())))
+                    return Ok((Inst::IFR(cond, offset), None));
                 }
-            } else {
-                Err(AsmError::InvalidOperandType("ifr".to_string()))
+            }
+
+            // Use expression evaluator for other cases
+            match parse_immidiate_expr(&args[1], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::IFR(cond, val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::IFR(cond, offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "jumpr" if args.len() == 1 => {
-            if let Some(imm) = parse_immediate(&args[0]) {
-                Ok((Inst::JUMPR(imm), None))
-            } else if let ast::Expr::Ident(label_name) = &args[0] {
-                // Check if it's a local label
+            // Check if it's a local label first
+            if let ast::Expr::Ident(label_name) = &args[0] {
                 if let Some(&label_pc) = labels.get(label_name) {
                     // Calculate relative offset
                     let offset = (label_pc as i32 - pc as i32) as u16;
-                    Ok((Inst::JUMPR(offset), None))
-                } else {
-                    // External symbol
-                    Ok((Inst::JUMPR(0), Some(label_name.clone())))
+                    return Ok((Inst::JUMPR(offset), None));
                 }
-            } else {
-                Err(AsmError::InvalidOperandType("jumpr".to_string()))
+            }
+
+            // Use expression evaluator for other cases
+            match parse_immidiate_expr(&args[0], symbols)? {
+                Immidiate::Literal(val) => Ok((Inst::JUMPR(val), None)),
+                Immidiate::Symbol(name, offset) => Ok((
+                    Inst::JUMPR(offset as u16),
+                    Some(Immidiate::Symbol(name, offset)),
+                )),
             }
         }
         "iret" if args.is_empty() => Ok((Inst::IRET(), None)),
@@ -428,5 +439,156 @@ fn parse_immediate(expr: &ast::Expr) -> Option<u16> {
         ast::Expr::NumberLit(n) => Some(*n as u16),
         ast::Expr::CharLit(ch) => Some(*ch as u16),
         _ => None,
+    }
+}
+
+/// Parse an expression into an immediate value
+fn parse_immidiate_expr(expr: &ast::Expr, symbols: &Symbols) -> Result<Immidiate, AsmError> {
+    match expr {
+        ast::Expr::NumberLit(n) => Ok(Immidiate::Literal(*n as u16)),
+        ast::Expr::CharLit(ch) => Ok(Immidiate::Literal(*ch as u16)),
+        ast::Expr::Ident(name) => Ok(Immidiate::Symbol(name.clone(), 0)),
+        ast::Expr::Unary(op, inner) => match op {
+            ast::UnaryOp::Pos => todo!(),
+            ast::UnaryOp::Neg => todo!(),
+            ast::UnaryOp::Not => todo!(),
+            ast::UnaryOp::Deref => todo!(),
+            ast::UnaryOp::Ref => parse_immidiate_expr(inner, symbols),
+        },
+
+        ast::Expr::Member(base, field) => {
+            match parse_immidiate_expr(base, symbols)? {
+                Immidiate::Symbol(ident, offset) => {
+                    // Look up the type of the base symbol to calculate field offset
+                    let field_offset =
+                        if let Some((ty, _, _)) = symbols.statics().get(ident.as_str()) {
+                            get_field_offset_from_type(ty, field)?
+                        } else if let Some((ty, _, _, _)) = symbols.consts().get(ident.as_str()) {
+                            get_field_offset_from_type(ty, field)?
+                        } else {
+                            return Err(AsmError::InvalidOperandType(format!(
+                                "Unknown symbol: {}",
+                                ident
+                            )));
+                        };
+
+                    Ok(Immidiate::Symbol(ident, offset + field_offset))
+                }
+                Immidiate::Literal(_) => Err(AsmError::InvalidOperandType(
+                    "Cannot access field of immediate value".to_string(),
+                )),
+            }
+        }
+
+        ast::Expr::Index(base, index) => {
+            match parse_immidiate_expr(base, symbols)? {
+                Immidiate::Symbol(ident, ofset) => {
+                    // Try to evaluate index to a constant
+                    if let ast::Expr::NumberLit(idx) = index.as_ref() {
+                        // Look up the type of the base symbol to calculate element size
+                        let elem_size = if let Some((ty, _, _)) =
+                            symbols.statics().get(ident.as_str())
+                        {
+                            get_array_element_size_from_type(ty)?
+                        } else if let Some((ty, const_expr, _, _)) =
+                            symbols.consts().get(ident.as_str())
+                        {
+                            // For string constants, elements are chars (size 1)
+                            if matches!(const_expr, crate::eval::constexpr::ConstExpr::String(_)) {
+                                1
+                            } else {
+                                get_array_element_size_from_type(ty)?
+                            }
+                        } else {
+                            return Err(AsmError::InvalidOperandType(format!(
+                                "Unknown symbol: {}",
+                                ident
+                            )));
+                        };
+
+                        Ok(Immidiate::Symbol(ident, ofset + idx * elem_size))
+                    } else {
+                        Err(AsmError::InvalidOperandType(
+                            "Array index must be a constant in assembly".to_string(),
+                        ))
+                    }
+                }
+                Immidiate::Literal(_) => Err(AsmError::InvalidOperandType(
+                    "Cannot index immediate value".to_string(),
+                )),
+            }
+        }
+
+        ast::Expr::Binary(op, left, right) => {
+            let lhs = parse_immidiate_expr(left, symbols)?;
+            let rhs = parse_immidiate_expr(right, symbols)?;
+            match op {
+                ast::BinaryOp::Add => match (lhs, rhs) {
+                    (Immidiate::Symbol(ident, left), Immidiate::Literal(right)) => {
+                        Ok(Immidiate::Symbol(ident, left + right as usize))
+                    }
+                    (Immidiate::Literal(left_val), Immidiate::Symbol(ident, right_offset)) => {
+                        Ok(Immidiate::Symbol(ident, left_val as usize + right_offset))
+                    }
+                    (Immidiate::Literal(left_val), Immidiate::Literal(right_val)) => {
+                        Ok(Immidiate::Literal(left_val.wrapping_add(right_val)))
+                    }
+                    _ => Err(AsmError::InvalidOperandType(
+                        "Cannot add two symbols".to_string(),
+                    )),
+                },
+                ast::BinaryOp::Sub => match (lhs, rhs) {
+                    (Immidiate::Symbol(ident, left_offset), Immidiate::Literal(right_val)) => Ok(
+                        Immidiate::Symbol(ident, left_offset.wrapping_sub(right_val as usize)),
+                    ),
+                    (Immidiate::Literal(left_val), Immidiate::Literal(right_val)) => {
+                        Ok(Immidiate::Literal(left_val.wrapping_sub(right_val)))
+                    }
+                    _ => Err(AsmError::InvalidOperandType(
+                        "Invalid subtraction in address expression".to_string(),
+                    )),
+                },
+                _ => Err(AsmError::InvalidOperandType(
+                    "Unsupported operation in address expression".to_string(),
+                )),
+            }
+        }
+
+        _ => Err(AsmError::InvalidOperandType(format!(
+            "Unsupported expression type in assembly: {:?}",
+            expr
+        ))),
+    }
+}
+
+/// Helper function to get field offset from a NormType
+fn get_field_offset_from_type(ty: &NormType, field_name: &str) -> Result<usize, AsmError> {
+    if let NormType::Struct(fields) = ty {
+        let mut offset = 0;
+        for (name, field_ty) in fields {
+            if name == field_name {
+                return Ok(offset);
+            }
+            offset += field_ty.sizeof();
+        }
+        Err(AsmError::InvalidOperandType(format!(
+            "Field '{}' not found in struct",
+            field_name
+        )))
+    } else {
+        Err(AsmError::InvalidOperandType(
+            "Type is not a struct".to_string(),
+        ))
+    }
+}
+
+/// Helper function to get array element size from a NormType
+fn get_array_element_size_from_type(ty: &NormType) -> Result<usize, AsmError> {
+    if let NormType::Array(_, elem_ty) = ty {
+        Ok(elem_ty.sizeof())
+    } else {
+        Err(AsmError::InvalidOperandType(
+            "Type is not an array".to_string(),
+        ))
     }
 }

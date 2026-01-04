@@ -90,8 +90,39 @@ impl SymbolMap {
         }
     }
 
-    /// Serialize to YAML string
+    /// Serialize to YAML string with hexadecimal numbers
     pub fn to_yaml(&self) -> String {
-        serde_yaml::to_string(self).unwrap_or_else(|e| format!("# Error generating YAML: {}", e))
+        let mut yaml = String::new();
+
+        // Write code section
+        yaml.push_str("code:\n");
+        for (name, entry) in &self.code {
+            yaml.push_str(&format!("  {}:\n", name));
+            yaml.push_str(&format!("    addr: 0x{:x}\n", entry.addr));
+            yaml.push_str(&format!("    size: 0x{:x}\n", entry.size));
+            yaml.push_str("    stacks:");
+            if entry.stacks.is_empty() {
+                yaml.push_str(" {}\n");
+            } else {
+                yaml.push('\n');
+                for (stack_name, offset) in &entry.stacks {
+                    yaml.push_str(&format!("      {}: 0x{:x}\n", stack_name, offset));
+                }
+            }
+        }
+
+        // Write data section
+        yaml.push_str("data:\n");
+        if self.data.is_empty() {
+            yaml.push_str("  {}\n");
+        } else {
+            for (name, entry) in &self.data {
+                yaml.push_str(&format!("  {}:\n", name));
+                yaml.push_str(&format!("    addr: 0x{:x}\n", entry.addr));
+                yaml.push_str(&format!("    size: 0x{:x}\n", entry.size));
+            }
+        }
+
+        yaml
     }
 }

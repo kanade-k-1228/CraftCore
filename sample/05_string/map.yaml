@@ -1,0 +1,12 @@
+code:
+  reset:
+    addr: 0x8
+    size: 0x0
+    stacks: {}
+data:
+  serial_tx:
+    addr: 0x1000
+    size: 0x1
+  msg:
+    addr: 0x3000
+    size: 0xe

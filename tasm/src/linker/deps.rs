@@ -1,4 +1,4 @@
-use crate::convert::Code;
+use crate::convert::types::{Code, Immidiate};
 use color_print::cprintln;
 use indexmap::IndexMap;
 use std::collections::HashSet;
@@ -9,8 +9,8 @@ pub fn dependency<'a>(codes: &'a IndexMap<&'a str, Code>) -> IndexMap<&'a str, H
     for (&name, code) in codes {
         let mut refs = HashSet::new();
         for (_, label) in &code.0 {
-            if let Some(label) = label {
-                refs.insert(label.as_ref());
+            if let Some(Immidiate::Symbol(symbol, _)) = label {
+                refs.insert(symbol.as_str());
             }
         }
         deps.insert(name, refs);

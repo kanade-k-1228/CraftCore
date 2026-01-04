@@ -1,0 +1,29 @@
+static @ 0x1000 serial_tx : int;
+
+const msg = "Hello, World!\n";
+
+asm reset {
+    loadi(t0, msg@);        // t0: Base address of string (message)
+    loadi(t1, 14);          // t1: Length of string
+    loadi(t2, serial_tx@);  // t2: Serial TX address
+    loadi(s0, 0);           // s0: Counter i = 0
+
+  loop:
+    // Check if we've printed all characters
+    // if jumps when register is 0 (false)
+    lt(s1, s0, t1);        // s1 = (i < len), 1 if true, 0 if false
+    if(s1, done);          // If s1 == 0 (i >= len), jump to done
+                           // Otherwise (s1 != 0, i < len), continue
+
+    // Load character at message[i] and print it
+    add(s1, t0, s0);       // s1 = base_addr + i
+    load(s2, s1, 0);       // s2 = message[i]
+    store(s2, t2, 0);      // serial_tx = character
+
+    // Increment counter
+    addi(s0, s0, 1);       // i++
+    jump(loop);
+
+  done:
+    jump(done);
+}
