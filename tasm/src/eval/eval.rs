@@ -1,12 +1,28 @@
 use crate::{
     error::CollectError,
     eval::constexpr::ConstExpr,
+    eval::normtype::collect_type,
     grammer::ast::{BinaryOp, Expr, UnaryOp},
+    symbols::{ConstMap, TypeMap},
 };
 
 pub fn eval(
     expr: &Expr,
     env: &impl Fn(&str) -> Option<ConstExpr>,
+) -> Result<ConstExpr, CollectError> {
+    eval_with_types(
+        expr,
+        env,
+        &ConstMap(Default::default()),
+        &TypeMap(Default::default()),
+    )
+}
+
+pub fn eval_with_types(
+    expr: &Expr,
+    env: &impl Fn(&str) -> Option<ConstExpr>,
+    consts: &ConstMap,
+    types: &TypeMap,
 ) -> Result<ConstExpr, CollectError> {
     match expr {
         Expr::NumberLit(n) => Ok(ConstExpr::Number(*n)),
@@ -16,7 +32,7 @@ pub fn eval(
         Expr::StructLit(fields) => {
             let mut ret = Vec::new();
             for (name, expr) in fields {
-                ret.push((name.clone(), eval(expr, env)?));
+                ret.push((name.clone(), eval_with_types(expr, env, consts, types)?));
             }
             Ok(ConstExpr::Struct(ret))
         }
@@ -24,7 +40,7 @@ pub fn eval(
         Expr::ArrayLit(elems) => {
             let mut ret = Vec::new();
             for expr in elems {
-                ret.push(eval(expr, env)?);
+                ret.push(eval_with_types(expr, env, consts, types)?);
             }
             Ok(ConstExpr::Array(ret))
         }
@@ -33,7 +49,7 @@ pub fn eval(
             env(name).ok_or_else(|| CollectError::UnsupportedConstExpr(format!("{:?}", expr)))
         }
 
-        Expr::Unary(op, operand) => match (op, eval(operand, env)?) {
+        Expr::Unary(op, operand) => match (op, eval_with_types(operand, env, consts, types)?) {
             (UnaryOp::Pos, ConstExpr::Number(n)) => Ok(ConstExpr::Number(n)),
             (UnaryOp::Neg, ConstExpr::Number(n)) => {
                 Ok(ConstExpr::Number(0usize.wrapping_sub(n) & 0xFFFF))
@@ -45,7 +61,11 @@ pub fn eval(
             _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
-        Expr::Binary(op, lhs, rhs) => match (op, eval(lhs, env)?, eval(rhs, env)?) {
+        Expr::Binary(op, lhs, rhs) => match (
+            op,
+            eval_with_types(lhs, env, consts, types)?,
+            eval_with_types(rhs, env, consts, types)?,
+        ) {
             (BinaryOp::Add, ConstExpr::Number(l), ConstExpr::Number(r)) => {
                 Ok(ConstExpr::Number((l.wrapping_add(r)) & 0xFFFF))
             }
@@ -99,7 +119,7 @@ pub fn eval(
             _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
-        Expr::Member(base, field) => match eval(base, env)? {
+        Expr::Member(base, field) => match eval_with_types(base, env, consts, types)? {
             ConstExpr::Struct(fields) => {
                 for (name, value) in fields {
                     if name == *field {
@@ -111,7 +131,10 @@ pub fn eval(
             _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
-        Expr::Index(base, index) => match (eval(base, env)?, eval(index, env)?) {
+        Expr::Index(base, index) => match (
+            eval_with_types(base, env, consts, types)?,
+            eval_with_types(index, env, consts, types)?,
+        ) {
             (ConstExpr::Array(elems), ConstExpr::Number(idx)) => match idx < elems.len() {
                 true => Ok(elems[idx].clone()),
                 false => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
@@ -123,15 +146,21 @@ pub fn eval(
             _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
-        Expr::Cond(cond, true_expr, false_expr) => match eval(cond, env)? {
+        Expr::Cond(cond, true_expr, false_expr) => match eval_with_types(cond, env, consts, types)?
+        {
             ConstExpr::Number(n) => match n != 0 {
-                true => eval(true_expr, env),
-                false => eval(false_expr, env),
+                true => eval_with_types(true_expr, env, consts, types),
+                false => eval_with_types(false_expr, env, consts, types),
             },
             _ => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         },
 
-        Expr::Cast(expr, _typ) => eval(expr, env),
+        Expr::Cast(expr, _typ) => eval_with_types(expr, env, consts, types),
+
+        Expr::Sizeof(typ) => {
+            let norm_type = collect_type(typ, consts, types)?;
+            Ok(ConstExpr::Number(norm_type.sizeof()))
+        }
 
         Expr::Call(_, _) => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
         Expr::Error => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
@@ -141,7 +170,7 @@ pub fn eval(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grammer::ast::{self, Type};
+    use crate::grammer::ast::Type;
 
     #[test]
     fn test_eval_number_literal() {

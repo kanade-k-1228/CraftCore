@@ -875,10 +875,18 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// Primary expression
-    /// `( <expr> )` | `<ident>` | `<number>` | `<string>` | `{ ... }` | `[ ... ]`
+    /// `( <expr> )` | `<ident>` | `<number>` | `<string>` | `{ ... }` | `[ ... ]` | `<type>`
     fn parse_prim(&mut self) -> Result<Expr, ParseError> {
         if let Some(token) = self.tokens.peek() {
             match token.kind {
+                // Sizeof expression: <type>
+                LAngle => {
+                    expect!(self, LAngle)?;
+                    let typ = self.parse_type()?;
+                    expect!(self, RAngle)?;
+                    Ok(Expr::Sizeof(Box::new(typ)))
+                }
+
                 // Nested expression:
                 LParen => {
                     expect!(self, LParen)?;

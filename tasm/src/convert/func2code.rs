@@ -14,15 +14,19 @@ struct CodeGenContext<'a> {
     insts: Vec<(Inst, Option<Immidiate>)>,
     #[allow(dead_code)]
     funcs: &'a FuncMap<'a>, // Function type information for calls
+    consts: &'a ConstMap<'a>,
+    types: &'a TypeMap<'a>,
 }
 
 impl<'a> CodeGenContext<'a> {
-    fn new(funcs: &'a FuncMap<'a>) -> Self {
+    fn new(funcs: &'a FuncMap<'a>, consts: &'a ConstMap<'a>, types: &'a TypeMap<'a>) -> Self {
         Self {
             lvars: HashMap::new(),
             stack_size: 0,
             insts: Vec::new(),
             funcs,
+            consts,
+            types,
         }
     }
 
@@ -230,7 +234,7 @@ fn gen_func(
     _statics: &StaticMap,
     funcs: &FuncMap,
 ) -> Result<Code, FuncGenError> {
-    let mut ctx = CodeGenContext::new(funcs);
+    let mut ctx = CodeGenContext::new(funcs, consts, types);
 
     // Convert AST types to normalized types for prologue/epilogue generation
     let mut norm_args = Vec::new();
@@ -551,6 +555,14 @@ fn compile_expr(
             let end_pos = ctx.current_pos();
             ctx.patch_jump(end_jump, end_pos);
 
+            target_reg
+        }
+        ast::Expr::Sizeof(typ) => {
+            // Calculate size at compile time
+            let norm_type = collect_type(typ, ctx.consts, ctx.types)
+                .map_err(|_| FuncGenError::TypeCollectionFailed("sizeof".to_string()))?;
+            let size = norm_type.sizeof() as u16;
+            ctx.emit_inst(Inst::LOADI(target_reg, size));
             target_reg
         }
         _ => {

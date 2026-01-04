@@ -30,7 +30,7 @@ pub enum Stmt {
     Loop(Expr, Box<Stmt>),                    // loop        | 'while' '(' expr ')' stmt
     Return(Option<Expr>),                     // return      | 'return' ?( expr ) ';'
     Var(String, Type, Option<Expr>),          // variable    | 'var' name ':' type ?('=' init) ';'
-    Error,                                    // placeholder for a statement that failed to parse
+    Error,
 }
 
 // Assembly-specific AST types
@@ -47,24 +47,25 @@ pub enum Expr {
     ArrayLit(Vec<Expr>),                    // array literal   | [expr1, expr2, ...]
     CharLit(char),                          // char literal    | 'A'
     StringLit(String),                      // string literal  | "ABC"
-    Ident(String),                          // variable        | var name: Type [= init]
+    Ident(String),                          // variable        | name
     Cond(Box<Expr>, Box<Expr>, Box<Expr>),  // conditional     | expr ? expr : expr
     Unary(UnaryOp, Box<Expr>),              // unary op        | -expr, !expr, *expr, &expr
     Binary(BinaryOp, Box<Expr>, Box<Expr>), // bin op          | expr1 + expr2
+    Index(Box<Expr>, Box<Expr>),            // array index     | expr[expr]
+    Member(Box<Expr>, String),              // struct member   | expr.field
     Call(Box<Expr>, Vec<Expr>),             // function call   | func(expr1, expr2, ...)
+    Sizeof(Box<Type>),                      // sizeof          | <Type>
     Cast(Box<Expr>, Box<Type>),             // cast            | expr : Type
-    Index(Box<Expr>, Box<Expr>),            // index           | expr[expr]
-    Member(Box<Expr>, String),              // member access   | expr.field
-    Error,                                  // placeholder for an expression that failed to parse
+    Error,
 }
 
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
-    Pos,   // unary plus (+expr)
-    Neg,   // unary minus (-expr)
-    Not,   // logical not (!expr)
-    Deref, // value-at (*expr)
-    Ref,   // address-of (&expr)
+    Pos,   // unary plus  | +expr
+    Neg,   // unary minus | -expr
+    Not,   // logical not | !expr
+    Deref, // value-at    | *expr
+    Ref,   // address-of  | &expr
 }
 
 #[derive(Debug, Clone)]

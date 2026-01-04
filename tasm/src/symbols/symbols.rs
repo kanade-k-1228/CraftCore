@@ -31,9 +31,16 @@ pub struct Symbols<'a> {
 
 impl<'a> Symbols<'a> {
     pub fn collect(ast: &'a ast::AST) -> Result<Self, CollectError> {
-        // Collect each table
-        let consts = ConstMap::collect(ast)?;
+        // First pass: collect constants that don't depend on types
+        let mut consts = ConstMap::collect(ast)?;
+
+        // Collect types using the first-pass constants
         let types = TypeMap::collect(ast, &consts)?;
+
+        // Second pass: collect remaining constants that use sizeof
+        consts = consts.collect_with_types(ast, &types)?;
+
+        // Now collect the rest with complete const and type information
         let statics = StaticMap::collect(ast, &consts, &types)?;
         let asms = AsmMap::collect(ast, &consts)?;
         let funcs = FuncMap::collect(ast, &consts, &types, &statics)?;

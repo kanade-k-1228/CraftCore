@@ -136,6 +136,11 @@ pub fn typeof_expr(
             }
         }
 
+        Expr::Sizeof(_) => {
+            // sizeof expression always returns an integer (the size)
+            Ok(NormType::Int)
+        }
+
         Expr::Error => Err(CollectError::UnsupportedConstExpr(format!("{:?}", expr))),
     }
 }
