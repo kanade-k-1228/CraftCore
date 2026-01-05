@@ -195,8 +195,8 @@ fn generate_epilogue(
 /// Generate code from all functions in the AST
 pub fn func2code<'a>(evaluator: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
     let mut result = HashMap::new();
-    for (&name, entry) in evaluator.funcs() {
-        if let ast::Def::Func(_, args, ret, stmts) = entry.def {
+    for (name, (_, _, def)) in evaluator.funcs() {
+        if let ast::Def::Func(_, args, ret, stmts) = def {
             result.insert(name, gen_func(args, ret, stmts, evaluator)?);
         }
     }
@@ -204,11 +204,11 @@ pub fn func2code<'a>(evaluator: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Co
 }
 
 /// Generate instructions for a function from its AST
-fn gen_func(
-    args: &Vec<(String, ast::Type)>,
-    ret: &ast::Type,
-    stmts: &Vec<ast::Stmt>,
-    evaluator: &Evaluator,
+fn gen_func<'a>(
+    args: &'a Vec<(String, ast::Type)>,
+    ret: &'a ast::Type,
+    stmts: &'a Vec<ast::Stmt>,
+    evaluator: &'a Evaluator<'a>,
 ) -> Result<Code, FuncGenError> {
     let mut ctx = CodeGenContext::new(evaluator);
 
@@ -255,7 +255,10 @@ fn gen_func(
 
 /// Compile a statement into instructions
 /// Returns the position after the last instruction
-fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> Result<usize, FuncGenError> {
+fn compile_stmt<'a>(
+    ctx: &mut CodeGenContext<'a>,
+    stmt: &'a ast::Stmt,
+) -> Result<usize, FuncGenError> {
     match stmt {
         ast::Stmt::Block(stmts) => {
             for s in stmts {
@@ -351,9 +354,9 @@ fn compile_stmt(ctx: &mut CodeGenContext, stmt: &ast::Stmt) -> Result<usize, Fun
 }
 
 /// Compile an expression into a register
-fn compile_expr(
-    ctx: &mut CodeGenContext,
-    expr: &ast::Expr,
+fn compile_expr<'a>(
+    ctx: &mut CodeGenContext<'a>,
+    expr: &'a ast::Expr,
     target: Option<Reg>,
 ) -> Result<Reg, FuncGenError> {
     let target_reg = target.unwrap_or(Reg::T0);
@@ -554,9 +557,9 @@ fn compile_expr(
 }
 
 /// Compile an lvalue (left-hand side of assignment)
-fn compile_lvalue(
-    ctx: &mut CodeGenContext,
-    lvalue: &ast::Expr,
+fn compile_lvalue<'a>(
+    ctx: &mut CodeGenContext<'a>,
+    lvalue: &'a ast::Expr,
     value_reg: Reg,
 ) -> Result<(), FuncGenError> {
     match lvalue {

@@ -25,9 +25,9 @@ pub fn resolve_symbols<'a>(
                         let addr = evaluator
                             .consts()
                             .get(symbol.as_str())
-                            .and_then(|entry| {
+                            .and_then(|(_, value, _, _)| {
                                 // Check if it's a constant - use its value directly
-                                if let crate::eval::constexpr::ConstExpr::Number(n) = &entry.value {
+                                if let crate::eval::constexpr::ConstExpr::Number(n) = value {
                                     Some(*n as usize)
                                 } else {
                                     None
@@ -137,7 +137,7 @@ pub fn gencbin(
             evaluator
                 .consts()
                 .get(name.as_str())
-                .map(|entry| addr + entry.norm_type.sizeof())
+                .map(|(norm_type, _, _, _)| addr + norm_type.sizeof())
         })
         .max()
         .unwrap_or(0);
@@ -146,9 +146,9 @@ pub fn gencbin(
     let mut binary = vec![0u8; max_addr];
 
     // Place each constant at its specified address
-    for (&name, entry) in evaluator.consts().iter() {
+    for (name, (_, value, _, _)) in evaluator.consts() {
         if let Some(&addr) = dmmap.get(name) {
-            let bytes = entry.value.serialize();
+            let bytes = value.serialize();
             let end = (addr + bytes.len()).min(binary.len());
             if addr < binary.len() {
                 binary[addr..end].copy_from_slice(&bytes[..end - addr]);

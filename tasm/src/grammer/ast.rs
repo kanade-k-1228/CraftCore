@@ -1,7 +1,7 @@
 #[derive(Debug, Clone)]
 pub struct AST(pub Vec<Def>); // defs = { def }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,                                  // "int"
     Void,                                 // "void"
@@ -12,7 +12,7 @@ pub enum Type {
     Func(Vec<(String, Type)>, Box<Type>), // "(" [ ident ":" type { "," ident ":" type } ] ")" "->" type
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Def {
     Type(String, Type),                                 // "type" ident "=" type ";"
     Const(String, Option<Expr>, Expr),                  // "const" [ "@" expr ] ident "=" expr ";"
@@ -21,7 +21,7 @@ pub enum Def {
     Func(String, Vec<(String, Type)>, Type, Vec<Stmt>), // "fn" ident "(" [ ident ":" type { "," ident ":" type } ] ")" [ "->" type ] "{" { stmt } "}"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Stmt {
     Block(Vec<Stmt>),                         // "{" { stmt } "}"
     Expr(Expr),                               // expr ";"
@@ -32,10 +32,10 @@ pub enum Stmt {
     Var(String, Type, Option<Expr>),          // "var" ident ":" type [ "=" expr ] ";"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct AsmStmt(pub String, pub Vec<Expr>, pub Vec<String>); // { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
     Cond(Box<Expr>, Box<Expr>, Box<Expr>), // (not in current EBNF - ternary conditional)
     Binary(BinaryOp, Box<Expr>, Box<Expr>), // expr (binop) expr
@@ -56,14 +56,14 @@ pub enum Expr {
     SizeofExpr(Box<Expr>),                 // "sizeof" "(" expr ")"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Pos, // "+"
     Neg, // "-"
     Not, // "!"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Add, // "+"
     Sub, // "-"

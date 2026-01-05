@@ -9,15 +9,18 @@ use std::collections::HashMap;
 
 pub fn asm2code<'a>(evaluator: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Code>, AsmError> {
     let mut result = HashMap::new();
-    for (&name, entry) in evaluator.asms() {
-        if let ast::Def::Asm(_, _, stmts) = entry.def {
+    for (name, (_, def)) in evaluator.asms() {
+        if let ast::Def::Asm(_, _, stmts) = def {
             result.insert(name, gen_asm_block(stmts, evaluator)?);
         }
     }
     Ok(result)
 }
 
-fn gen_asm_block(stmts: &[ast::AsmStmt], evaluator: &Evaluator) -> Result<Code, AsmError> {
+fn gen_asm_block<'a>(
+    stmts: &'a [ast::AsmStmt],
+    evaluator: &'a Evaluator<'a>,
+) -> Result<Code, AsmError> {
     let mut labels: HashMap<&str, usize> = HashMap::new();
     for (pc, ast::AsmStmt(_, _, labs)) in stmts.iter().enumerate() {
         for label in labs {
@@ -34,12 +37,12 @@ fn gen_asm_block(stmts: &[ast::AsmStmt], evaluator: &Evaluator) -> Result<Code, 
     Ok(Code(insts))
 }
 
-fn parse_instruction(
+fn parse_instruction<'a>(
     pc: u16,
     inst: &str,
-    args: &[ast::Expr],
+    args: &'a [ast::Expr],
     labels: &HashMap<&str, usize>,
-    evaluator: &Evaluator,
+    evaluator: &'a Evaluator<'a>,
 ) -> Result<(Inst, Option<Immidiate>), AsmError> {
     match inst.to_lowercase().as_str() {
         "nop" => Ok((Inst::NOP(), None)),
@@ -427,7 +430,10 @@ fn parse_immediate(expr: &ast::Expr) -> Option<u16> {
 }
 
 /// Parse an expression into an immediate value
-fn parse_immidiate_expr(expr: &ast::Expr, evaluator: &Evaluator) -> Result<Immidiate, AsmError> {
+fn parse_immidiate_expr<'a>(
+    expr: &'a ast::Expr,
+    evaluator: &'a Evaluator<'a>,
+) -> Result<Immidiate, AsmError> {
     match expr {
         ast::Expr::NumberLit(n) => Ok(Immidiate::Literal(*n as u16)),
         ast::Expr::CharLit(ch) => Ok(Immidiate::Literal(*ch as u16)),
@@ -455,17 +461,19 @@ fn parse_immidiate_expr(expr: &ast::Expr, evaluator: &Evaluator) -> Result<Immid
             match parse_immidiate_expr(base, evaluator)? {
                 Immidiate::Symbol(ident, offset) => {
                     // Look up the type of the base symbol to calculate field offset
-                    let field_offset = if let Some(entry) = evaluator.statics().get(ident.as_str())
-                    {
-                        get_field_offset_from_type(&entry.norm_type, field)?
-                    } else if let Some(entry) = evaluator.consts().get(ident.as_str()) {
-                        get_field_offset_from_type(&entry.norm_type, field)?
-                    } else {
-                        return Err(AsmError::InvalidOperandType(format!(
-                            "Unknown symbol: {}",
-                            ident
-                        )));
-                    };
+                    let field_offset =
+                        if let Some((norm_type, _, _)) = evaluator.statics().get(ident.as_str()) {
+                            get_field_offset_from_type(norm_type, field)?
+                        } else if let Some((norm_type, _, _, _)) =
+                            evaluator.consts().get(ident.as_str())
+                        {
+                            get_field_offset_from_type(norm_type, field)?
+                        } else {
+                            return Err(AsmError::InvalidOperandType(format!(
+                                "Unknown symbol: {}",
+                                ident
+                            )));
+                        };
 
                     Ok(Immidiate::Symbol(ident, offset + field_offset))
                 }
@@ -481,15 +489,18 @@ fn parse_immidiate_expr(expr: &ast::Expr, evaluator: &Evaluator) -> Result<Immid
                     // Try to evaluate index to a constant
                     if let ast::Expr::NumberLit(idx) = index.as_ref() {
                         // Look up the type of the base symbol to calculate element size
-                        let elem_size = if let Some(entry) = evaluator.statics().get(ident.as_str())
+                        let elem_size = if let Some((norm_type, _, _)) =
+                            evaluator.statics().get(ident.as_str())
                         {
-                            get_array_element_size_from_type(&entry.norm_type)?
-                        } else if let Some(entry) = evaluator.consts().get(ident.as_str()) {
+                            get_array_element_size_from_type(norm_type)?
+                        } else if let Some((norm_type, value, _, _)) =
+                            evaluator.consts().get(ident.as_str())
+                        {
                             // For string constants, elements are chars (size 1)
-                            if matches!(entry.value, crate::eval::constexpr::ConstExpr::String(_)) {
+                            if matches!(value, crate::eval::constexpr::ConstExpr::String(_)) {
                                 1
                             } else {
-                                get_array_element_size_from_type(&entry.norm_type)?
+                                get_array_element_size_from_type(norm_type)?
                             }
                         } else {
                             return Err(AsmError::InvalidOperandType(format!(

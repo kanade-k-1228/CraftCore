@@ -57,7 +57,7 @@ fn main() -> Result<(), tasm::Error> {
     }
 
     // 4. Collect symbols
-    let evaluator = match tasm::Evaluator::collect(&ast) {
+    let evaluator = match tasm::Evaluator::new(&ast) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("  {:?}", e);
@@ -80,11 +80,11 @@ fn main() -> Result<(), tasm::Error> {
     // 7. Collect global objects
     let iitems = {
         let mut iitems = IndexMap::new();
-        for (&name, entry) in evaluator.asms() {
+        for (name, (address, _)) in evaluator.asms() {
             // Only include if reachable
             if used.contains(name) {
                 if let Some(code) = codes.get(name) {
-                    iitems.insert(name.to_string(), (code.0.len(), entry.address));
+                    iitems.insert(name.to_string(), (code.0.len(), address));
                 }
             }
         }
@@ -98,16 +98,16 @@ fn main() -> Result<(), tasm::Error> {
     };
     let ditems = {
         let mut ditems = IndexMap::new();
-        for (&name, entry) in evaluator.statics().iter() {
+        for (name, (norm_type, address, _)) in evaluator.statics() {
             // Only include if reachable (data items referenced from reachable code)
             if used.contains(name) {
-                ditems.insert(name.to_string(), (entry.norm_type.sizeof(), entry.address));
+                ditems.insert(name.to_string(), (norm_type.sizeof(), address));
             }
         }
-        for (&name, entry) in evaluator.consts().iter() {
+        for (name, (norm_type, _, address, _)) in evaluator.consts() {
             // Only include if reachable
             if used.contains(name) && !evaluator.statics().contains_key(name) {
-                ditems.insert(name.to_string(), (entry.norm_type.sizeof(), entry.address));
+                ditems.insert(name.to_string(), (norm_type.sizeof(), address));
             }
         }
         ditems
@@ -149,16 +149,16 @@ fn main() -> Result<(), tasm::Error> {
 
     // Allocate data items without fixed addresses to appropriate sections
     // First, allocate consts to const section
-    for (&name, _) in evaluator.consts().iter() {
-        if let Some((size, addr)) = ditems.get(name) {
-            if addr.is_none() {
+    for (name, (_, _, _addr, _)) in evaluator.consts() {
+        if let Some((size, ditem_addr)) = ditems.get(name) {
+            if ditem_addr.is_none() {
                 daloc.section(dmem.get("const")?, *size, name)?;
             }
         }
     }
 
-    for (&name, entry) in evaluator.statics().iter() {
-        if entry.address.is_none() {
+    for (name, (_, address, _)) in evaluator.statics() {
+        if address.is_none() {
             if let Some((size, _)) = ditems.get(name) {
                 daloc.section(dmem.get("static")?, *size, name)?;
             }

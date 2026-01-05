@@ -50,9 +50,6 @@ pub enum Error {
     Parse(#[from] ParseError),
 
     #[error(transparent)]
-    Collect(#[from] CollectError),
-
-    #[error(transparent)]
     Link(#[from] LinkError),
 
     #[error(transparent)]
@@ -66,6 +63,9 @@ pub enum Error {
 
     #[error(transparent)]
     FuncGen(#[from] FuncGenError),
+
+    #[error(transparent)]
+    Eval(#[from] EvalError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -91,28 +91,6 @@ pub enum ParseError {
 
     #[error("Invalid variable: {0:?}")]
     InvalidVariable(String),
-}
-
-// Collection errors
-#[derive(Debug, Error, Clone)]
-pub enum CollectError {
-    #[error("TODO: not implemented yet")]
-    TODO,
-
-    #[error("Duplicate definition: {0}")]
-    Duplicate(String),
-
-    #[error("Missing type annotation for: {0}")]
-    MissingTypeAnnotation(String),
-
-    #[error("Non-literal array length: {0:?}")]
-    NonLiteralArrayLength(String),
-
-    #[error("Unsupported const expression: {0:?}")]
-    UnsupportedConstExpr(String),
-
-    #[error("Cannot infer type of empty array")]
-    CannotInferTypeOfEmptyArray,
 }
 
 // Link errors
@@ -206,4 +184,77 @@ pub enum FuncGenError {
 
     #[error("Invalid function call: {0}")]
     InvalidFunctionCall(String),
+}
+
+// Evaluation errors
+#[derive(Debug, Error, Clone)]
+pub enum EvalError {
+    #[error("TODO: not implemented yet")]
+    TODO,
+
+    #[error("Duplicate definition: {0}")]
+    Duplicate(String),
+
+    #[error("Missing type annotation for: {0}")]
+    MissingTypeAnnotation(String),
+
+    #[error("Unsupported const expression: {0:?}")]
+    UnsupportedConstExpr(String),
+
+    #[error("{0} is not a type")]
+    NotAType(String),
+
+    #[error("Unknown type: {0}")]
+    UnknownType(String),
+
+    #[error("Array length must be a constant integer")]
+    NonConstantArrayLength,
+
+    #[error("{0} is not a constant")]
+    NotAConstant(String),
+
+    #[error("Unknown constant: {0}")]
+    UnknownConstant(String),
+
+    #[error("Division by zero")]
+    DivisionByZero,
+
+    #[error("Modulo by zero")]
+    ModuloByZero,
+
+    #[error("Binary operation requires numeric operands")]
+    NonNumericBinaryOperands,
+
+    #[error("Unary operation requires numeric operand")]
+    NonNumericUnaryOperand,
+
+    #[error("Expression cannot be evaluated at compile time")]
+    NonConstantExpression,
+
+    #[error("Cannot infer type of empty array")]
+    EmptyArrayTypeInference,
+
+    #[error("{0} is not a value")]
+    NotAValue(String),
+
+    #[error("Unknown identifier: {0}")]
+    UnknownIdentifier(String),
+
+    #[error("Expression is not callable")]
+    NotCallable,
+
+    #[error("Expression is not indexable")]
+    NotIndexable,
+
+    #[error("Struct has no field: {0}")]
+    NoSuchField(String),
+
+    #[error("Expression is not a struct")]
+    NotAStruct,
+
+    #[error("Cannot dereference non-pointer type")]
+    CannotDereferenceNonPointer,
+
+    #[error("Cannot cast between types of different sizes: {0} bytes to {1} bytes")]
+    InvalidCastSize(usize, usize),
 }

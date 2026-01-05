@@ -18,8 +18,8 @@ pub fn binprint<'a>(
             // Get type information
             let (type_info, signature) = if evaluator.asms().contains_key(name.as_str()) {
                 ("asm", String::new())
-            } else if let Some(entry) = evaluator.funcs().get(name.as_str()) {
-                ("func", entry.norm_type.fmt())
+            } else if let Some((norm_type, _, _)) = evaluator.funcs().get(name.as_str()) {
+                ("func", norm_type.fmt())
             } else {
                 ("unknown", String::new())
             };
@@ -66,13 +66,14 @@ pub fn binprint<'a>(
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, ty, kind) = if let Some(entry) = evaluator.statics().get(name.as_str()) {
-                (entry.norm_type.sizeof(), entry.norm_type.fmt(), "static")
-            } else if let Some(entry) = evaluator.consts().get(name.as_str()) {
-                (entry.norm_type.sizeof(), entry.norm_type.fmt(), "const")
-            } else {
-                (0, "unknown".to_string(), "unknown")
-            };
+            let (size, ty, kind) =
+                if let Some((norm_type, _, _)) = evaluator.statics().get(name.as_str()) {
+                    (norm_type.sizeof(), norm_type.fmt(), "static")
+                } else if let Some((norm_type, _, _, _)) = evaluator.consts().get(name.as_str()) {
+                    (norm_type.sizeof(), norm_type.fmt(), "const")
+                } else {
+                    (0, "unknown".to_string(), "unknown")
+                };
             (kind, name.clone(), *addr, size, ty)
         })
         .collect();

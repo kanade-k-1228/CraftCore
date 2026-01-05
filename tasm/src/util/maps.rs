@@ -58,26 +58,26 @@ impl SymbolMap {
         let mut data_map: IndexMap<String, DataEntry> = IndexMap::new();
 
         // Add static variables
-        for (&name, entry) in evaluator.statics().iter() {
+        for (name, (norm_type, _, _)) in evaluator.statics() {
             if let Some(&addr) = dmap.get(name) {
                 data_map.insert(
                     name.to_string(),
                     DataEntry {
                         addr,
-                        size: entry.norm_type.sizeof(),
+                        size: norm_type.sizeof(),
                     },
                 );
             }
         }
 
         // Add constants
-        for (&name, entry) in evaluator.consts().iter() {
+        for (name, (norm_type, _, _, _)) in evaluator.consts() {
             if let Some(&addr) = dmap.get(name) {
                 data_map.insert(
                     name.to_string(),
                     DataEntry {
                         addr,
-                        size: entry.norm_type.sizeof(),
+                        size: norm_type.sizeof(),
                     },
                 );
             }
