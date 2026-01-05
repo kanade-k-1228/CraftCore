@@ -546,9 +546,14 @@ impl<'a> Evaluator<'a> {
                     _ => Err("Unary operation requires numeric operand".to_string()),
                 }
             }
-            ast::Expr::Sizeof(ty) => {
+            ast::Expr::SizeofType(ty) => {
                 // Calculate size of type
                 let norm_ty = self.normtype(ty)?;
+                Ok(ConstExpr::Number(norm_ty.sizeof()))
+            }
+            ast::Expr::SizeofExpr(inner) => {
+                // Calculate size of expression's type
+                let norm_ty = self.typeinfer(inner)?;
                 Ok(ConstExpr::Number(norm_ty.sizeof()))
             }
             ast::Expr::Cast(inner, _target_ty) => {
@@ -668,16 +673,16 @@ impl<'a> Evaluator<'a> {
                 }
             }
             ast::Expr::Cast(_inner, target_ty) => self.normtype(target_ty),
-            ast::Expr::Sizeof(_) => Ok(NormType::Int),
+            ast::Expr::SizeofType(_) | ast::Expr::SizeofExpr(_) => Ok(NormType::Int),
             _ => Err("Cannot infer type of expression".to_string()),
         }
     }
 }
 
-/// Helper function to check if an expression contains Sizeof
+/// Helper function to check if an expression contains Sizeof or SizeofExpr
 fn contains_sizeof(expr: &ast::Expr) -> bool {
     match expr {
-        ast::Expr::Sizeof(_) => true,
+        ast::Expr::SizeofType(_) | ast::Expr::SizeofExpr(_) => true,
         ast::Expr::Unary(_, e) => contains_sizeof(e),
         ast::Expr::Binary(_, lhs, rhs) => contains_sizeof(lhs) || contains_sizeof(rhs),
         ast::Expr::Index(base, index) => contains_sizeof(base) || contains_sizeof(index),
@@ -689,6 +694,7 @@ fn contains_sizeof(expr: &ast::Expr) -> bool {
         ast::Expr::Cast(e, _) => contains_sizeof(e),
         ast::Expr::StructLit(fields) => fields.iter().any(|(_, e)| contains_sizeof(e)),
         ast::Expr::ArrayLit(elems) => elems.iter().any(contains_sizeof),
+        ast::Expr::Addr(e) | ast::Expr::Deref(e) => contains_sizeof(e),
         _ => false,
     }
 }

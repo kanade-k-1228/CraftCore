@@ -293,6 +293,7 @@ fn keyword(s: &str) -> Option<TokenKind> {
         "void" => Some(TokenKind::KwVoid),
         "return" => Some(TokenKind::KwReturn),
         "as" => Some(TokenKind::KwAs),
+        "sizeof" => Some(TokenKind::KwSizeof),
         _ => None,
     }
 }

@@ -119,13 +119,6 @@ macro_rules! optional {
     };
 }
 
-#[macro_export]
-macro_rules! recover {
-    ($parser:expr, $kind:pat) => {
-        $parser.consume_until(|token| matches!(&token.kind, $kind))
-    };
-}
-
 /// Parse repeated elements with optional delimiters
 /// 3 args: { element } terminal (no delimiter)
 /// 4 args: [ element { delimiter element } ] terminal (with delimiter)

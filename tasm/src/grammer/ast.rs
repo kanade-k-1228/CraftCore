@@ -52,7 +52,8 @@ pub enum Expr {
     StringLit(String),                     // string-lit
     ArrayLit(Vec<Expr>),                   // "[" [ expr { "," expr } ] "]"
     StructLit(Vec<(String, Expr)>),        // "{" [ ident ":" expr { "," ident ":" expr } ] "}"
-    Sizeof(Box<Type>),                     // "<" type ">"
+    SizeofType(Box<Type>),                 // "sizeof" "<" type ">"
+    SizeofExpr(Box<Expr>),                 // "sizeof" "(" expr ")"
 }
 
 #[derive(Debug, Clone)]

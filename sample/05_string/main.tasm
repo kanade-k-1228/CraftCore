@@ -1,17 +1,17 @@
 static @ 0x1000 serial_tx : int;
 
 const msg = "Hello, World!\n";
-const msg_size = <[14]int>;  // Size of string (14 chars including newline)
 
-asm reset {
-    loadi(t0, &msg);        // t0: Base address of string (message)
-    loadi(t1, msg_size);    // t1: Size of string
-    loadi(t2, &serial_tx);  // t2: Serial TX address
-    loadi(s0, 0);           // s0: Counter i = 0
+asm @ 0x0000 reset {
+    loadi(t0, msg);          // t0: Addr
+    loadi(t1, sizeof(msg));  // t1: Size
+    loadi(t2, serial_tx);    // t2: Serial TX address
+    loadi(s0, 0);            // s0: Counter
 
   loop:
     lt(s1, s0, t1);
-    if(s1, done);
+    eqi(s2, s1, 0);
+    if(s2, done);
 
     // Load char
     add(s1, t0, s0);

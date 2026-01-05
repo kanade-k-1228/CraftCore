@@ -62,7 +62,8 @@ prim-expr = "(" expr ")"
           | string-lit
           | "[" [ expr { "," expr } ] "]"
           | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
-          | "<" type ">" ;
+          | "sizeof" "<" type ">"
+          | "sizeof" "(" expr ")" ;
 
 (* Terminal Symbols -------------------------------------------------------- *)
 

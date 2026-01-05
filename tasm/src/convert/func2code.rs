@@ -535,7 +535,7 @@ fn compile_expr(
 
             target_reg
         }
-        ast::Expr::Sizeof(typ) => {
+        ast::Expr::SizeofType(typ) => {
             // Calculate size at compile time
             let norm_type = ctx
                 .evaluator

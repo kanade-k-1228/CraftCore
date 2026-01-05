@@ -63,6 +63,7 @@ pub enum TokenKind {
     KwBreak,    // "break"
     KwContinue, // "continue"
     KwAs,       // "as"
+    KwSizeof,   // "sizeof"
 
     // Identifier
     Ident(String),

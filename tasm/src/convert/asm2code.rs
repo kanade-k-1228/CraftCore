@@ -546,6 +546,30 @@ fn parse_immidiate_expr(expr: &ast::Expr, evaluator: &Evaluator) -> Result<Immid
             }
         }
 
+        // Handle sizeof<type>
+        ast::Expr::SizeofType(ty) => {
+            // Evaluate the type's size at compile time
+            match evaluator.normtype(ty) {
+                Ok(norm_ty) => Ok(Immidiate::Literal(norm_ty.sizeof() as u16)),
+                Err(e) => Err(AsmError::InvalidOperandType(format!(
+                    "Cannot evaluate sizeof type: {}",
+                    e
+                ))),
+            }
+        }
+
+        // Handle sizeof(expr)
+        ast::Expr::SizeofExpr(inner) => {
+            // Evaluate the expression's type size at compile time
+            match evaluator.typeinfer(inner) {
+                Ok(norm_ty) => Ok(Immidiate::Literal(norm_ty.sizeof() as u16)),
+                Err(e) => Err(AsmError::InvalidOperandType(format!(
+                    "Cannot evaluate sizeof expression: {}",
+                    e
+                ))),
+            }
+        }
+
         _ => Err(AsmError::InvalidOperandType(format!(
             "Unsupported expression type in assembly: {:?}",
             expr

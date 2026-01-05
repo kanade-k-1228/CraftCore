@@ -2,7 +2,7 @@ use super::ast::{AsmStmt, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
 use super::parsercore::Parser;
 use super::token::{Token, TokenKind::*};
 use crate::error::ParseError;
-use crate::{check, expect, optional, recover, repeat};
+use crate::{check, expect, optional, repeat};
 
 impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     pub fn parse(mut self) -> (AST, Vec<ParseError>) {
@@ -21,7 +21,9 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 }
                 Err(err) => {
                     self.error(err);
-                    recover!(self, KwType | KwConst | KwStatic | KwAsm | KwFunc);
+                    self.consume_until(|token| {
+                        matches!(&token.kind, KwType | KwConst | KwStatic | KwAsm | KwFunc)
+                    });
                 }
             }
         }
@@ -399,12 +401,10 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     let rhs = self.parse_mul_expr()?;
                     lhs = Expr::Binary(BinaryOp::Sub, Box::new(lhs), Box::new(rhs));
                 }
-                _ => {
-                    return Ok(lhs);
-                }
+                _ => break,
             }
         }
-        return Err(ParseError::UnexpectedEOF);
+        return Ok(lhs);
     }
 
     /// mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ]
@@ -433,7 +433,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Ok(lhs)
         }
     }
 
@@ -528,15 +528,25 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     fn parse_prim_expr(&mut self) -> Result<Expr, ParseError> {
         if let Some(token) = self.peek() {
             match &token.kind {
-                // Sizeof expression: "<" type ">"
-                LAngle => {
-                    expect!(self, LAngle)?;
-                    let typ = self.parse_type()?;
-                    expect!(self, RAngle)?;
-                    Ok(Expr::Sizeof(Box::new(typ)))
+                // Sizeof
+                KwSizeof => {
+                    expect!(self, KwSizeof)?;
+                    if check!(self, LAngle) {
+                        // Sizeof type: "sizeof" "<" type ">"
+                        expect!(self, LAngle)?;
+                        let ty = self.parse_type()?;
+                        expect!(self, RAngle)?;
+                        Ok(Expr::SizeofType(Box::new(ty)))
+                    } else {
+                        // Sizeof expr: "sizeof" "<" expr ">"
+                        expect!(self, LParen)?;
+                        let expr = self.parse_expr()?;
+                        expect!(self, RParen)?;
+                        Ok(Expr::SizeofExpr(Box::new(expr)))
+                    }
                 }
 
-                // Parenthesized expression: "(" expr ")"
+                // Inner: "(" expr ")"
                 LParen => {
                     expect!(self, LParen)?;
                     let inner = self.parse_expr()?;
