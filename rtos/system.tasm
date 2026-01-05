@@ -32,13 +32,13 @@ asm@0x0004 intr {
     ; 割り込みフラグが立っている場合
     ; 割り込み番号の処理にジャンプ
     andi  t0 csr intr0_flag
-    if    t0 intr0
+    jumpif    t0 intr0
     andi  t0 csr intr1_flag
-    if    t0 intr1
+    jumpif    t0 intr1
     andi  t0 csr intr2_flag
-    if    t0 intr2
+    jumpif    t0 intr2
     andi  t0 csr intr3_flag
-    if    t0 intr3
+    jumpif    t0 intr3
     ; マッチしなかった場合
     ; 元の処理に戻る
 }

@@ -287,7 +287,7 @@ fn parse_instruction(
                 )),
             }
         }
-        "if" if args.len() == 2 => {
+        "jumpif" if args.len() == 2 => {
             // if(cond_reg, label/offset)
             let cond = parse_register(&args[0])?;
 
@@ -296,7 +296,7 @@ fn parse_instruction(
                 if let Some(&label_pc) = labels.get(label_name.as_str()) {
                     // Convert to relative jump
                     let offset = (label_pc as i32 - pc as i32) as u16;
-                    return Ok((Inst::IFR(cond, offset), None));
+                    return Ok((Inst::JUMPIFR(cond, offset), None));
                 }
             }
 
@@ -304,15 +304,15 @@ fn parse_instruction(
             if let ast::Expr::Unary(ast::UnaryOp::Neg, inner) = &args[1] {
                 if let Some(imm) = parse_immediate(inner) {
                     let offset = (-(imm as i16)) as u16;
-                    return Ok((Inst::IFR(cond, offset), None));
+                    return Ok((Inst::JUMPIFR(cond, offset), None));
                 }
             }
 
             // Use expression evaluator for other cases
             match parse_immidiate_expr(&args[1], evaluator)? {
-                Immidiate::Literal(val) => Ok((Inst::IF(cond, val), None)),
+                Immidiate::Literal(val) => Ok((Inst::JUMPIF(cond, val), None)),
                 Immidiate::Symbol(name, offset) => Ok((
-                    Inst::IF(cond, offset as u16),
+                    Inst::JUMPIF(cond, offset as u16),
                     Some(Immidiate::Symbol(name, offset)),
                 )),
             }
@@ -347,7 +347,7 @@ fn parse_instruction(
             }
         }
         "ret" if args.is_empty() => Ok((Inst::RET(), None)),
-        "ifr" if args.len() == 2 => {
+        "jumpifr" if args.len() == 2 => {
             let cond = parse_register(&args[0])?;
 
             // Check if it's a local label first
@@ -355,15 +355,15 @@ fn parse_instruction(
                 if let Some(&label_pc) = labels.get(label_name.as_str()) {
                     // Calculate relative offset
                     let offset = (label_pc as i32 - pc as i32) as u16;
-                    return Ok((Inst::IFR(cond, offset), None));
+                    return Ok((Inst::JUMPIFR(cond, offset), None));
                 }
             }
 
             // Use expression evaluator for other cases
             match parse_immidiate_expr(&args[1], evaluator)? {
-                Immidiate::Literal(val) => Ok((Inst::IFR(cond, val), None)),
+                Immidiate::Literal(val) => Ok((Inst::JUMPIFR(cond, val), None)),
                 Immidiate::Symbol(name, offset) => Ok((
-                    Inst::IFR(cond, offset as u16),
+                    Inst::JUMPIFR(cond, offset as u16),
                     Some(Immidiate::Symbol(name, offset)),
                 )),
             }

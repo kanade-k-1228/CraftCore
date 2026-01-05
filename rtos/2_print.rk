@@ -12,7 +12,7 @@ print_hex:
     loadi a3 4
     loadi a2 10
 print_hex_for:
-    if a3 print_hex_break
+    jumpif a3 print_hex_break
     sl a0 a0
     sl a0 a0
     sl a0 a0

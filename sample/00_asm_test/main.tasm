@@ -48,8 +48,8 @@ asm @ 0x0000 reset {
     store(t2, t0, fuga);
 
   a:
-    if(t1, b);
-    ifr(t1, b);
+    jumpif(t1, b);
+    jumpifr(t1, b);
     jump(e);
     jumpr(1);
   b:

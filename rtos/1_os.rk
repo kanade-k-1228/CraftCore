@@ -52,7 +52,7 @@ os_task_setup:
 os_task_setup_next:
     mov   t0 t1       ; t0 <= t1 
     load  t1 t0 .next ; t0 の次のアイテムのアドレスを、t1に格納する
-    if t1 os_task_setup_next
+    jumpif t1 os_task_setup_next
     ; t0 が、リストの末尾のアドレスを指している
     ; [task_list] -> A[next=B] -> B[next=null] -> x
     ; 新たに追加するTCBのアドレスを、リストの末尾に連結する
@@ -164,12 +164,12 @@ os_task_scheduler:
     load t1 z task_list
     loadi t3 task_state_ready
 os_task_scheduler_next:
-    add   t0 t1 z  ; t0 <= t1 
-    load  t2 t0 .state
-    eq    s0 t2 t3
-    if    s0 os_task_scheduler_found_ready
-    load  t1 t0 .next ; t0 の次のアイテムのアドレスを、t1に格納する
-    if  t1 os_task_scheduler_next
+    add    t0 t1 z  ; t0 <= t1 
+    load   t2 t0 .state
+    eq     s0 t2 t3
+    jumpif s0 os_task_scheduler_found_ready
+    load   t1 t0 .next ; t0 の次のアイテムのアドレスを、t1に格納する
+    jumpif t1 os_task_scheduler_next
     ; 末尾に到達 =  Ready が見つからなかった
     ; 全てのタスクが exit なら、exitする
     jump z z _exit

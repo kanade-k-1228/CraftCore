@@ -43,7 +43,7 @@ impl<'a> CodeGenContext<'a> {
     fn emit_placeholder_jump(&mut self, is_conditional: bool, cond_reg: Option<Reg>) -> usize {
         let pos = self.current_pos();
         if is_conditional {
-            self.emit_inst(Inst::IFR(cond_reg.unwrap_or(Reg::T0), 0));
+            self.emit_inst(Inst::JUMPIFR(cond_reg.unwrap_or(Reg::T0), 0));
         } else {
             self.emit_inst(Inst::JUMPR(0));
         }
@@ -59,7 +59,7 @@ impl<'a> CodeGenContext<'a> {
         let (ref mut inst, _) = &mut self.insts[jump_pos];
         match inst {
             Inst::JUMPR(_) => *inst = Inst::JUMPR(offset),
-            Inst::IFR(reg, _) => *inst = Inst::IFR(*reg, offset),
+            Inst::JUMPIFR(reg, _) => *inst = Inst::JUMPIFR(*reg, offset),
             _ => {} // Should not happen
         }
     }

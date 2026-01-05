@@ -11,7 +11,7 @@ asm @ 0x0000 reset {
   loop:
     lt(s1, s0, t1);
     eqi(s2, s1, 0);
-    if(s2, done);
+    jumpif(s2, done);
 
     // Load char
     add(s1, t0, s0);
