@@ -1,6 +1,6 @@
 use crate::convert::types::{Code, Immidiate};
 use crate::error::LinkError;
-use crate::symbols::Symbols;
+use crate::eval::eval::Evaluator;
 use indexmap::IndexMap;
 
 /// Resolve symbols in the code using the memory maps
@@ -8,7 +8,7 @@ pub fn resolve_symbols<'a>(
     codes: &IndexMap<&'a str, Code>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    symbols: &Symbols,
+    evaluator: &Evaluator,
 ) -> IndexMap<&'a str, Code> {
     let mut resolved = IndexMap::new();
 
@@ -22,12 +22,12 @@ pub fn resolve_symbols<'a>(
                     Immidiate::Symbol(symbol, calc_offset) => {
                         // Simple symbol resolution - the offset has already been calculated in asm2code.rs
                         // The symbol here is the base identifier, and calc_offset is the calculated offset from expressions
-                        let addr = symbols
+                        let addr = evaluator
                             .consts()
                             .get(symbol.as_str())
-                            .and_then(|(_, const_expr, _, _)| {
+                            .and_then(|entry| {
                                 // Check if it's a constant - use its value directly
-                                if let crate::eval::constexpr::ConstExpr::Number(n) = const_expr {
+                                if let crate::eval::constexpr::ConstExpr::Number(n) = &entry.value {
                                     Some(*n as usize)
                                 } else {
                                     None
@@ -126,15 +126,18 @@ pub fn genibin<'a>(
     Ok(binary)
 }
 
-pub fn gencbin(symbols: &Symbols, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, LinkError> {
+pub fn gencbin(
+    evaluator: &Evaluator,
+    dmmap: &IndexMap<String, usize>,
+) -> Result<Vec<u8>, LinkError> {
     // Find the maximum address to determine binary size
     let max_addr = dmmap
         .iter()
         .filter_map(|(name, addr)| {
-            symbols
+            evaluator
                 .consts()
                 .get(name.as_str())
-                .map(|(ty, _, _, _)| addr + ty.sizeof())
+                .map(|entry| addr + entry.norm_type.sizeof())
         })
         .max()
         .unwrap_or(0);
@@ -143,9 +146,9 @@ pub fn gencbin(symbols: &Symbols, dmmap: &IndexMap<String, usize>) -> Result<Vec
     let mut binary = vec![0u8; max_addr];
 
     // Place each constant at its specified address
-    for (&name, (_, value, _, _)) in symbols.consts().iter() {
+    for (&name, entry) in evaluator.consts().iter() {
         if let Some(&addr) = dmmap.get(name) {
-            let bytes = value.serialize();
+            let bytes = entry.value.serialize();
             let end = (addr + bytes.len()).min(binary.len());
             if addr < binary.len() {
                 binary[addr..end].copy_from_slice(&bytes[..end - addr]);

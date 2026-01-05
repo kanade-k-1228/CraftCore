@@ -1,6 +1,6 @@
 use crate::{error::CollectError, eval::normtype::NormType};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConstExpr {
     Number(usize),                    // integer literal | 42
     Struct(Vec<(String, ConstExpr)>), // struct literal  | {a: expr1, b: expr2}
@@ -10,7 +10,7 @@ pub enum ConstExpr {
 }
 
 impl ConstExpr {
-    pub fn totype(&self) -> Result<NormType, CollectError> {
+    pub fn typeinfer(&self) -> Result<NormType, CollectError> {
         Ok(match self {
             ConstExpr::Number(_) => NormType::Int,
             ConstExpr::Char(_) => NormType::Int, // char is represented as int
@@ -18,7 +18,7 @@ impl ConstExpr {
             ConstExpr::Struct(fields) => {
                 let mut list = Vec::new();
                 for (name, field_lit) in fields {
-                    list.push((name.clone(), field_lit.totype()?));
+                    list.push((name.clone(), field_lit.typeinfer()?));
                 }
                 NormType::Struct(list)
             }
@@ -26,7 +26,7 @@ impl ConstExpr {
                 if elems.is_empty() {
                     return Err(CollectError::CannotInferTypeOfEmptyArray);
                 }
-                NormType::Array(elems.len(), Box::new(elems[0].totype()?))
+                NormType::Array(elems.len(), Box::new(elems[0].typeinfer()?))
             }
         })
     }

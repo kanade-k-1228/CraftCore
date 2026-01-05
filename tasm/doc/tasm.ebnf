@@ -56,13 +56,13 @@ postfix-op = "(" [ expr { "," expr } ] ")"
            | "as" type ;
 
 prim-expr = "(" expr ")"
-             | ident
-             | num-lit
-             | char-lit
-             | string-lit
-             | "[" [ expr { "," expr } ] "]"
-             | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
-             | "<" type ">" ;
+          | ident
+          | num-lit
+          | char-lit
+          | string-lit
+          | "[" [ expr { "," expr } ] "]"
+          | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
+          | "<" type ">" ;
 
 (* Terminal Symbols -------------------------------------------------------- *)
 

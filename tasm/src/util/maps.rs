@@ -1,4 +1,4 @@
-use crate::symbols::Symbols;
+use crate::eval::eval::Evaluator;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ pub struct DataEntry {
 
 impl SymbolMap {
     pub fn generate(
-        symbols: &Symbols,
+        evaluator: &Evaluator,
         imap: &IndexMap<String, usize>,
         dmap: &IndexMap<String, usize>,
     ) -> Self {
@@ -33,17 +33,16 @@ impl SymbolMap {
         // Add all code entries from imap
         for (name, addr) in imap.iter() {
             // Get size from the code if available
-            let size =
-                if let Some((_, _)) = symbols.asms().iter().find(|(n, _)| **n == name.as_str()) {
-                    // For asm blocks, we'd need to get the actual code size
-                    // For now, use a placeholder
-                    0
-                } else if let Some((_, _, _)) = symbols.funcs().get(name.as_str()) {
-                    // For functions and seq blocks, we'd need to get the actual code size
-                    0
-                } else {
-                    0
-                };
+            let size = if let Some(_) = evaluator.asms().get(name.as_str()) {
+                // For asm blocks, we'd need to get the actual code size
+                // For now, use a placeholder
+                0
+            } else if let Some(_) = evaluator.funcs().get(name.as_str()) {
+                // For functions and seq blocks, we'd need to get the actual code size
+                0
+            } else {
+                0
+            };
 
             code_map.insert(
                 name.clone(),
@@ -59,26 +58,26 @@ impl SymbolMap {
         let mut data_map: IndexMap<String, DataEntry> = IndexMap::new();
 
         // Add static variables
-        for (&name, (ty, _, _)) in symbols.statics().iter() {
+        for (&name, entry) in evaluator.statics().iter() {
             if let Some(&addr) = dmap.get(name) {
                 data_map.insert(
                     name.to_string(),
                     DataEntry {
                         addr,
-                        size: ty.sizeof(),
+                        size: entry.norm_type.sizeof(),
                     },
                 );
             }
         }
 
         // Add constants
-        for (&name, (ty, _, _, _)) in symbols.consts().iter() {
+        for (&name, entry) in evaluator.consts().iter() {
             if let Some(&addr) = dmap.get(name) {
                 data_map.insert(
                     name.to_string(),
                     DataEntry {
                         addr,
-                        size: ty.sizeof(),
+                        size: entry.norm_type.sizeof(),
                     },
                 );
             }

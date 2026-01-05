@@ -1,9 +1,8 @@
 use crate::{
     convert::types::{Code, Immidiate},
     error::FuncGenError,
-    eval::normtype::{collect_type, NormType},
+    eval::{eval::Evaluator, normtype::NormType},
     grammer::ast,
-    symbols::{ConstMap, FuncMap, StaticMap, Symbols, TypeMap},
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
@@ -12,21 +11,16 @@ struct CodeGenContext<'a> {
     lvars: HashMap<String, i16>, // Local variable offsets
     stack_size: i16,             // Current stack frame size
     insts: Vec<(Inst, Option<Immidiate>)>,
-    #[allow(dead_code)]
-    funcs: &'a FuncMap<'a>, // Function type information for calls
-    consts: &'a ConstMap<'a>,
-    types: &'a TypeMap<'a>,
+    evaluator: &'a Evaluator<'a>,
 }
 
 impl<'a> CodeGenContext<'a> {
-    fn new(funcs: &'a FuncMap<'a>, consts: &'a ConstMap<'a>, types: &'a TypeMap<'a>) -> Self {
+    fn new(evaluator: &'a Evaluator<'a>) -> Self {
         Self {
             lvars: HashMap::new(),
             stack_size: 0,
             insts: Vec::new(),
-            funcs,
-            consts,
-            types,
+            evaluator,
         }
     }
 
@@ -97,11 +91,7 @@ impl<'a> CodeGenContext<'a> {
 ///         saved RA
 /// [FP] -> (points to saved RA position)
 /// ```
-fn generate_prologue(
-    args: &[(String, NormType)],
-    _consts: &ConstMap,
-    _types: &TypeMap,
-) -> Vec<(Inst, Option<Immidiate>)> {
+fn generate_prologue(args: &[(String, NormType)]) -> Vec<(Inst, Option<Immidiate>)> {
     let mut insts = Vec::new();
 
     // Calculate total size needed for saved registers (RA + FP)
@@ -203,22 +193,11 @@ fn generate_epilogue(
 }
 
 /// Generate code from all functions in the AST
-pub fn func2code<'a>(symbols: &'a Symbols<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
+pub fn func2code<'a>(evaluator: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
     let mut result = HashMap::new();
-    for (&name, (_, _, def)) in symbols.funcs() {
-        if let ast::Def::Func(_, args, ret, stmts) = def {
-            result.insert(
-                name,
-                gen_func(
-                    args,
-                    ret,
-                    stmts,
-                    &symbols.consts,
-                    &symbols.types,
-                    &symbols.statics,
-                    &symbols.funcs,
-                )?,
-            );
+    for (&name, entry) in evaluator.funcs() {
+        if let ast::Def::Func(_, args, ret, stmts) = entry.def {
+            result.insert(name, gen_func(args, ret, stmts, evaluator)?);
         }
     }
     Ok(result)
@@ -229,26 +208,25 @@ fn gen_func(
     args: &Vec<(String, ast::Type)>,
     ret: &ast::Type,
     stmts: &Vec<ast::Stmt>,
-    consts: &ConstMap,
-    types: &TypeMap,
-    _statics: &StaticMap,
-    funcs: &FuncMap,
+    evaluator: &Evaluator,
 ) -> Result<Code, FuncGenError> {
-    let mut ctx = CodeGenContext::new(funcs, consts, types);
+    let mut ctx = CodeGenContext::new(evaluator);
 
     // Convert AST types to normalized types for prologue/epilogue generation
     let mut norm_args = Vec::new();
     for (name, arg_type) in args {
-        let norm_type = collect_type(arg_type, consts, types)
+        let norm_type = evaluator
+            .normtype(arg_type)
             .map_err(|_| FuncGenError::TypeCollectionFailed(name.clone()))?;
         norm_args.push((name.clone(), norm_type));
     }
 
-    let norm_ret_type = collect_type(ret, consts, types)
+    let norm_ret_type = evaluator
+        .normtype(ret)
         .map_err(|_| FuncGenError::TypeCollectionFailed("return type".to_string()))?;
 
     // Generate function prologue
-    let prologue = generate_prologue(&norm_args, consts, types);
+    let prologue = generate_prologue(&norm_args);
     for inst in prologue {
         ctx.insts.push(inst);
     }
@@ -559,7 +537,9 @@ fn compile_expr(
         }
         ast::Expr::Sizeof(typ) => {
             // Calculate size at compile time
-            let norm_type = collect_type(typ, ctx.consts, ctx.types)
+            let norm_type = ctx
+                .evaluator
+                .normtype(typ)
                 .map_err(|_| FuncGenError::TypeCollectionFailed("sizeof".to_string()))?;
             let size = norm_type.sizeof() as u16;
             ctx.emit_inst(Inst::LOADI(target_reg, size));

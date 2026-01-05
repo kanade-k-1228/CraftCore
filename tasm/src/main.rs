@@ -57,7 +57,7 @@ fn main() -> Result<(), tasm::Error> {
     }
 
     // 4. Collect symbols
-    let symbols = match tasm::Symbols::collect(&ast) {
+    let evaluator = match tasm::Evaluator::collect(&ast) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("  {:?}", e);
@@ -66,8 +66,8 @@ fn main() -> Result<(), tasm::Error> {
     };
 
     // 5. Generate code from functions and assembly blocks
-    let funcs = tasm::func2code(&symbols)?;
-    let asms = tasm::asm2code(&symbols)?;
+    let funcs = tasm::func2code(&evaluator)?;
+    let asms = tasm::asm2code(&evaluator)?;
     let codes: IndexMap<_, _> = funcs.into_iter().chain(asms).collect();
 
     // 6. Dead code elimination
@@ -80,17 +80,17 @@ fn main() -> Result<(), tasm::Error> {
     // 7. Collect global objects
     let iitems = {
         let mut iitems = IndexMap::new();
-        for (&name, (addr, _)) in symbols.asms() {
+        for (&name, entry) in evaluator.asms() {
             // Only include if reachable
             if used.contains(name) {
                 if let Some(code) = codes.get(name) {
-                    iitems.insert(name.to_string(), (code.0.len(), *addr));
+                    iitems.insert(name.to_string(), (code.0.len(), entry.address));
                 }
             }
         }
         for (&name, code) in &codes {
             // Only include if reachable
-            if used.contains(name) && !symbols.asms().contains_key(name) {
+            if used.contains(name) && !evaluator.asms().contains_key(name) {
                 iitems.insert(name.to_string(), (code.0.len(), None));
             }
         }
@@ -98,16 +98,16 @@ fn main() -> Result<(), tasm::Error> {
     };
     let ditems = {
         let mut ditems = IndexMap::new();
-        for (&name, (ty, addr, _)) in symbols.statics().iter() {
+        for (&name, entry) in evaluator.statics().iter() {
             // Only include if reachable (data items referenced from reachable code)
             if used.contains(name) {
-                ditems.insert(name.to_string(), (ty.sizeof(), *addr));
+                ditems.insert(name.to_string(), (entry.norm_type.sizeof(), entry.address));
             }
         }
-        for (&name, (ty, _, addr, _)) in symbols.consts().iter() {
+        for (&name, entry) in evaluator.consts().iter() {
             // Only include if reachable
-            if used.contains(name) && !symbols.statics().contains_key(name) {
-                ditems.insert(name.to_string(), (ty.sizeof(), *addr));
+            if used.contains(name) && !evaluator.statics().contains_key(name) {
+                ditems.insert(name.to_string(), (entry.norm_type.sizeof(), entry.address));
             }
         }
         ditems
@@ -149,7 +149,7 @@ fn main() -> Result<(), tasm::Error> {
 
     // Allocate data items without fixed addresses to appropriate sections
     // First, allocate consts to const section
-    for (&name, _) in symbols.consts().iter() {
+    for (&name, _) in evaluator.consts().iter() {
         if let Some((size, addr)) = ditems.get(name) {
             if addr.is_none() {
                 daloc.section(dmem.get("const")?, *size, name)?;
@@ -157,8 +157,8 @@ fn main() -> Result<(), tasm::Error> {
         }
     }
 
-    for (&name, (_, addr, _)) in symbols.statics().iter() {
-        if addr.is_none() {
+    for (&name, entry) in evaluator.statics().iter() {
+        if entry.address.is_none() {
             if let Some((size, _)) = ditems.get(name) {
                 daloc.section(dmem.get("static")?, *size, name)?;
             }
@@ -169,15 +169,15 @@ fn main() -> Result<(), tasm::Error> {
     let dmap: IndexMap<String, usize> = daloc.allocations().into_iter().collect();
 
     // 9. Resolve symbols
-    let resolved = tasm::resolve_symbols(&codes, &imap, &dmap, &symbols);
+    let resolved = tasm::resolve_symbols(&codes, &imap, &dmap, &evaluator);
     if args.verbose {
-        tasm::binprint(&imap, &dmap, &codes, &symbols);
+        tasm::binprint(&imap, &dmap, &codes, &evaluator);
     }
 
     // 10. Generate binary
     let main_bin = tasm::genibin(&resolved, &imap)?;
-    let const_bin = tasm::gencbin(&symbols, &dmap)?;
-    let symbol_map = tasm::SymbolMap::generate(&symbols, &imap, &dmap);
+    let const_bin = tasm::gencbin(&evaluator, &dmap)?;
+    let symbol_map = tasm::SymbolMap::generate(&evaluator, &imap, &dmap);
 
     // 12. Write output files
     fs::write(&args.out, main_bin)?;

@@ -1,5 +1,5 @@
 use crate::convert::Code;
-use crate::symbols::Symbols;
+use crate::eval::eval::Evaluator;
 use color_print::cprintln;
 use indexmap::IndexMap;
 
@@ -7,7 +7,7 @@ pub fn binprint<'a>(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
     codes: &IndexMap<&'a str, Code>,
-    symbols: &Symbols<'a>,
+    evaluator: &Evaluator<'a>,
 ) {
     // Program Memory Layout
     let mut iblocks: Vec<_> = imap
@@ -16,10 +16,10 @@ pub fn binprint<'a>(
             let code = codes.get(name.as_str());
             let size = code.map_or(0, |c| c.0.len());
             // Get type information
-            let (type_info, signature) = if symbols.asms().contains_key(name.as_str()) {
+            let (type_info, signature) = if evaluator.asms().contains_key(name.as_str()) {
                 ("asm", String::new())
-            } else if let Some((func_type, _, _)) = symbols.funcs().get(name.as_str()) {
-                ("func", func_type.fmt())
+            } else if let Some(entry) = evaluator.funcs().get(name.as_str()) {
+                ("func", entry.norm_type.fmt())
             } else {
                 ("unknown", String::new())
             };
@@ -66,10 +66,10 @@ pub fn binprint<'a>(
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, ty, kind) = if let Some((ty, _, _)) = symbols.statics().get(name.as_str()) {
-                (ty.sizeof(), ty.fmt(), "static")
-            } else if let Some((ty, _, _, _)) = symbols.consts().get(name.as_str()) {
-                (ty.sizeof(), ty.fmt(), "const")
+            let (size, ty, kind) = if let Some(entry) = evaluator.statics().get(name.as_str()) {
+                (entry.norm_type.sizeof(), entry.norm_type.fmt(), "static")
+            } else if let Some(entry) = evaluator.consts().get(name.as_str()) {
+                (entry.norm_type.sizeof(), entry.norm_type.fmt(), "const")
             } else {
                 (0, "unknown".to_string(), "unknown")
             };
