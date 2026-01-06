@@ -1,4 +1,4 @@
-use crate::error::LinkError;
+use crate::error::Error;
 use std::collections::HashMap;
 
 pub struct Allocator {
@@ -13,14 +13,14 @@ impl Allocator {
     }
 
     /// Allocate memory at a specific address
-    pub fn allocate(&mut self, addr: usize, size: usize, name: &str) -> Result<(), LinkError> {
+    pub fn allocate(&mut self, addr: usize, size: usize, name: &str) -> Result<(), Error> {
         if size == 0 {
-            return Err(LinkError::AddressSpaceOverflow(name.to_string(), size));
+            return Err(Error::AddressSpaceOverflow(name.to_string(), size));
         }
 
         let end = addr
             .checked_add(size)
-            .ok_or_else(|| LinkError::AddressSpaceOverflow(name.to_string(), size))?;
+            .ok_or_else(|| Error::AddressSpaceOverflow(name.to_string(), size))?;
 
         // Find the region(s) that overlap with the requested allocation
         for i in 0..self.segments.len() {
@@ -29,11 +29,7 @@ impl Allocator {
             // Check if this region overlaps with our allocation
             if section.overlaps(addr, end) {
                 if !section.is_free() {
-                    return Err(LinkError::FixedAddressOverlapped(
-                        name.to_string(),
-                        addr,
-                        end,
-                    ));
+                    return Err(Error::FixedAddressOverlapped(name.to_string(), addr, end));
                 }
 
                 // Replace the old region with the new split regions
@@ -43,7 +39,7 @@ impl Allocator {
             }
         }
 
-        Err(LinkError::AddressOutOfRange(
+        Err(Error::AddressOutOfRange(
             name.to_string(),
             addr,
             end,
@@ -58,9 +54,9 @@ impl Allocator {
         range: (usize, usize),
         size: usize,
         name: &str,
-    ) -> Result<usize, LinkError> {
+    ) -> Result<usize, Error> {
         if size == 0 {
-            return Err(LinkError::AddressSpaceOverflow(name.to_string(), size));
+            return Err(Error::AddressSpaceOverflow(name.to_string(), size));
         }
 
         // Find the first free region within [start, end) that can fit the size
@@ -82,7 +78,7 @@ impl Allocator {
             }
         }
 
-        Err(LinkError::AddressSpaceOverflow(name.to_string(), size))
+        Err(Error::AddressSpaceOverflow(name.to_string(), size))
     }
 
     pub fn allocations(&self) -> Vec<(String, usize)> {
@@ -148,14 +144,14 @@ impl Segment {
         addr >= self.begin && end <= self.end
     }
 
-    fn split(&self, addr: usize, size: usize, name: &str) -> Result<Vec<Self>, LinkError> {
+    fn split(&self, addr: usize, size: usize, name: &str) -> Result<Vec<Self>, Error> {
         let end = addr
             .checked_add(size)
-            .ok_or_else(|| LinkError::AddressSpaceOverflow(name.to_string(), size))?;
+            .ok_or_else(|| Error::AddressSpaceOverflow(name.to_string(), size))?;
 
         // Check if the allocation fits within this section
         if !self.contains(addr, end) {
-            return Err(LinkError::AddressOutOfRange(
+            return Err(Error::AddressOutOfRange(
                 name.to_string(),
                 addr,
                 end,

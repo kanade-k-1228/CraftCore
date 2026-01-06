@@ -1,13 +1,13 @@
 use crate::{
     compile::{Code, Imm},
-    error::AsmError,
+    error::Error,
     eval::global::Global,
     grammer::ast,
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-pub fn asm2code<'a>(globals: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, AsmError> {
+pub fn asm2code<'a>(globals: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
     let mut result = HashMap::new();
     for (name, (_, def)) in globals.asms() {
         if let ast::Def::Asm(_, _, stmts) = def {
@@ -17,7 +17,7 @@ pub fn asm2code<'a>(globals: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, A
     Ok(result)
 }
 
-fn gen_asm<'a>(stmts: &'a [ast::AsmStmt], globals: &'a Global<'a>) -> Result<Code, AsmError> {
+fn gen_asm<'a>(stmts: &'a [ast::AsmStmt], globals: &'a Global<'a>) -> Result<Code, Error> {
     // 1. Collect label
     let mut locals: HashMap<&str, usize> = HashMap::new();
     for (pc, ast::AsmStmt(_, _, labs)) in stmts.iter().enumerate() {
@@ -41,7 +41,7 @@ fn parse_stmt<'a>(
     stmt: &'a ast::AsmStmt,
     locals: &HashMap<&str, usize>,
     globals: &'a Global<'a>,
-) -> Result<(Inst, Option<Imm>), AsmError> {
+) -> Result<(Inst, Option<Imm>), Error> {
     let ast::AsmStmt(inst, args, _) = stmt;
     match inst.to_lowercase().as_str() {
         "nop" => Ok((Inst::NOP(), None)),
@@ -303,7 +303,7 @@ fn parse_stmt<'a>(
                     // Global label: Compiled to absolute jump
                     None => Ok((Inst::JUMPIF(cond, 0), Some(Imm::Symbol(label.clone(), 0)))),
                 },
-                _ => Err(AsmError::TODO),
+                _ => Err(Error::TODO),
             }
         }
 
@@ -319,7 +319,7 @@ fn parse_stmt<'a>(
                     // Global label: Compiled to absolute jump
                     None => Ok((Inst::JUMP(0), Some(Imm::Symbol(label.clone(), 0)))),
                 },
-                _ => Err(AsmError::TODO),
+                _ => Err(Error::TODO),
             }
         }
 
@@ -327,15 +327,15 @@ fn parse_stmt<'a>(
         "call" if args.len() == 1 => match &args[0] {
             // Global label only
             ast::Expr::Ident(label) => Ok((Inst::CALL(0), Some(Imm::Symbol(label.clone(), 0)))),
-            _ => Err(AsmError::TODO),
+            _ => Err(Error::TODO),
         },
         "ret" if args.is_empty() => Ok((Inst::RET(), None)),
         "iret" if args.is_empty() => Ok((Inst::IRET(), None)),
-        _ => Err(AsmError::InvalidInstruction(inst.to_string())),
+        _ => Err(Error::InvalidInstruction(inst.to_string())),
     }
 }
 
-fn parse_reg(expr: &ast::Expr) -> Result<Reg, AsmError> {
+fn parse_reg(expr: &ast::Expr) -> Result<Reg, Error> {
     if let ast::Expr::Ident(name) = expr {
         match name.to_lowercase().as_str() {
             "z" | "zero" => Ok(Reg::Z),
@@ -352,14 +352,14 @@ fn parse_reg(expr: &ast::Expr) -> Result<Reg, AsmError> {
             "s1" => Ok(Reg::S1),
             "s2" => Ok(Reg::S2),
             "s3" => Ok(Reg::S3),
-            _ => Err(AsmError::InvalidRegister(name.clone())),
+            _ => Err(Error::InvalidRegister(name.clone())),
         }
     } else {
-        Err(AsmError::InvalidRegister(format!("{:?}", expr)))
+        Err(Error::InvalidRegister(format!("{:?}", expr)))
     }
 }
 
-fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, AsmError> {
+fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Error> {
     // Check type size only for complex expressions that need evaluation
     // Simple literals and identifiers don't need type checking
     match expr {
@@ -370,29 +370,29 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, As
             ast::UnaryOp::Pos => parse_imm(inner, globals),
             ast::UnaryOp::Neg => match parse_imm(inner, globals) {
                 Ok(Imm::Literal(val)) => Ok(Imm::Literal((-(val as i16)) as u16)),
-                _ => Err(AsmError::CannotNegateSymbol),
+                _ => Err(Error::CannotNegateSymbol),
             },
             ast::UnaryOp::Not => todo!(),
         },
         ast::Expr::Addr(inner) => parse_imm(inner, globals),
-        ast::Expr::Deref(_) => Err(AsmError::CannotDereferenceInAssembly),
+        ast::Expr::Deref(_) => Err(Error::CannotDereferenceInAssembly),
         ast::Expr::Member(expr, field) => match parse_imm(expr, globals)? {
             Imm::Symbol(ident, base) => {
                 let offset = if let Some((norm_type, _, _)) = globals.statics().get(ident.as_str())
                 {
                     norm_type
                         .get_field_offset(field)
-                        .ok_or_else(|| AsmError::FieldNotFoundInStruct(field.clone()))?
+                        .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
                 } else if let Some((norm_type, _, _, _)) = globals.consts().get(ident.as_str()) {
                     norm_type
                         .get_field_offset(field)
-                        .ok_or_else(|| AsmError::FieldNotFoundInStruct(field.clone()))?
+                        .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
                 } else {
-                    return Err(AsmError::UnknownSymbol(ident));
+                    return Err(Error::UnknownSymbol(ident));
                 };
                 Ok(Imm::Symbol(ident, base + offset))
             }
-            Imm::Literal(_) => Err(AsmError::CannotAccessFieldOfImmediate),
+            Imm::Literal(_) => Err(Error::CannotAccessFieldOfImmediate),
         },
 
         ast::Expr::Index(expr, index) => {
@@ -406,7 +406,7 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, As
                         {
                             norm_type
                                 .get_array_offset(*idx)
-                                .ok_or(AsmError::TypeIsNotArray)?
+                                .ok_or(Error::TypeIsNotArray)?
                         } else if let Some((norm_type, value, _, _)) =
                             globals.consts().get(ident.as_str())
                         {
@@ -416,18 +416,18 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, As
                             } else {
                                 norm_type
                                     .get_array_offset(*idx)
-                                    .ok_or(AsmError::TypeIsNotArray)?
+                                    .ok_or(Error::TypeIsNotArray)?
                             }
                         } else {
-                            return Err(AsmError::UnknownSymbol(ident));
+                            return Err(Error::UnknownSymbol(ident));
                         };
 
                         Ok(Imm::Symbol(ident, base + offset))
                     } else {
-                        Err(AsmError::NonConstantArrayIndex)
+                        Err(Error::NonConstantArrayIndex)
                     }
                 }
-                Imm::Literal(_) => Err(AsmError::CannotIndexImmediate),
+                Imm::Literal(_) => Err(Error::CannotIndexImmediate),
             }
         }
 
@@ -441,34 +441,34 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, As
                         ident,
                         left_offset.wrapping_sub(right_val as usize),
                     )),
-                    _ => Err(AsmError::UnsupportedOperationInAddress),
+                    _ => Err(Error::UnsupportedOperationInAddress),
                 },
                 (Imm::Literal(left_val), Imm::Symbol(ident, right_offset)) => match op {
                     ast::BinaryOp::Add => Ok(Imm::Symbol(ident, left_val as usize + right_offset)),
-                    _ => Err(AsmError::InvalidSubtractionInAddress),
+                    _ => Err(Error::InvalidSubtractionInAddress),
                 },
                 (Imm::Literal(left_val), Imm::Literal(right_val)) => match op {
                     ast::BinaryOp::Add => Ok(Imm::Literal(left_val.wrapping_add(right_val))),
                     ast::BinaryOp::Sub => Ok(Imm::Literal(left_val.wrapping_sub(right_val))),
-                    _ => Err(AsmError::UnsupportedOperationInAddress),
+                    _ => Err(Error::UnsupportedOperationInAddress),
                 },
                 (Imm::Symbol(_, _), Imm::Symbol(_, _)) => match op {
-                    ast::BinaryOp::Add => Err(AsmError::CannotAddSymbols),
-                    _ => Err(AsmError::InvalidSubtractionInAddress),
+                    ast::BinaryOp::Add => Err(Error::CannotAddSymbols),
+                    _ => Err(Error::InvalidSubtractionInAddress),
                 },
             }
         }
 
         ast::Expr::SizeofType(ty) => match globals.normtype(ty) {
             Ok(ty) => Ok(Imm::Literal(ty.sizeof() as u16)),
-            Err(e) => Err(AsmError::CannotEvaluateSizeofType(e.to_string())),
+            Err(e) => Err(Error::CannotEvaluateSizeofType(e.to_string())),
         },
 
         ast::Expr::SizeofExpr(inner) => match globals.typeinfer(inner) {
             Ok(ty) => Ok(Imm::Literal(ty.sizeof() as u16)),
-            Err(e) => Err(AsmError::CannotEvaluateSizeofExpr(e.to_string())),
+            Err(e) => Err(Error::CannotEvaluateSizeofExpr(e.to_string())),
         },
 
-        _ => Err(AsmError::UnsupportedExprType(format!("{:?}", expr))),
+        _ => Err(Error::UnsupportedExprType(format!("{:?}", expr))),
     }
 }

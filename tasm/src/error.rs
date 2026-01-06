@@ -43,37 +43,13 @@ impl<'a> From<&Token<'a>> for TokenInfo {
     }
 }
 
-// Main error type for TASM
+// Unified error type for TASM
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(transparent)]
-    Parse(#[from] ParseError),
-
-    #[error(transparent)]
-    Link(#[from] LinkError),
-
-    #[error(transparent)]
-    Allocate(#[from] AllocateError),
-
-    #[error(transparent)]
-    BinGen(#[from] BinGenError),
-
-    #[error(transparent)]
-    Asm(#[from] AsmError),
-
-    #[error(transparent)]
-    FuncGen(#[from] FuncGenError),
-
-    #[error(transparent)]
-    Eval(#[from] EvalError),
-
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-}
 
-// Parse errors
-#[derive(Debug, Error, Clone)]
-pub enum ParseError {
+    // Parse errors
     #[error("TODO: not implemented yet")]
     TODO,
 
@@ -91,12 +67,8 @@ pub enum ParseError {
 
     #[error("Invalid variable: {0:?}")]
     InvalidVariable(String),
-}
 
-// Link errors
-#[derive(Debug, Error, Clone)]
-pub enum LinkError {
-    /// Address confilcted: {0} at 0x{1} to 0x{2}
+    // Link errors
     #[error("Address conflict: {0} at 0x{1:04X} to 0x{2:04X}")]
     FixedAddressOverlapped(String, usize, usize),
 
@@ -114,21 +86,12 @@ pub enum LinkError {
 
     #[error("Memory section not found: {0}")]
     SectionNotFound(String),
-}
 
-// Allocation errors
-#[derive(Debug, Error, Clone)]
-pub enum AllocateError {
+    // Allocation errors
     #[error("Address conflict: {0} at 0x{1:04X}-0x{2:04X} overlaps with existing allocation")]
     AddressConflict(String, u16, u16),
 
-    #[error("Address space overflow: Cannot allocate {1} bytes for {0}")]
-    AddressSpaceOverflow(String, u16),
-}
-
-// Binary generation errors
-#[derive(Debug, Error, Clone)]
-pub enum BinGenError {
+    // Binary generation errors
     #[error("Invalid instruction format")]
     InvalidInstructionFormat,
 
@@ -137,14 +100,8 @@ pub enum BinGenError {
 
     #[error("Invalid binary data")]
     InvalidBinaryData,
-}
 
-// Assembly code generation errors
-#[derive(Debug, Error, Clone)]
-pub enum AsmError {
-    #[error("TODO")]
-    TODO,
-
+    // Assembly code generation errors
     #[error("Invalid instruction: {0}")]
     InvalidInstruction(String),
 
@@ -213,11 +170,8 @@ pub enum AsmError {
 
     #[error("Type is not an array")]
     TypeIsNotArray,
-}
 
-// Function code generation errors
-#[derive(Debug, Error, Clone)]
-pub enum FuncGenError {
+    // Function code generation errors
     #[error("Type collection failed for: {0}")]
     TypeCollectionFailed(String),
 
@@ -235,14 +189,8 @@ pub enum FuncGenError {
 
     #[error("Invalid function call: {0}")]
     InvalidFunctionCall(String),
-}
 
-// Evaluation errors
-#[derive(Debug, Error, Clone)]
-pub enum EvalError {
-    #[error("TODO: not implemented yet")]
-    TODO,
-
+    // Evaluation errors
     #[error("Duplicate definition: {0}")]
     Duplicate(String),
 

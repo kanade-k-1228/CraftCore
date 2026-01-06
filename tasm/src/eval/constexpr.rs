@@ -1,4 +1,4 @@
-use crate::{error::EvalError, eval::normtype::NormType};
+use crate::{error::Error, eval::normtype::NormType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstExpr {
@@ -10,7 +10,7 @@ pub enum ConstExpr {
 }
 
 impl ConstExpr {
-    pub fn typeinfer(&self) -> Result<NormType, EvalError> {
+    pub fn typeinfer(&self) -> Result<NormType, Error> {
         Ok(match self {
             ConstExpr::Number(_) => NormType::Int,
             ConstExpr::Char(_) => NormType::Int, // char is represented as int
@@ -24,7 +24,7 @@ impl ConstExpr {
             }
             ConstExpr::Array(elems) => {
                 if elems.is_empty() {
-                    return Err(EvalError::EmptyArrayTypeInference);
+                    return Err(Error::EmptyArrayTypeInference);
                 }
                 NormType::Array(elems.len(), Box::new(elems[0].typeinfer()?))
             }

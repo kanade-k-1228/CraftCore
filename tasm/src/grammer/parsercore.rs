@@ -1,10 +1,10 @@
 use super::token::{Token, TokenKind};
-use crate::error::ParseError;
+use crate::error::Error;
 use std::iter::Peekable;
 
 pub struct Parser<'a, I: Iterator<Item = Token<'a>>> {
     tokens: Peekable<I>,
-    errors: Vec<ParseError>,
+    errors: Vec<Error>,
 }
 
 impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
@@ -15,11 +15,11 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
         }
     }
 
-    pub fn error(&mut self, e: ParseError) {
+    pub fn error(&mut self, e: Error) {
         self.errors.push(e);
     }
 
-    pub fn geterrors(self) -> Vec<ParseError> {
+    pub fn geterrors(self) -> Vec<Error> {
         self.errors
     }
 }
@@ -75,17 +75,17 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// Next token must be match with condition (skipping comments)
-    pub fn expect_tobe<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Result<Token<'a>, ParseError> {
+    pub fn expect_tobe<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Result<Token<'a>, Error> {
         self.skip();
         if let Some(token) = self.tokens.peek().cloned() {
             if cond(&token) {
                 self.tokens.next();
                 Ok(token)
             } else {
-                Err(ParseError::UnexpectedToken(token.into()))
+                Err(Error::UnexpectedToken(token.into()))
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         }
     }
 }

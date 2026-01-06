@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 
 use crate::{
-    error::EvalError,
+    error::Error,
     eval::{constexpr::ConstExpr, normtype::NormType},
     grammer::ast::{self, BinaryOp, UnaryOp},
 };
@@ -17,7 +17,7 @@ pub struct Global<'a> {
 
 impl<'a> Global<'a> {
     /// Create a new evaluator by building an index of AST definitions
-    pub fn new(ast: &'a ast::AST) -> Result<Self, EvalError> {
+    pub fn new(ast: &'a ast::AST) -> Result<Self, Error> {
         let mut defs = IndexMap::new();
 
         // Build index of all definitions
@@ -32,7 +32,7 @@ impl<'a> Global<'a> {
 
             // Check for duplicates
             if defs.contains_key(name) {
-                return Err(EvalError::Duplicate(name.to_string()));
+                return Err(Error::Duplicate(name.to_string()));
             }
 
             defs.insert(name, def);
@@ -135,7 +135,7 @@ impl<'a> Global<'a> {
     }
 
     /// Normalize a type by resolving custom types and computing array sizes
-    pub fn normtype(&self, ty: &'a ast::Type) -> Result<NormType, EvalError> {
+    pub fn normtype(&self, ty: &'a ast::Type) -> Result<NormType, Error> {
         // Try to restore from cache with read lock
         {
             let cache = self._normtype.read().unwrap();
@@ -152,10 +152,10 @@ impl<'a> Global<'a> {
                 if let Some(&def) = self.defs.get(name.as_str()) {
                     match def {
                         ast::Def::Type(_, type_def) => self.normtype(type_def),
-                        _ => Err(EvalError::NotAType(name.to_string())),
+                        _ => Err(Error::NotAType(name.to_string())),
                     }
                 } else {
-                    Err(EvalError::UnknownType(name.to_string()))
+                    Err(Error::UnknownType(name.to_string()))
                 }
             }
             ast::Type::Addr(inner) => {
@@ -165,7 +165,7 @@ impl<'a> Global<'a> {
             ast::Type::Array(len, ty) => {
                 let len = match self.constexpr(len) {
                     Ok(ConstExpr::Number(n)) => n,
-                    _ => return Err(EvalError::NonConstantArrayLength),
+                    _ => return Err(Error::NonConstantArrayLength),
                 };
                 let ty = self.normtype(ty)?;
                 Ok(NormType::Array(len, Box::new(ty)))
@@ -199,7 +199,7 @@ impl<'a> Global<'a> {
     }
 
     /// Evaluate a constant expression
-    pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, EvalError> {
+    pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, Error> {
         // Try to restore from cache with read lock
         {
             let cache = self._constexpr.read().unwrap();
@@ -234,10 +234,10 @@ impl<'a> Global<'a> {
                         // Recursively evaluate the constant
                         self.constexpr(const_expr)
                     } else {
-                        Err(EvalError::NotAConstant(name.to_string()))
+                        Err(Error::NotAConstant(name.to_string()))
                     }
                 } else {
-                    Err(EvalError::UnknownConstant(name.to_string()))
+                    Err(Error::UnknownConstant(name.to_string()))
                 }
             }
             ast::Expr::Binary(op, left, right) => {
@@ -252,14 +252,14 @@ impl<'a> Global<'a> {
                         BinaryOp::Mul => Ok(ConstExpr::Number(l * r)),
                         BinaryOp::Div => {
                             if *r == 0 {
-                                Err(EvalError::DivisionByZero)
+                                Err(Error::DivisionByZero)
                             } else {
                                 Ok(ConstExpr::Number(l / r))
                             }
                         }
                         BinaryOp::Mod => {
                             if *r == 0 {
-                                Err(EvalError::ModuloByZero)
+                                Err(Error::ModuloByZero)
                             } else {
                                 Ok(ConstExpr::Number(l % r))
                             }
@@ -276,7 +276,7 @@ impl<'a> Global<'a> {
                         BinaryOp::Gt => Ok(ConstExpr::Number(if l > r { 1 } else { 0 })),
                         BinaryOp::Ge => Ok(ConstExpr::Number(if l >= r { 1 } else { 0 })),
                     },
-                    _ => Err(EvalError::NonNumericBinaryOperands),
+                    _ => Err(Error::NonNumericBinaryOperands),
                 }
             }
             ast::Expr::Unary(op, inner) => {
@@ -288,7 +288,7 @@ impl<'a> Global<'a> {
                         Ok(ConstExpr::Number((-((*n) as isize)) as usize))
                     }
                     (ConstExpr::Number(n), UnaryOp::Not) => Ok(ConstExpr::Number(!n)),
-                    _ => Err(EvalError::NonNumericUnaryOperand),
+                    _ => Err(Error::NonNumericUnaryOperand),
                 }
             }
             ast::Expr::SizeofType(ty) => {
@@ -306,7 +306,7 @@ impl<'a> Global<'a> {
                 // Type checking happens elsewhere
                 self.constexpr(inner)
             }
-            _ => Err(EvalError::NonConstantExpression),
+            _ => Err(Error::NonConstantExpression),
         };
 
         // Store with write lock if successful
@@ -319,7 +319,7 @@ impl<'a> Global<'a> {
     }
 
     /// Infer the type of an expression
-    pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, EvalError> {
+    pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, Error> {
         // Try to restore from cache with read lock
         {
             let cache = self._typeinfer.read().unwrap();
@@ -336,7 +336,7 @@ impl<'a> Global<'a> {
             }
             ast::Expr::ArrayLit(elems) => {
                 if elems.is_empty() {
-                    return Err(EvalError::EmptyArrayTypeInference);
+                    return Err(Error::EmptyArrayTypeInference);
                 }
                 let elem_ty = self.typeinfer(&elems[0])?;
                 Ok(NormType::Array(elems.len(), Box::new(elem_ty)))
@@ -359,7 +359,7 @@ impl<'a> Global<'a> {
                             let const_val = self.constexpr(expr)?;
                             const_val
                                 .typeinfer()
-                                .map_err(|_| EvalError::NotAValue(name.to_string()))
+                                .map_err(|_| Error::NotAValue(name.to_string()))
                         }
                         ast::Def::Func(_, params, ret_ty, _) => {
                             // Build function type
@@ -371,10 +371,10 @@ impl<'a> Global<'a> {
                             let norm_ret = self.normtype(ret_ty)?;
                             Ok(NormType::Func(norm_params, Box::new(norm_ret)))
                         }
-                        _ => Err(EvalError::NotAValue(name.to_string())),
+                        _ => Err(Error::NotAValue(name.to_string())),
                     }
                 } else {
-                    Err(EvalError::UnknownIdentifier(name.to_string()))
+                    Err(Error::UnknownIdentifier(name.to_string()))
                 }
             }
             ast::Expr::Binary(op, left, right) => {
@@ -408,7 +408,7 @@ impl<'a> Global<'a> {
                 let func_ty = self.typeinfer(func_expr)?;
                 match func_ty {
                     NormType::Func(_, ret_ty) => Ok(*ret_ty),
-                    _ => Err(EvalError::NotCallable),
+                    _ => Err(Error::NotCallable),
                 }
             }
             ast::Expr::Index(arr_expr, _idx) => {
@@ -416,15 +416,15 @@ impl<'a> Global<'a> {
                 match arr_ty {
                     NormType::Array(_, elem_ty) => Ok(*elem_ty),
                     NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(EvalError::NotIndexable),
+                    _ => Err(Error::NotIndexable),
                 }
             }
             ast::Expr::Member(expr, field) => match self.typeinfer(expr)? {
                 NormType::Struct(fields) => match fields.iter().find(|(name, _)| name == field) {
                     Some((_, ty)) => return Ok(ty.clone()),
-                    None => return Err(EvalError::NoSuchField(field.to_string())),
+                    None => return Err(Error::NoSuchField(field.to_string())),
                 },
-                _ => Err(EvalError::NotAStruct),
+                _ => Err(Error::NotAStruct),
             },
             ast::Expr::Addr(expr) => {
                 let ty = self.typeinfer(expr)?;
@@ -434,7 +434,7 @@ impl<'a> Global<'a> {
                 let ty = self.typeinfer(expr)?;
                 match ty {
                     NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(EvalError::CannotDereferenceNonPointer),
+                    _ => Err(Error::CannotDereferenceNonPointer),
                 }
             }
             ast::Expr::Cast(expr, ty) => {
@@ -443,7 +443,7 @@ impl<'a> Global<'a> {
                 if base.sizeof() == cast.sizeof() {
                     Ok(cast)
                 } else {
-                    Err(EvalError::InvalidCastSize(base.sizeof(), cast.sizeof()))
+                    Err(Error::InvalidCastSize(base.sizeof(), cast.sizeof()))
                 }
             }
             ast::Expr::SizeofType(_) | ast::Expr::SizeofExpr(_) => Ok(NormType::Int),
@@ -464,7 +464,7 @@ impl<'a> Global<'a> {
     }
 
     /// Infer address of expr with unresolved symbol (symbol, offset)
-    pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), EvalError> {
+    pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
         match expr {
             ast::Expr::Ident(name) => match self.defs.get(name.as_str()) {
                 Some(&def) => match def {
@@ -472,19 +472,19 @@ impl<'a> Global<'a> {
                     | ast::Def::Const(_, _, _)
                     | ast::Def::Func(_, _, _, _)
                     | ast::Def::Asm(_, _, _) => Ok((name.clone(), 0)),
-                    _ => Err(EvalError::NotAddressable(name.to_string())),
+                    _ => Err(Error::NotAddressable(name.to_string())),
                 },
-                None => Err(EvalError::UnknownIdentifier(name.to_string())),
+                None => Err(Error::UnknownIdentifier(name.to_string())),
             },
 
             ast::Expr::Index(base, index) => {
                 let (symbol, offset) = self.addrexpr(base)?;
                 let index = match self.constexpr(index) {
                     Ok(ConstExpr::Number(idx)) => idx,
-                    _ => return Err(EvalError::NonConstantArrayIndexInAddress),
+                    _ => return Err(Error::NonConstantArrayIndexInAddress),
                 };
                 let ty = self.typeinfer(base)?;
-                let ofs = ty.get_array_offset(index).ok_or(EvalError::NotIndexable)?;
+                let ofs = ty.get_array_offset(index).ok_or(Error::NotIndexable)?;
                 Ok((symbol, offset + ofs))
             }
 
@@ -493,13 +493,13 @@ impl<'a> Global<'a> {
                 let ty = self.typeinfer(base)?;
                 let ofs = ty
                     .get_field_offset(field)
-                    .ok_or(EvalError::NoSuchField(field.to_string()))?;
+                    .ok_or(Error::NoSuchField(field.to_string()))?;
                 Ok((symbol, offset + ofs))
             }
 
             ast::Expr::Cast(expr, _) => self.addrexpr(expr),
 
-            _ => Err(EvalError::NotAddressable(format!("{:?}", expr))),
+            _ => Err(Error::NotAddressable(format!("{:?}", expr))),
         }
     }
 }

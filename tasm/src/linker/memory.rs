@@ -1,4 +1,4 @@
-use crate::error::LinkError;
+use crate::error::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -21,11 +21,11 @@ impl Memory {
         self
     }
 
-    pub fn get(&self, name: &str) -> Result<(usize, usize), LinkError> {
+    pub fn get(&self, name: &str) -> Result<(usize, usize), Error> {
         self.sections
             .get(name)
             .copied()
-            .ok_or_else(|| LinkError::SectionNotFound(name.to_string()))
+            .ok_or_else(|| Error::SectionNotFound(name.to_string()))
     }
 }
 

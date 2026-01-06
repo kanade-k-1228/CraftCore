@@ -130,7 +130,7 @@ impl State {
     fn ctrl(&mut self, rd: Reg, rs1: Reg, rs2: Reg, imm: u16) {
         self.set(rd, self.get(Reg::PC) + 1);
         if self.get(rs2) == 0 {
-            self.set_pc(self.get(rs1) + imm);
+            self.set_pc(self.get(rs1).wrapping_add(imm));
         } else {
             self.inc_pc();
         }

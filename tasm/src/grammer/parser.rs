@@ -1,11 +1,11 @@
 use super::ast::{AsmStmt, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
 use super::parsercore::Parser;
 use super::token::{Token, TokenKind::*};
-use crate::error::ParseError;
+use crate::error::Error;
 use crate::{check, expect, optional, repeat};
 
 impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
-    pub fn parse(mut self) -> (AST, Vec<ParseError>) {
+    pub fn parse(mut self) -> (AST, Vec<Error>) {
         let program = self.parse_program();
         return (program, self.geterrors());
     }
@@ -31,7 +31,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// type = "int" | "void" | ident | "*" type | "[" expr "]" type | "{" fields "}" | "(" fields ")" "->" type
-    fn parse_type(&mut self) -> Result<Type, ParseError> {
+    fn parse_type(&mut self) -> Result<Type, Error> {
         if let Some(token) = self.peek() {
             match token.kind {
                 // Integer type: "int"
@@ -86,15 +86,15 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => Err(ParseError::UnexpectedToken(token.into())),
+                _ => Err(Error::UnexpectedToken(token.into())),
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         }
     }
 
     /// def = type-def | const-def | static-def | asm-def | func-def
-    fn parse_def(&mut self) -> Result<Def, ParseError> {
+    fn parse_def(&mut self) -> Result<Def, Error> {
         if let Some(token) = self.peek() {
             match token.kind {
                 // type-def = "type" ident "=" type ";"
@@ -153,15 +153,15 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     expect!(self, RCurly)?;
                     Ok(Def::Func(name, args, ret, stmts))
                 }
-                _ => Err(ParseError::UnexpectedToken(token.into())),
+                _ => Err(Error::UnexpectedToken(token.into())),
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         }
     }
 
     /// asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
-    fn parse_asm_stmt(&mut self) -> Result<AsmStmt, ParseError> {
+    fn parse_asm_stmt(&mut self) -> Result<AsmStmt, Error> {
         let mut labels = Vec::new();
 
         // Parse labels (ident ":")
@@ -182,11 +182,11 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
             }
         }
 
-        Err(ParseError::UnexpectedEOF)
+        Err(Error::UnexpectedEOF)
     }
 
     /// stmt = block | var-stmt | if-stmt | while-stmt | return-stmt | assign-stmt | expr-stmt
-    fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_stmt(&mut self) -> Result<Stmt, Error> {
         if let Some(token) = &self.peek() {
             match &token.kind {
                 // Block statement: "{" { stmt } "}"
@@ -258,16 +258,16 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 }
             }
         }
-        return Err(ParseError::TODO);
+        return Err(Error::TODO);
     }
 
     /// expr = or-expr
-    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_expr(&mut self) -> Result<Expr, Error> {
         self.parse_or_expr()
     }
 
     /// or-expr = xor-expr { "|" xor-expr }
-    fn parse_or_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_or_expr(&mut self) -> Result<Expr, Error> {
         let mut lhs = self.parse_xor_expr()?;
         while check!(self, Pipe) {
             // Bitwise OR: expr "|" xor-expr
@@ -279,7 +279,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// xor-expr = and-expr { "^" and-expr }
-    fn parse_xor_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_xor_expr(&mut self) -> Result<Expr, Error> {
         let mut lhs = self.parse_and_expr()?;
         while check!(self, Caret) {
             // Bitwise XOR: expr "^" and-expr
@@ -291,7 +291,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// and-expr = eq-expr { "&" eq-expr }
-    fn parse_and_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_and_expr(&mut self) -> Result<Expr, Error> {
         let mut lhs = self.parse_eq_expr()?;
         while check!(self, Ampasand) {
             // Bitwise AND: expr "&" eq-expr
@@ -303,7 +303,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// eq-expr = rel-expr { ( "==" | "!=" ) rel-expr }
-    fn parse_eq_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_eq_expr(&mut self) -> Result<Expr, Error> {
         let mut lhs = self.parse_rel_expr()?;
         loop {
             // Equality: expr "==" relat-expr
@@ -325,7 +325,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// rel-expr = shift-expr [ ( "<" | "<=" | ">" | ">=" ) shift-expr ]
-    fn parse_rel_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_rel_expr(&mut self) -> Result<Expr, Error> {
         let lhs = self.parse_shift_expr()?;
         if let Some(token) = self.peek() {
             match token.kind {
@@ -356,12 +356,12 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         }
     }
 
     /// shift-expr = add-expr [ ( "<<" | ">>" ) add-expr ]
-    fn parse_shift_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_shift_expr(&mut self) -> Result<Expr, Error> {
         let lhs = self.parse_add_expr()?;
         if let Some(token) = self.peek() {
             match token.kind {
@@ -380,12 +380,12 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         }
     }
 
     /// add-expr = mul-expr { ( "+" | "-" ) mul-expr }
-    fn parse_add_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_add_expr(&mut self) -> Result<Expr, Error> {
         let mut lhs = self.parse_mul_expr()?;
         while let Some(token) = self.peek() {
             match token.kind {
@@ -408,7 +408,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ]
-    fn parse_mul_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_mul_expr(&mut self) -> Result<Expr, Error> {
         let lhs = self.parse_unary_expr()?;
         if let Some(token) = self.peek() {
             match token.kind {
@@ -438,7 +438,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// unary-expr = ( "+" | "-" | "!" ) unary-expr | postfix-expr
-    fn parse_unary_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_unary_expr(&mut self) -> Result<Expr, Error> {
         if let Some(token) = self.peek() {
             match token.kind {
                 // Unary plus: "+" unary-expr
@@ -468,7 +468,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
 
     /// postfix-expr = prim-expr { postfix-op }
     /// postfix-op = "(" [ expr { "," expr } ] ")" | "[" expr "]" | "." ident | "*" | "@" | "as" type
-    fn parse_postfix_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_postfix_expr(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_prim_expr()?;
         loop {
             // Function call: expr "(" [ expr { "," expr } ] ")"
@@ -525,7 +525,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// prim-expr = "(" expr ")" | ident | num-lit | char-lit | string-lit | struct-lit | array-lit | sizeof-expr
-    fn parse_prim_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_prim_expr(&mut self) -> Result<Expr, Error> {
         if let Some(token) = self.peek() {
             match &token.kind {
                 // Sizeof
@@ -597,23 +597,23 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     return Ok(Expr::StringLit(s));
                 }
 
-                _ => Err(ParseError::UnexpectedToken(token.into())),
+                _ => Err(Error::UnexpectedToken(token.into())),
             }
         } else {
-            Err(ParseError::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         }
     }
 
     /// ident = ( "A".."Z" | "a".."z" | "_" ) { "0".."9" | "A".."Z" | "a".."z" | "_" }
-    fn parse_ident(&mut self) -> Result<String, ParseError> {
+    fn parse_ident(&mut self) -> Result<String, Error> {
         match &self.next() {
             Some(Token { kind: Ident(s), .. }) => Ok(s.clone()),
-            _ => Err(ParseError::TODO),
+            _ => Err(Error::TODO),
         }
     }
 
     /// ident ":" type
-    fn parse_field_type(&mut self) -> Result<(String, Type), ParseError> {
+    fn parse_field_type(&mut self) -> Result<(String, Type), Error> {
         let name = self.parse_ident()?;
         expect!(self, Colon)?;
         let typ = self.parse_type()?;
@@ -621,7 +621,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// ident ":" expr
-    fn parse_field_expr(&mut self) -> Result<(String, Expr), ParseError> {
+    fn parse_field_expr(&mut self) -> Result<(String, Expr), Error> {
         let name = self.parse_ident()?;
         expect!(self, Colon)?;
         let expr = self.parse_expr()?;
