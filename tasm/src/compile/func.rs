@@ -1,7 +1,7 @@
 use crate::{
     compile::{Code, Imm},
     error::FuncGenError,
-    eval::{eval::Evaluator, normtype::NormType},
+    eval::{global::Global, normtype::NormType},
     grammer::ast,
 };
 use arch::{inst::Inst, reg::Reg};
@@ -11,11 +11,11 @@ struct CodeGenContext<'a> {
     lvars: HashMap<String, i16>, // Local variable offsets
     stack_size: i16,             // Current stack frame size
     insts: Vec<(Inst, Option<Imm>)>,
-    evaluator: &'a Evaluator<'a>,
+    evaluator: &'a Global<'a>,
 }
 
 impl<'a> CodeGenContext<'a> {
-    fn new(evaluator: &'a Evaluator<'a>) -> Self {
+    fn new(evaluator: &'a Global<'a>) -> Self {
         Self {
             lvars: HashMap::new(),
             stack_size: 0,
@@ -193,7 +193,7 @@ fn generate_epilogue(
 }
 
 /// Generate code from all functions in the AST
-pub fn func2code<'a>(evaluator: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
+pub fn func2code<'a>(evaluator: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, FuncGenError> {
     let mut result = HashMap::new();
     for (name, (_, _, def)) in evaluator.funcs() {
         if let ast::Def::Func(_, args, ret, stmts) = def {
@@ -208,7 +208,7 @@ fn gen_func<'a>(
     args: &'a Vec<(String, ast::Type)>,
     ret: &'a ast::Type,
     stmts: &'a Vec<ast::Stmt>,
-    evaluator: &'a Evaluator<'a>,
+    evaluator: &'a Global<'a>,
 ) -> Result<Code, FuncGenError> {
     let mut ctx = CodeGenContext::new(evaluator);
 

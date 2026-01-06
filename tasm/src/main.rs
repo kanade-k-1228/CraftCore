@@ -60,7 +60,7 @@ fn main() -> Result<(), tasm::Error> {
     }
 
     // 4. Evaluator
-    let evaluator = tasm::Evaluator::new(&ast)?;
+    let evaluator = tasm::Global::new(&ast)?;
 
     // 5. Generate code from functions and assembly blocks
     let asms = tasm::asm::asm2code(&evaluator)?;

@@ -1,4 +1,4 @@
-use crate::eval::eval::Evaluator;
+use crate::eval::global::Global;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ pub struct DataEntry {
 
 impl SymbolMap {
     pub fn generate(
-        evaluator: &Evaluator,
+        evaluator: &Global,
         imap: &IndexMap<String, usize>,
         dmap: &IndexMap<String, usize>,
     ) -> Self {

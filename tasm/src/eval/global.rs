@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::RwLock;
 
 use crate::{
     error::EvalError,
@@ -8,14 +8,14 @@ use crate::{
     grammer::ast::{self, BinaryOp, UnaryOp},
 };
 
-pub struct Evaluator<'a> {
+pub struct Global<'a> {
     defs: IndexMap<&'a str, &'a ast::Def>,
-    normtype_cache: RefCell<HashMap<&'a ast::Type, NormType>>,
-    constexpr_cache: RefCell<HashMap<&'a ast::Expr, ConstExpr>>,
-    typeinfer_cache: RefCell<HashMap<&'a ast::Expr, NormType>>,
+    _normtype: RwLock<HashMap<&'a ast::Type, NormType>>,
+    _constexpr: RwLock<HashMap<&'a ast::Expr, ConstExpr>>,
+    _typeinfer: RwLock<HashMap<&'a ast::Expr, NormType>>,
 }
 
-impl<'a> Evaluator<'a> {
+impl<'a> Global<'a> {
     /// Create a new evaluator by building an index of AST definitions
     pub fn new(ast: &'a ast::AST) -> Result<Self, EvalError> {
         let mut defs = IndexMap::new();
@@ -38,11 +38,11 @@ impl<'a> Evaluator<'a> {
             defs.insert(name, def);
         }
 
-        Ok(Evaluator {
+        Ok(Global {
             defs,
-            normtype_cache: RefCell::new(HashMap::new()),
-            constexpr_cache: RefCell::new(HashMap::new()),
-            typeinfer_cache: RefCell::new(HashMap::new()),
+            _normtype: RwLock::new(HashMap::new()),
+            _constexpr: RwLock::new(HashMap::new()),
+            _typeinfer: RwLock::new(HashMap::new()),
         })
     }
 
@@ -136,9 +136,12 @@ impl<'a> Evaluator<'a> {
 
     /// Normalize a type by resolving custom types and computing array sizes
     pub fn normtype(&self, ty: &'a ast::Type) -> Result<NormType, EvalError> {
-        // Restore from cache
-        if let Some(cached) = self.normtype_cache.borrow().get(ty) {
-            return Ok(cached.clone());
+        // Try to restore from cache with read lock
+        {
+            let cache = self._normtype.read().unwrap();
+            if let Some(cached) = cache.get(ty) {
+                return Ok(cached.clone());
+            }
         }
 
         // Evaluate
@@ -186,11 +189,10 @@ impl<'a> Evaluator<'a> {
             }
         };
 
-        // Store
+        // Store with write lock if successful
         if let Ok(ref norm_type) = result {
-            self.normtype_cache
-                .borrow_mut()
-                .insert(ty, norm_type.clone());
+            let mut cache = self._normtype.write().unwrap();
+            cache.insert(ty, norm_type.clone());
         }
 
         result
@@ -198,9 +200,12 @@ impl<'a> Evaluator<'a> {
 
     /// Evaluate a constant expression
     pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, EvalError> {
-        // Restore from cache
-        if let Some(cached) = self.constexpr_cache.borrow().get(expr) {
-            return Ok(cached.clone());
+        // Try to restore from cache with read lock
+        {
+            let cache = self._constexpr.read().unwrap();
+            if let Some(cached) = cache.get(expr) {
+                return Ok(cached.clone());
+            }
         }
 
         let result = match expr {
@@ -304,11 +309,10 @@ impl<'a> Evaluator<'a> {
             _ => Err(EvalError::NonConstantExpression),
         };
 
-        // Cache the result if successful
+        // Store with write lock if successful
         if let Ok(ref const_expr) = result {
-            self.constexpr_cache
-                .borrow_mut()
-                .insert(expr, const_expr.clone());
+            let mut cache = self._constexpr.write().unwrap();
+            cache.insert(expr, const_expr.clone());
         }
 
         result
@@ -316,9 +320,12 @@ impl<'a> Evaluator<'a> {
 
     /// Infer the type of an expression
     pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, EvalError> {
-        // Check cache first
-        if let Some(cached) = self.typeinfer_cache.borrow().get(expr) {
-            return Ok(cached.clone());
+        // Try to restore from cache with read lock
+        {
+            let cache = self._typeinfer.read().unwrap();
+            if let Some(cached) = cache.get(expr) {
+                return Ok(cached.clone());
+            }
         }
 
         let result = match expr {
@@ -447,16 +454,52 @@ impl<'a> Evaluator<'a> {
             }
         };
 
-        // Cache the result if successful
+        // Store with write lock if successful
         if let Ok(ref norm_type) = result {
-            self.typeinfer_cache
-                .borrow_mut()
-                .insert(expr, norm_type.clone());
+            let mut cache = self._typeinfer.write().unwrap();
+            cache.insert(expr, norm_type.clone());
         }
 
         result
     }
 
-    /// Infer addr of expr with unresolved symbol (symbol, offset)
-    pub fn globaladdr(&self, expr: &'a ast::Expr) -> Result<(String, usize), EvalError> {}
+    /// Infer address of expr with unresolved symbol (symbol, offset)
+    pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), EvalError> {
+        match expr {
+            ast::Expr::Ident(name) => match self.defs.get(name.as_str()) {
+                Some(&def) => match def {
+                    ast::Def::Static(_, _, _)
+                    | ast::Def::Const(_, _, _)
+                    | ast::Def::Func(_, _, _, _)
+                    | ast::Def::Asm(_, _, _) => Ok((name.clone(), 0)),
+                    _ => Err(EvalError::NotAddressable(name.to_string())),
+                },
+                None => Err(EvalError::UnknownIdentifier(name.to_string())),
+            },
+
+            ast::Expr::Index(base, index) => {
+                let (symbol, offset) = self.addrexpr(base)?;
+                let index = match self.constexpr(index) {
+                    Ok(ConstExpr::Number(idx)) => idx,
+                    _ => return Err(EvalError::NonConstantArrayIndexInAddress),
+                };
+                let ty = self.typeinfer(base)?;
+                let ofs = ty.get_array_offset(index).ok_or(EvalError::NotIndexable)?;
+                Ok((symbol, offset + ofs))
+            }
+
+            ast::Expr::Member(base, field) => {
+                let (symbol, offset) = self.addrexpr(base)?;
+                let ty = self.typeinfer(base)?;
+                let ofs = ty
+                    .get_field_offset(field)
+                    .ok_or(EvalError::NoSuchField(field.to_string()))?;
+                Ok((symbol, offset + ofs))
+            }
+
+            ast::Expr::Cast(expr, _) => self.addrexpr(expr),
+
+            _ => Err(EvalError::NotAddressable(format!("{:?}", expr))),
+        }
+    }
 }

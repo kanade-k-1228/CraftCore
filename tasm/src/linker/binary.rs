@@ -1,6 +1,6 @@
 use crate::compile::{Code, Imm};
 use crate::error::LinkError;
-use crate::eval::eval::Evaluator;
+use crate::eval::global::Global;
 use indexmap::IndexMap;
 
 /// Resolve symbols in the code using the memory maps
@@ -8,7 +8,7 @@ pub fn resolve_symbols<'a>(
     codes: &IndexMap<&'a str, Code>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    evaluator: &Evaluator,
+    evaluator: &Global,
 ) -> IndexMap<&'a str, Code> {
     let mut resolved = IndexMap::new();
 
@@ -126,10 +126,7 @@ pub fn genibin<'a>(
     Ok(binary)
 }
 
-pub fn gencbin(
-    evaluator: &Evaluator,
-    dmmap: &IndexMap<String, usize>,
-) -> Result<Vec<u8>, LinkError> {
+pub fn gencbin(evaluator: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, LinkError> {
     // Find the maximum address to determine binary size
     let max_addr = dmmap
         .iter()

@@ -1,13 +1,13 @@
 use crate::{
     compile::{Code, Imm},
     error::AsmError,
-    eval::eval::Evaluator,
+    eval::global::Global,
     grammer::ast,
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-pub fn asm2code<'a>(globals: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Code>, AsmError> {
+pub fn asm2code<'a>(globals: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, AsmError> {
     let mut result = HashMap::new();
     for (name, (_, def)) in globals.asms() {
         if let ast::Def::Asm(_, _, stmts) = def {
@@ -17,7 +17,7 @@ pub fn asm2code<'a>(globals: &'a Evaluator<'a>) -> Result<HashMap<&'a str, Code>
     Ok(result)
 }
 
-fn gen_asm<'a>(stmts: &'a [ast::AsmStmt], globals: &'a Evaluator<'a>) -> Result<Code, AsmError> {
+fn gen_asm<'a>(stmts: &'a [ast::AsmStmt], globals: &'a Global<'a>) -> Result<Code, AsmError> {
     // 1. Collect label
     let mut locals: HashMap<&str, usize> = HashMap::new();
     for (pc, ast::AsmStmt(_, _, labs)) in stmts.iter().enumerate() {
@@ -40,7 +40,7 @@ fn parse_stmt<'a>(
     pc: u16,
     stmt: &'a ast::AsmStmt,
     locals: &HashMap<&str, usize>,
-    globals: &'a Evaluator<'a>,
+    globals: &'a Global<'a>,
 ) -> Result<(Inst, Option<Imm>), AsmError> {
     let ast::AsmStmt(inst, args, _) = stmt;
     match inst.to_lowercase().as_str() {
@@ -359,7 +359,7 @@ fn parse_reg(expr: &ast::Expr) -> Result<Reg, AsmError> {
     }
 }
 
-fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Evaluator<'a>) -> Result<Imm, AsmError> {
+fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, AsmError> {
     // Check type size only for complex expressions that need evaluation
     // Simple literals and identifiers don't need type checking
     match expr {

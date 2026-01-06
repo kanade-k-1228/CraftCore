@@ -1,5 +1,5 @@
 use crate::compile::Code;
-use crate::eval::eval::Evaluator;
+use crate::eval::global::Global;
 use color_print::cprintln;
 use indexmap::IndexMap;
 
@@ -7,7 +7,7 @@ pub fn binprint<'a>(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
     codes: &IndexMap<&'a str, Code>,
-    evaluator: &Evaluator<'a>,
+    evaluator: &Global<'a>,
 ) {
     // Program Memory Layout
     let mut iblocks: Vec<_> = imap

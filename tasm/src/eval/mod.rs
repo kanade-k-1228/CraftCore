@@ -1,3 +1,4 @@
 pub mod constexpr;
-pub mod eval;
+pub mod global;
+pub mod local;
 pub mod normtype;

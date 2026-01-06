@@ -308,4 +308,22 @@ pub enum EvalError {
 
     #[error("Cannot cast between types of different sizes: {0} bytes to {1} bytes")]
     InvalidCastSize(usize, usize),
+
+    #[error("Expression is not addressable: {0}")]
+    NotAddressable(String),
+
+    #[error("Cannot dereference in static context")]
+    CannotDereferenceInStaticContext,
+
+    #[error("Invalid address operation")]
+    InvalidAddressOperation,
+
+    #[error("Address offset must be a constant")]
+    NonConstantAddressOffset,
+
+    #[error("Array index in address expression must be a constant")]
+    NonConstantArrayIndexInAddress,
+
+    #[error("Duplicate local variable: {0}")]
+    DuplicateLocal(String),
 }
