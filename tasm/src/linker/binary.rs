@@ -1,4 +1,4 @@
-use crate::convert::types::{Code, Immidiate};
+use crate::compile::{Code, Imm};
 use crate::error::LinkError;
 use crate::eval::eval::Evaluator;
 use indexmap::IndexMap;
@@ -19,7 +19,7 @@ pub fn resolve_symbols<'a>(
         for (inst, symbol_opt) in &code.0 {
             if let Some(imm) = symbol_opt {
                 match imm {
-                    Immidiate::Symbol(symbol, calc_offset) => {
+                    Imm::Symbol(symbol, calc_offset) => {
                         // Simple symbol resolution - the offset has already been calculated in asm2code.rs
                         // The symbol here is the base identifier, and calc_offset is the calculated offset from expressions
                         let addr = evaluator
@@ -66,11 +66,11 @@ pub fn resolve_symbols<'a>(
                             // Symbol not found - keep original
                             resolved_insts.push((
                                 inst.clone(),
-                                Some(Immidiate::Symbol(symbol.clone(), *calc_offset)),
+                                Some(Imm::Symbol(symbol.clone(), *calc_offset)),
                             ));
                         }
                     }
-                    Immidiate::Literal(_) => {
+                    Imm::Literal(_) => {
                         // Literal values don't need resolution
                         resolved_insts.push((inst.clone(), Some(imm.clone())));
                     }

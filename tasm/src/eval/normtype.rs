@@ -19,6 +19,28 @@ impl NormType {
             NormType::Func(_, _) => 0,
         }
     }
+
+    /// Get field offset from a struct type
+    pub fn get_field_offset(&self, field: &str) -> Option<usize> {
+        if let NormType::Struct(fields) = self {
+            let mut offset = 0;
+            for (name, ty) in fields {
+                if name == field {
+                    return Some(offset);
+                }
+                offset += ty.sizeof();
+            }
+        }
+        None
+    }
+
+    /// Get array element offset for a given index
+    pub fn get_array_offset(&self, index: usize) -> Option<usize> {
+        match self {
+            NormType::Array(_, elem) => Some(index * elem.sizeof()),
+            _ => None,
+        }
+    }
 }
 
 impl NormType {

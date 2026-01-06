@@ -31,18 +31,21 @@ fn main() -> Result<(), tasm::Error> {
     let args = Args::parse();
 
     // 1. Read source files
-    let mut sources = Vec::new();
-    for path in &args.src {
-        let content = fs::read_to_string(path)?;
-        sources.push((path.clone(), content));
-    }
+    let sources = {
+        let mut sources = vec![];
+        for path in &args.src {
+            let content = fs::read_to_string(path)?;
+            sources.push((path, content));
+        }
+        sources
+    };
 
     // 2. Parse input files and tokenize
     let tokens = {
         let mut tokens = vec![];
         for (path, text) in sources.iter() {
-            let lexer = tasm::Lexer::new(path, text);
-            tokens.extend(lexer.parse());
+            let toks = tasm::Lexer::new(path, text).parse();
+            tokens.extend(toks);
         }
         tokens
     };
@@ -53,21 +56,15 @@ fn main() -> Result<(), tasm::Error> {
         for e in &errors {
             eprintln!("  {:?}", e);
         }
-        std::process::exit(1);
+        return Err(tasm::Error::Parse(errors[0].clone()));
     }
 
-    // 4. Collect symbols
-    let evaluator = match tasm::Evaluator::new(&ast) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("  {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // 4. Evaluator
+    let evaluator = tasm::Evaluator::new(&ast)?;
 
     // 5. Generate code from functions and assembly blocks
-    let funcs = tasm::func2code(&evaluator)?;
-    let asms = tasm::asm2code(&evaluator)?;
+    let asms = tasm::asm::asm2code(&evaluator)?;
+    let funcs = tasm::func::func2code(&evaluator)?;
     let codes: IndexMap<_, _> = funcs.into_iter().chain(asms).collect();
 
     // 6. Dead code elimination
@@ -118,6 +115,7 @@ fn main() -> Result<(), tasm::Error> {
         .section("reset", 0x0000, 0x0004)
         .section("irq", 0x0004, 0x0008)
         .section("code", 0x0008, 0x10000);
+
     let dmem = tasm::Memory::new(0, 0x10000)
         .section("reg", 0x0000, 0x0010)
         .section("csr", 0x0010, 0x0100)
@@ -125,6 +123,7 @@ fn main() -> Result<(), tasm::Error> {
         .section("vram", 0x1000, 0x3000)
         .section("const", 0x3000, 0x5000)
         .section("static", 0x5000, 0x10000);
+
     let mut ialoc = tasm::Allocator::new(0, 0x10000);
     let mut daloc = tasm::Allocator::new(0, 0x10000);
 

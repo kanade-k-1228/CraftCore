@@ -456,4 +456,7 @@ impl<'a> Evaluator<'a> {
 
         result
     }
+
+    /// Infer addr of expr with unresolved symbol (symbol, offset)
+    pub fn globaladdr(&self, expr: &'a ast::Expr) -> Result<(String, usize), EvalError> {}
 }

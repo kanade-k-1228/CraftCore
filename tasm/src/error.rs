@@ -142,6 +142,9 @@ pub enum BinGenError {
 // Assembly code generation errors
 #[derive(Debug, Error, Clone)]
 pub enum AsmError {
+    #[error("TODO")]
+    TODO,
+
     #[error("Invalid instruction: {0}")]
     InvalidInstruction(String),
 
@@ -162,6 +165,54 @@ pub enum AsmError {
 
     #[error("Label redefinition: {0}")]
     LabelRedefinition(String),
+
+    #[error("Cannot negate symbol")]
+    CannotNegateSymbol,
+
+    #[error("Dereference operations cannot be evaluated at assembly time")]
+    CannotDereferenceInAssembly,
+
+    #[error("Unknown symbol: {0}")]
+    UnknownSymbol(String),
+
+    #[error("Cannot access field of immediate value")]
+    CannotAccessFieldOfImmediate,
+
+    #[error("Cannot access field '{0}' of symbol '{1}'")]
+    CannotAccessFieldOfSymbol(String, String),
+
+    #[error("Array index must be a constant in assembly")]
+    NonConstantArrayIndex,
+
+    #[error("Cannot index immediate value")]
+    CannotIndexImmediate,
+
+    #[error("Cannot add two symbols")]
+    CannotAddSymbols,
+
+    #[error("Invalid subtraction in address expression")]
+    InvalidSubtractionInAddress,
+
+    #[error("Unsupported operation in address expression")]
+    UnsupportedOperationInAddress,
+
+    #[error("Cannot evaluate sizeof type: {0}")]
+    CannotEvaluateSizeofType(String),
+
+    #[error("Cannot evaluate sizeof expression: {0}")]
+    CannotEvaluateSizeofExpr(String),
+
+    #[error("Unsupported expression type in assembly: {0}")]
+    UnsupportedExprType(String),
+
+    #[error("Field '{0}' not found in struct")]
+    FieldNotFoundInStruct(String),
+
+    #[error("Type is not a struct")]
+    TypeIsNotStruct,
+
+    #[error("Type is not an array")]
+    TypeIsNotArray,
 }
 
 // Function code generation errors

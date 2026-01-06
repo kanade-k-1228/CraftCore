@@ -1,11 +1,11 @@
-mod convert;
+mod compile;
 mod error;
 mod eval;
 mod grammer;
 mod linker;
 mod util;
 
-pub use convert::{asm2code, func2code};
+pub use compile::{asm, func};
 pub use error::Error;
 pub use eval::eval::Evaluator;
 pub use grammer::lexer::Lexer;
