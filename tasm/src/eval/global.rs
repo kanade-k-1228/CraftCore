@@ -10,7 +10,7 @@ use crate::{
 use super::{constexpr::ConstExpr, normtype::NormType};
 
 pub struct Global<'a> {
-    pub(super) defs: IndexMap<&'a str, &'a ast::Def>,
+    defs: IndexMap<&'a str, &'a ast::Def>,
     _normtype: RwLock<HashMap<&'a ast::Type, NormType>>,
     _constexpr: RwLock<HashMap<&'a ast::Expr, ConstExpr>>,
     _typeinfer: RwLock<HashMap<&'a ast::Expr, NormType>>,
