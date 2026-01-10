@@ -145,7 +145,7 @@ pub fn gencbin(evaluator: &Global, dmmap: &IndexMap<String, usize>) -> Result<Ve
     // Place each constant at its specified address
     for (name, (_, value, _, _)) in evaluator.consts() {
         if let Some(&addr) = dmmap.get(name) {
-            let bytes = value.serialize();
+            let bytes = value.bin();
             let end = (addr + bytes.len()).min(binary.len());
             if addr < binary.len() {
                 binary[addr..end].copy_from_slice(&bytes[..end - addr]);
