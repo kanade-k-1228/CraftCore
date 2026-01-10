@@ -56,17 +56,7 @@ fn main() -> Result<(), tasm::Error> {
         for e in &errors {
             eprintln!("  {:?}", e);
         }
-        // Return the first error
-        match &errors[0] {
-            tasm::Error::UnexpectedToken(tok) => {
-                return Err(tasm::Error::UnexpectedToken(tok.clone()))
-            }
-            tasm::Error::UnexpectedEOF => return Err(tasm::Error::UnexpectedEOF),
-            tasm::Error::InvalidType(s) => return Err(tasm::Error::InvalidType(s.clone())),
-            tasm::Error::InvalidFunction(s) => return Err(tasm::Error::InvalidFunction(s.clone())),
-            tasm::Error::InvalidVariable(s) => return Err(tasm::Error::InvalidVariable(s.clone())),
-            _ => return Err(tasm::Error::TODO),
-        }
+        std::process::exit(-1);
     }
 
     // 4. Evaluator

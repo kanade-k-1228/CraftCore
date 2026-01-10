@@ -7,29 +7,29 @@ use crate::{
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-pub fn asm2code<'a>(globals: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
+pub fn asm2code<'a>(global: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
     let mut result = HashMap::new();
-    for (name, (_, def)) in globals.asms() {
+    for (name, (_, def)) in global.asms() {
         if let ast::Def::Asm(_, _, stmts) = def {
-            result.insert(name, gen_asm(stmts, globals)?);
+            result.insert(name, gen_asm(global, stmts)?);
         }
     }
     Ok(result)
 }
 
-fn gen_asm<'a>(stmts: &'a [ast::Asm], globals: &'a Global<'a>) -> Result<Code, Error> {
-    // 1. Collect label
-    let mut locals: HashMap<&str, usize> = HashMap::new();
-    for (pc, ast::Asm(_, _, labs)) in stmts.iter().enumerate() {
-        for label in labs {
-            locals.insert(label.as_str(), pc);
+fn gen_asm<'a>(global: &'a Global<'a>, stmts: &'a [ast::Asm]) -> Result<Code, Error> {
+    // 1. Collect local labels
+    let mut local: HashMap<&str, usize> = HashMap::new();
+    for (idx, ast::Asm(_, _, labels)) in stmts.iter().enumerate() {
+        for label in labels {
+            local.insert(label.as_str(), idx);
         }
     }
 
-    // 2. Generate instruction
+    // 2. Generate code
     let mut insts = Vec::new();
-    for (pc, stmt) in stmts.iter().enumerate() {
-        let inst = parse_stmt(pc as u16, stmt, &locals, globals)?;
+    for (idx, stmt) in stmts.iter().enumerate() {
+        let inst = parse_stmt(global, &local, idx, stmt)?;
         insts.push(inst);
     }
 
@@ -37,197 +37,53 @@ fn gen_asm<'a>(stmts: &'a [ast::Asm], globals: &'a Global<'a>) -> Result<Code, E
 }
 
 fn parse_stmt<'a>(
-    pc: u16,
+    global: &'a Global<'a>,
+    local: &HashMap<&str, usize>,
+    idx: usize,
     stmt: &'a ast::Asm,
-    locals: &HashMap<&str, usize>,
-    globals: &'a Global<'a>,
 ) -> Result<Inst<Reg, Imm>, Error> {
     let ast::Asm(inst, args, _) = stmt;
-    match inst.to_lowercase().as_str() {
-        "nop" => Ok(Inst::NOP()),
-        "mov" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::MOV(rd, rs))
-        }
-        "add" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::ADD(rd, rs1, rs2))
-        }
-        "addi" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::ADDI(rd, rs, imm))
-        }
-        "subi" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::SUBI(rd, rs, imm))
-        }
-        "andi" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::ANDI(rd, rs, imm))
-        }
-        "ori" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::ORI(rd, rs, imm))
-        }
-        "xori" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::XORI(rd, rs, imm))
-        }
-        "eqi" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::EQI(rd, rs, imm))
-        }
-        "neqi" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::NEQI(rd, rs, imm))
-        }
-        "lti" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::LTI(rd, rs, imm))
-        }
-        "ltsi" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::LTSI(rd, rs, imm))
-        }
-        "not" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::NOT(rd, rs))
-        }
-        "loadi" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            // Use the new expression evaluator
-            let imm = parse_imm(&args[1], globals)?;
-            Ok(Inst::LOADI(rd, imm))
-        }
-        "sub" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::SUB(rd, rs1, rs2))
-        }
-        "and" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::AND(rd, rs1, rs2))
-        }
-        "or" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::OR(rd, rs1, rs2))
-        }
-        "xor" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::XOR(rd, rs1, rs2))
-        }
-        "eq" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::EQ(rd, rs1, rs2))
-        }
-        "neq" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::NEQ(rd, rs1, rs2))
-        }
-        "lt" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::LT(rd, rs1, rs2))
-        }
-        "lts" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let rs2 = parse_reg(&args[2])?;
-            Ok(Inst::LTS(rd, rs1, rs2))
-        }
-        "sr" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::SR(rd, rs))
-        }
-        "srs" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::SRS(rd, rs))
-        }
-        "srr" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::SRR(rd, rs))
-        }
-        "sl" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::SL(rd, rs))
-        }
-        "slr" if args.len() == 2 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            Ok(Inst::SLR(rd, rs))
-        }
-        "load" if args.len() == 2 => {
-            // load(rd, addr/imm)
-            let rd = parse_reg(&args[0])?;
-            // Use expression evaluator for complex expressions
-            let imm = parse_imm(&args[1], globals)?;
-            Ok(Inst::LOADI(rd, imm))
-        }
-        "load" if args.len() == 3 => {
-            let rd = parse_reg(&args[0])?;
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::LOAD(rd, rs, imm))
-        }
-        "store" if args.len() == 2 => {
-            // store(symbol, rs)
-            let rs = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[0], globals)?;
-            Ok(Inst::STORE(rs, Reg::Z, imm))
-        }
-        "store" if args.len() == 3 => {
-            let rs2 = parse_reg(&args[0])?;
-            let rs1 = parse_reg(&args[1])?;
-            let imm = parse_imm(&args[2], globals)?;
-            Ok(Inst::STORE(rs2, rs1, imm))
-        }
+    match (inst.to_lowercase().as_str(), args.len()) {
+        ("nop", 0) => Ok(Inst::NOP()),
+        ("mov", 2) => Ok(Inst::MOV(args[0].reg()?, args[1].reg()?)),
+        ("add", 3) => Ok(Inst::ADD(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("addi", 3) => Ok(Inst::ADDI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("subi", 3) => Ok(Inst::SUBI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("andi", 3) => Ok(Inst::ANDI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("ori", 3) => Ok(Inst::ORI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("xori", 3) => Ok(Inst::XORI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("eqi", 3) => Ok(Inst::EQI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("neqi", 3) => Ok(Inst::NEQI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("lti", 3) => Ok(Inst::LTI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("ltsi", 3) => Ok(Inst::LTSI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("not", 2) => Ok(Inst::NOT(args[0].reg()?, args[1].reg()?)),
+        ("loadi", 2) => Ok(Inst::LOADI(args[0].reg()?, args[1].imm(global)?)),
+        ("sub", 3) => Ok(Inst::SUB(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("and", 3) => Ok(Inst::AND(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("or", 3) => Ok(Inst::OR(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("xor", 3) => Ok(Inst::XOR(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("eq", 3) => Ok(Inst::EQ(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("neq", 3) => Ok(Inst::NEQ(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("lt", 3) => Ok(Inst::LT(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("lts", 3) => Ok(Inst::LTS(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
+        ("sr", 2) => Ok(Inst::SR(args[0].reg()?, args[1].reg()?)),
+        ("srs", 2) => Ok(Inst::SRS(args[0].reg()?, args[1].reg()?)),
+        ("srr", 2) => Ok(Inst::SRR(args[0].reg()?, args[1].reg()?)),
+        ("sl", 2) => Ok(Inst::SL(args[0].reg()?, args[1].reg()?)),
+        ("slr", 2) => Ok(Inst::SLR(args[0].reg()?, args[1].reg()?)),
+        ("load", 2) => Ok(Inst::LOADI(args[0].reg()?, args[1].imm(global)?)),
+        ("load", 3) => Ok(Inst::LOAD(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("store", 2) => Ok(Inst::STORE(args[1].reg()?, Reg::Z, args[0].imm(global)?)),
+        ("store", 3) => Ok(Inst::STORE(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
 
         // jumpif(cond, label)
-        "jumpif" if args.len() == 2 => {
-            let cond = parse_reg(&args[0])?;
+        ("jumpif", 2) => {
+            let cond = args[0].reg()?;
             match &args[1] {
-                ast::Expr::Ident(label) => match locals.get(label.as_str()) {
+                ast::Expr::Ident(label) => match local.get(label.as_str()) {
                     // Local label: Compiled to relative jump
                     Some(&goto) => {
-                        let offset = (goto as i32 - pc as i32) as u16;
+                        let offset = (goto as i32 - idx as i32) as u16;
                         Ok(Inst::JUMPIFR(cond, Imm::Lit(offset as usize)))
                     }
                     // Global label: Compiled to absolute jump
@@ -238,12 +94,12 @@ fn parse_stmt<'a>(
         }
 
         // jump(label)
-        "jump" if args.len() == 1 => {
+        ("jump", 1) => {
             match &args[0] {
-                ast::Expr::Ident(label) => match locals.get(label.as_str()) {
+                ast::Expr::Ident(label) => match local.get(label.as_str()) {
                     // Local label: Compiled to relative jump
                     Some(&goto) => {
-                        let offset = (goto as i32 - pc as i32) as u16;
+                        let offset = (goto as i32 - idx as i32) as u16;
                         Ok(Inst::JUMPR(Imm::Lit(offset as usize)))
                     }
                     // Global label: Compiled to absolute jump
@@ -254,105 +110,85 @@ fn parse_stmt<'a>(
         }
 
         // call(label)
-        "call" if args.len() == 1 => match &args[0] {
+        ("call", 1) => match &args[0] {
             // Global label only
             ast::Expr::Ident(label) => Ok(Inst::CALL(Imm::Label(label.clone()))),
             _ => Err(Error::TODO),
         },
-        "ret" if args.is_empty() => Ok(Inst::RET()),
-        "iret" if args.is_empty() => Ok(Inst::IRET()),
+        ("ret", 0) => Ok(Inst::RET()),
+        ("iret", 0) => Ok(Inst::IRET()),
         _ => Err(Error::InvalidInstruction(inst.to_string())),
     }
 }
 
-fn parse_reg(expr: &ast::Expr) -> Result<Reg, Error> {
-    if let ast::Expr::Ident(name) = expr {
-        match name.to_lowercase().as_str() {
-            "z" | "zero" => Ok(Reg::Z),
-            "sp" => Ok(Reg::SP),
-            "ra" => Ok(Reg::RA),
-            "fp" => Ok(Reg::FP),
-            "a0" => Ok(Reg::A0),
-            "a1" => Ok(Reg::A1),
-            "t0" => Ok(Reg::T0),
-            "t1" => Ok(Reg::T1),
-            "t2" => Ok(Reg::T2),
-            "t3" => Ok(Reg::T3),
-            "s0" => Ok(Reg::S0),
-            "s1" => Ok(Reg::S1),
-            "s2" => Ok(Reg::S2),
-            "s3" => Ok(Reg::S3),
-            _ => Err(Error::InvalidRegister(name.clone())),
-        }
-    } else {
-        Err(Error::InvalidRegister(format!("{:?}", expr)))
-    }
-}
-
-fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Error> {
-    // Check type size only for complex expressions that need evaluation
-    // Simple literals and identifiers don't need type checking
-    match expr {
-        ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
-        ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
-        ast::Expr::Ident(name) => Ok(Imm::Symbol(name.clone(), 0)),
-        ast::Expr::Unary(op, inner) => match op {
-            ast::UnaryOp::Pos => parse_imm(inner, globals),
-            ast::UnaryOp::Neg => match parse_imm(inner, globals) {
-                Ok(Imm::Lit(val)) => Ok(Imm::Lit((-(val as isize)) as usize)),
-                _ => Err(Error::CannotNegateSymbol),
+impl<'a> ast::Expr {
+    fn reg(&self) -> Result<Reg, Error> {
+        match self {
+            ast::Expr::Ident(name) => match Reg::parse(name) {
+                Some(r) => Ok(r),
+                None => Err(Error::InvalidRegister(name.to_string())),
             },
-            ast::UnaryOp::Not => todo!(),
-        },
-        ast::Expr::Addr(inner) => parse_imm(inner, globals),
-        ast::Expr::Deref(_) => Err(Error::CannotDereferenceInAssembly),
-        ast::Expr::Member(expr, field) => match parse_imm(expr, globals)? {
-            Imm::Symbol(ident, base) => {
-                let offset = if let Some((norm_type, _, _)) = globals.statics().get(ident.as_str())
-                {
-                    norm_type
-                        .get_field_offset(field)
-                        .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
-                } else if let Some((norm_type, _, _, _)) = globals.consts().get(ident.as_str()) {
-                    norm_type
-                        .get_field_offset(field)
-                        .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
-                } else {
-                    return Err(Error::UnknownSymbol(ident));
-                };
-                Ok(Imm::Symbol(ident, base + offset))
-            }
-            Imm::Lit(_) => Err(Error::CannotAccessFieldOfImmediate),
-            Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel),
-        },
+            _ => Err(Error::InvalidRegister(format!("{:?}", self))),
+        }
+    }
 
-        ast::Expr::Index(expr, index) => {
-            match parse_imm(expr, globals)? {
+    fn imm(&'a self, global: &'a Global<'a>) -> Result<Imm, Error> {
+        match self {
+            ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
+            ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
+            ast::Expr::Ident(name) => Ok(Imm::Symbol(name.clone(), 0)),
+            ast::Expr::Unary(op, inner) => match op {
+                ast::UnaryOp::Pos => inner.imm(global),
+                ast::UnaryOp::Neg => match inner.imm(global) {
+                    Ok(Imm::Lit(val)) => Ok(Imm::Lit((-(val as isize)) as usize)),
+                    _ => Err(Error::CannotNegateSymbol),
+                },
+                ast::UnaryOp::Not => todo!(),
+            },
+            ast::Expr::Addr(inner) => inner.imm(global),
+            ast::Expr::Deref(_) => Err(Error::CannotDereferenceInAssembly),
+            ast::Expr::Member(expr, field) => match expr.imm(global)? {
                 Imm::Symbol(ident, base) => {
-                    // Try to evaluate index to a constant
+                    let offset = if let Some((norm_type, _, _)) =
+                        global.statics().get(ident.as_str())
+                    {
+                        norm_type
+                            .get_field_offset(field)
+                            .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
+                    } else if let Some((norm_type, _, _, _)) = global.consts().get(ident.as_str()) {
+                        norm_type
+                            .get_field_offset(field)
+                            .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
+                    } else {
+                        return Err(Error::UnknownSymbol(ident));
+                    };
+                    Ok(Imm::Symbol(ident, base + offset))
+                }
+                Imm::Lit(_) => Err(Error::CannotAccessFieldOfImmediate),
+                Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel),
+            },
+
+            ast::Expr::Index(expr, index) => match expr.imm(global)? {
+                Imm::Symbol(ident, base) => {
                     if let ast::Expr::NumberLit(idx) = index.as_ref() {
-                        // Look up the type of the base symbol to calculate offset
-                        let offset = if let Some((norm_type, _, _)) =
-                            globals.statics().get(ident.as_str())
-                        {
-                            norm_type
-                                .get_array_offset(*idx)
-                                .ok_or(Error::TypeIsNotArray)?
-                        } else if let Some((norm_type, value, _, _)) =
-                            globals.consts().get(ident.as_str())
-                        {
-                            // For string constants, elements are chars (size 1)
-                            if matches!(value, crate::eval::constexpr::ConstExpr::String(_)) {
-                                idx * 1
-                            } else {
+                        let offset =
+                            if let Some((norm_type, _, _)) = global.statics().get(ident.as_str()) {
                                 norm_type
                                     .get_array_offset(*idx)
                                     .ok_or(Error::TypeIsNotArray)?
-                            }
-                        } else {
-                            return Err(Error::UnknownSymbol(ident));
-                        };
-
+                            } else if let Some((norm_type, value, _, _)) =
+                                global.consts().get(ident.as_str())
+                            {
+                                if matches!(value, crate::eval::constexpr::ConstExpr::String(_)) {
+                                    idx * 1
+                                } else {
+                                    norm_type
+                                        .get_array_offset(*idx)
+                                        .ok_or(Error::TypeIsNotArray)?
+                                }
+                            } else {
+                                return Err(Error::UnknownSymbol(ident));
+                            };
                         Ok(Imm::Symbol(ident, base + offset))
                     } else {
                         Err(Error::NonConstantArrayIndex)
@@ -360,50 +196,54 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Er
                 }
                 Imm::Lit(_) => Err(Error::CannotIndexImmediate),
                 Imm::Label(_) => Err(Error::CannotIndexLabel),
-            }
-        }
+            },
 
-        ast::Expr::Binary(op, left, right) => {
-            let lhs = parse_imm(left, globals)?;
-            let rhs = parse_imm(right, globals)?;
-            match (lhs, rhs) {
-                (Imm::Symbol(ident, left_offset), Imm::Lit(right_val)) => match op {
-                    ast::BinaryOp::Add => Ok(Imm::Symbol(ident, left_offset + right_val as usize)),
-                    ast::BinaryOp::Sub => Ok(Imm::Symbol(
-                        ident,
-                        left_offset.wrapping_sub(right_val as usize),
-                    )),
-                    _ => Err(Error::UnsupportedOperationInAddress),
-                },
-                (Imm::Lit(left_val), Imm::Symbol(ident, right_offset)) => match op {
-                    ast::BinaryOp::Add => Ok(Imm::Symbol(ident, left_val as usize + right_offset)),
-                    _ => Err(Error::InvalidSubtractionInAddress),
-                },
-                (Imm::Lit(left_val), Imm::Lit(right_val)) => match op {
-                    ast::BinaryOp::Add => Ok(Imm::Lit(left_val.wrapping_add(right_val))),
-                    ast::BinaryOp::Sub => Ok(Imm::Lit(left_val.wrapping_sub(right_val))),
-                    _ => Err(Error::UnsupportedOperationInAddress),
-                },
-                (Imm::Symbol(_, _), Imm::Symbol(_, _)) => match op {
-                    ast::BinaryOp::Add => Err(Error::CannotAddSymbols),
-                    _ => Err(Error::InvalidSubtractionInAddress),
-                },
-                (Imm::Label(_), _) | (_, Imm::Label(_)) => {
-                    Err(Error::CannotPerformArithmeticOnLabel)
+            ast::Expr::Binary(op, left, right) => {
+                let lhs = left.imm(global)?;
+                let rhs = right.imm(global)?;
+                match (lhs, rhs) {
+                    (Imm::Symbol(ident, left_offset), Imm::Lit(right_val)) => match op {
+                        ast::BinaryOp::Add => {
+                            Ok(Imm::Symbol(ident, left_offset + right_val as usize))
+                        }
+                        ast::BinaryOp::Sub => Ok(Imm::Symbol(
+                            ident,
+                            left_offset.wrapping_sub(right_val as usize),
+                        )),
+                        _ => Err(Error::UnsupportedOperationInAddress),
+                    },
+                    (Imm::Lit(left_val), Imm::Symbol(ident, right_offset)) => match op {
+                        ast::BinaryOp::Add => {
+                            Ok(Imm::Symbol(ident, left_val as usize + right_offset))
+                        }
+                        _ => Err(Error::InvalidSubtractionInAddress),
+                    },
+                    (Imm::Lit(left_val), Imm::Lit(right_val)) => match op {
+                        ast::BinaryOp::Add => Ok(Imm::Lit(left_val.wrapping_add(right_val))),
+                        ast::BinaryOp::Sub => Ok(Imm::Lit(left_val.wrapping_sub(right_val))),
+                        _ => Err(Error::UnsupportedOperationInAddress),
+                    },
+                    (Imm::Symbol(_, _), Imm::Symbol(_, _)) => match op {
+                        ast::BinaryOp::Add => Err(Error::CannotAddSymbols),
+                        _ => Err(Error::InvalidSubtractionInAddress),
+                    },
+                    (Imm::Label(_), _) | (_, Imm::Label(_)) => {
+                        Err(Error::CannotPerformArithmeticOnLabel)
+                    }
                 }
             }
+
+            ast::Expr::SizeofType(ty) => match global.normtype(ty) {
+                Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
+                Err(e) => Err(Error::CannotEvaluateSizeofType(e.to_string())),
+            },
+
+            ast::Expr::SizeofExpr(inner) => match global.typeinfer(inner) {
+                Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
+                Err(e) => Err(Error::CannotEvaluateSizeofExpr(e.to_string())),
+            },
+
+            _ => Err(Error::UnsupportedExprType(format!("{:?}", self))),
         }
-
-        ast::Expr::SizeofType(ty) => match globals.normtype(ty) {
-            Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
-            Err(e) => Err(Error::CannotEvaluateSizeofType(e.to_string())),
-        },
-
-        ast::Expr::SizeofExpr(inner) => match globals.typeinfer(inner) {
-            Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
-            Err(e) => Err(Error::CannotEvaluateSizeofExpr(e.to_string())),
-        },
-
-        _ => Err(Error::UnsupportedExprType(format!("{:?}", expr))),
     }
 }
