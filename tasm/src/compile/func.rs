@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 pub fn func2code<'a>(global: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
     let mut result = HashMap::new();
-    for (name, (_, _, def)) in global.funcs() {
-        if let ast::Def::Func(_, args, ret, stmts) = def {
+    for name in global.funcs() {
+        if let Some(ast::Def::Func(_, args, ret, stmts)) = global.get(name) {
             let compiler = FuncCompiler::new(global, args)?;
             let code = compiler.compile(args, ret, stmts)?;
             result.insert(name, code);

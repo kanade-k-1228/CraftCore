@@ -16,11 +16,8 @@ pub struct Global<'a> {
 }
 
 impl<'a> Global<'a> {
-    /// Create a new evaluator by building an index of AST definitions
     pub fn new(ast: &'a ast::AST) -> Result<Self, Error> {
         let mut defs = IndexMap::new();
-
-        // Build index of all definitions
         for def in &ast.0 {
             let name = match def {
                 ast::Def::Type(name, _) => name.as_str(),
@@ -30,7 +27,6 @@ impl<'a> Global<'a> {
                 ast::Def::Func(name, _, _, _) => name.as_str(),
             };
 
-            // Check for duplicates
             if defs.contains_key(name) {
                 return Err(Error::Duplicate(name.to_string()));
             }
@@ -45,98 +41,58 @@ impl<'a> Global<'a> {
             _typeinfer: RwLock::new(HashMap::new()),
         })
     }
+}
 
-    /// Accessor methods for compatibility
-    pub fn types(&self) -> IndexMap<&'a str, (NormType, usize, &'a ast::Def)> {
-        let mut types = IndexMap::new();
-        for (&name, &def) in &self.defs {
-            if let ast::Def::Type(_, ty) = def {
-                if let Ok(ty) = self.normtype(ty) {
-                    let size = ty.sizeof();
-                    types.insert(name, (ty, size, def));
-                }
-            }
-        }
-        types
+impl<'a> Global<'a> {
+    pub fn keys(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.defs.keys().copied()
     }
 
-    pub fn consts(&self) -> IndexMap<&'a str, (NormType, ConstExpr, Option<usize>, &'a ast::Def)> {
-        let mut consts = IndexMap::new();
-        for (&name, &def) in &self.defs {
-            if let ast::Def::Const(_, addr, expr) = def {
-                if let Ok(value) = self.constexpr(expr) {
-                    if let Ok(ty) = value.typeinfer() {
-                        let addr = addr.as_ref().and_then(|e| match self.constexpr(e) {
-                            Ok(ConstExpr::Number(n)) => Some(n),
-                            _ => None,
-                        });
-                        consts.insert(name, (ty, value, addr, def));
-                    }
-                }
-            }
-        }
-        consts
+    pub fn types(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.defs
+            .iter()
+            .filter(|(_, &def)| matches!(def, ast::Def::Type(..)))
+            .map(|(&name, _)| name)
     }
 
-    pub fn statics(&self) -> IndexMap<&'a str, (NormType, Option<usize>, &'a ast::Def)> {
-        let mut statics = IndexMap::new();
-        for (&name, &def) in &self.defs {
-            if let ast::Def::Static(_, addr, ty) = def {
-                if let Ok(ty) = self.normtype(ty) {
-                    let addr = addr.as_ref().and_then(|e| match self.constexpr(e) {
-                        Ok(ConstExpr::Number(n)) => Some(n),
-                        _ => None,
-                    });
-                    statics.insert(name, (ty, addr, def));
-                }
-            }
-        }
-        statics
+    pub fn consts(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.defs
+            .iter()
+            .filter(|(_, &def)| matches!(def, ast::Def::Const(..)))
+            .map(|(&name, _)| name)
     }
 
-    pub fn asms(&self) -> IndexMap<&'a str, (Option<usize>, &'a ast::Def)> {
-        let mut asms = IndexMap::new();
-        for (&name, &def) in &self.defs {
-            if let ast::Def::Asm(_, addr, _) = def {
-                let addr = addr.as_ref().and_then(|e| match self.constexpr(e) {
-                    Ok(ConstExpr::Number(n)) => Some(n),
-                    _ => None,
-                });
-                asms.insert(name, (addr, def));
-            }
-        }
-        asms
+    pub fn statics(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.defs
+            .iter()
+            .filter(|(_, &def)| matches!(def, ast::Def::Static(..)))
+            .map(|(&name, _)| name)
     }
 
-    pub fn funcs(&self) -> IndexMap<&'a str, (NormType, Option<usize>, &'a ast::Def)> {
-        let mut funcs = IndexMap::new();
-        for (&name, &def) in &self.defs {
-            if let ast::Def::Func(_, params, ret_ty, _) = def {
-                let mut norm_params = Vec::new();
-                let mut success = true;
-                for (param_name, param_ty) in params {
-                    if let Ok(norm_ty) = self.normtype(param_ty) {
-                        norm_params.push((param_name.clone(), norm_ty));
-                    } else {
-                        success = false;
-                        break;
-                    }
-                }
-
-                if success {
-                    if let Ok(norm_ret) = self.normtype(ret_ty) {
-                        let norm_type = NormType::Func(norm_params, Box::new(norm_ret));
-                        funcs.insert(name, (norm_type, None, def));
-                    }
-                }
-            }
-        }
-        funcs
+    pub fn asms(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.defs
+            .iter()
+            .filter(|(_, &def)| matches!(def, ast::Def::Asm(..)))
+            .map(|(&name, _)| name)
     }
 
+    pub fn funcs(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.defs
+            .iter()
+            .filter(|(_, &def)| matches!(def, ast::Def::Func(..)))
+            .map(|(&name, _)| name)
+    }
+}
+
+impl<'a> Global<'a> {
+    pub fn get(&self, name: &str) -> Option<&'a ast::Def> {
+        self.defs.get(name).copied()
+    }
+}
+
+impl<'a> Global<'a> {
     /// Normalize a type by resolving custom types and computing array sizes
     pub fn normtype(&self, ty: &'a ast::Type) -> Result<NormType, Error> {
-        // Try to restore from cache with read lock
         {
             let cache = self._normtype.read().unwrap();
             if let Some(cached) = cache.get(ty) {
@@ -501,5 +457,160 @@ impl<'a> Global<'a> {
 
             _ => Err(Error::NotAddressable(format!("{:?}", expr))),
         }
+    }
+}
+
+/// Resolved getter methods (returns computed NormType, evaluated addresses, etc.)
+impl<'a> Global<'a> {
+    pub fn get_type_resolved(&self, name: &str) -> Option<(NormType, usize)> {
+        let def = self.defs.get(name).copied()?;
+        if let ast::Def::Type(_, ty) = def {
+            let ty = self.normtype(ty).ok()?;
+            let size = ty.sizeof();
+            Some((ty, size))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_const_resolved(&self, name: &str) -> Option<(NormType, ConstExpr, Option<usize>)> {
+        let def = self.defs.get(name).copied()?;
+        if let ast::Def::Const(_, addr, expr) = def {
+            let value = self.constexpr(expr).ok()?;
+            let ty = value.typeinfer().ok()?;
+            let addr = addr.as_ref().and_then(|e| match self.constexpr(e) {
+                Ok(ConstExpr::Number(n)) => Some(n),
+                _ => None,
+            });
+            Some((ty, value, addr))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_static_resolved(&self, name: &str) -> Option<(NormType, Option<usize>)> {
+        let def = self.defs.get(name).copied()?;
+        if let ast::Def::Static(_, addr, ty) = def {
+            let ty = self.normtype(ty).ok()?;
+            let addr = addr.as_ref().and_then(|e| match self.constexpr(e) {
+                Ok(ConstExpr::Number(n)) => Some(n),
+                _ => None,
+            });
+            Some((ty, addr))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_asm_resolved(&self, name: &str) -> Option<Option<usize>> {
+        let def = self.defs.get(name).copied()?;
+        if let ast::Def::Asm(_, addr, _) = def {
+            let addr = addr.as_ref().and_then(|e| match self.constexpr(e) {
+                Ok(ConstExpr::Number(n)) => Some(n),
+                _ => None,
+            });
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_func_resolved(&self, name: &str) -> Option<NormType> {
+        let def = self.defs.get(name).copied()?;
+        if let ast::Def::Func(_, params, ret_ty, _) = def {
+            let mut norm_params = Vec::new();
+            for (param_name, param_ty) in params {
+                let norm_ty = self.normtype(param_ty).ok()?;
+                norm_params.push((param_name.clone(), norm_ty));
+            }
+            let norm_ret = self.normtype(ret_ty).ok()?;
+            Some(NormType::Func(norm_params, Box::new(norm_ret)))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> Global<'a> {
+    pub fn instobjs(&self) -> Result<(Vec<(&str, usize, usize)>, Vec<(&str, usize, &str)>), Error> {
+        let mut fixed = vec![];
+        let mut auto = vec![];
+
+        for (&name, &def) in &self.defs {
+            match def {
+                ast::Def::Asm(_, addr, body) => {
+                    let size = body.len();
+                    match addr {
+                        Some(addr) => {
+                            let addr = match self.constexpr(addr)? {
+                                ConstExpr::Number(n) => n,
+                                _ => {
+                                    return Err(Error::InvalidImmediate(
+                                        "address must be numeric".to_string(),
+                                    ))
+                                }
+                            };
+                            fixed.push((name, size, addr));
+                        }
+                        None => auto.push((name, size, "asm")),
+                    }
+                }
+                ast::Def::Func(_, _, _, body) => {
+                    let size = body.len(); // placeholder
+                    auto.push((name, size, "func"));
+                }
+                _ => {}
+            }
+        }
+
+        Ok((fixed, auto))
+    }
+
+    pub fn dataobjs(&self) -> Result<(Vec<(&str, usize, usize)>, Vec<(&str, usize, &str)>), Error> {
+        let mut fixed = vec![];
+        let mut auto = vec![];
+
+        for (name, def) in &self.defs {
+            match def {
+                ast::Def::Const(_, addr, value) => {
+                    let ty = self.typeinfer(value)?;
+                    let size = ty.sizeof();
+                    match addr {
+                        Some(addr) => {
+                            let addr = match self.constexpr(addr)? {
+                                ConstExpr::Number(n) => n,
+                                _ => {
+                                    return Err(Error::InvalidImmediate(
+                                        "address must be numeric".to_string(),
+                                    ))
+                                }
+                            };
+                            fixed.push((*name, size, addr));
+                        }
+                        None => auto.push((*name, size, "const")),
+                    }
+                }
+                ast::Def::Static(_, addr, ty) => {
+                    let size = self.normtype(ty)?.sizeof();
+                    match addr {
+                        Some(addr) => {
+                            let addr = match self.constexpr(addr)? {
+                                ConstExpr::Number(n) => n,
+                                _ => {
+                                    return Err(Error::InvalidImmediate(
+                                        "address must be numeric".to_string(),
+                                    ))
+                                }
+                            };
+                            fixed.push((*name, size, addr));
+                        }
+                        None => auto.push((*name, size, "static")),
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok((fixed, auto))
     }
 }

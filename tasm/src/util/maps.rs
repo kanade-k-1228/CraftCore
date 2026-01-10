@@ -33,11 +33,11 @@ impl SymbolMap {
         // Add all code entries from imap
         for (name, addr) in imap.iter() {
             // Get size from the code if available
-            let size = if let Some(_) = evaluator.asms().get(name.as_str()) {
+            let size = if evaluator.get_asm_resolved(name.as_str()).is_some() {
                 // For asm blocks, we'd need to get the actual code size
                 // For now, use a placeholder
                 0
-            } else if let Some(_) = evaluator.funcs().get(name.as_str()) {
+            } else if evaluator.get_func_resolved(name.as_str()).is_some() {
                 // For functions and seq blocks, we'd need to get the actual code size
                 0
             } else {
@@ -58,28 +58,32 @@ impl SymbolMap {
         let mut data_map: IndexMap<String, DataEntry> = IndexMap::new();
 
         // Add static variables
-        for (name, (norm_type, _, _)) in evaluator.statics() {
-            if let Some(&addr) = dmap.get(name) {
-                data_map.insert(
-                    name.to_string(),
-                    DataEntry {
-                        addr,
-                        size: norm_type.sizeof(),
-                    },
-                );
+        for name in evaluator.statics() {
+            if let Some((norm_type, _)) = evaluator.get_static_resolved(name) {
+                if let Some(&addr) = dmap.get(name) {
+                    data_map.insert(
+                        name.to_string(),
+                        DataEntry {
+                            addr,
+                            size: norm_type.sizeof(),
+                        },
+                    );
+                }
             }
         }
 
         // Add constants
-        for (name, (norm_type, _, _, _)) in evaluator.consts() {
-            if let Some(&addr) = dmap.get(name) {
-                data_map.insert(
-                    name.to_string(),
-                    DataEntry {
-                        addr,
-                        size: norm_type.sizeof(),
-                    },
-                );
+        for name in evaluator.consts() {
+            if let Some((norm_type, _, _)) = evaluator.get_const_resolved(name) {
+                if let Some(&addr) = dmap.get(name) {
+                    data_map.insert(
+                        name.to_string(),
+                        DataEntry {
+                            addr,
+                            size: norm_type.sizeof(),
+                        },
+                    );
+                }
             }
         }
 

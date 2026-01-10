@@ -16,9 +16,9 @@ pub fn binprint<'a>(
             let code = codes.get(name.as_str());
             let size = code.map_or(0, |c| c.0.len());
             // Get type information
-            let (type_info, signature) = if global.asms().contains_key(name.as_str()) {
+            let (type_info, signature) = if global.get(name.as_str()).is_some() {
                 ("asm", String::new())
-            } else if let Some((norm_type, _, _)) = global.funcs().get(name.as_str()) {
+            } else if let Some(norm_type) = global.get_func_resolved(name.as_str()) {
                 ("func", norm_type.fmt())
             } else {
                 ("unknown", String::new())
@@ -73,9 +73,9 @@ pub fn binprint<'a>(
         .iter()
         .map(|(name, addr)| {
             let (size, ty, kind) =
-                if let Some((norm_type, _, _)) = global.statics().get(name.as_str()) {
+                if let Some((norm_type, _)) = global.get_static_resolved(name.as_str()) {
                     (norm_type.sizeof(), norm_type.fmt(), "static")
-                } else if let Some((norm_type, _, _, _)) = global.consts().get(name.as_str()) {
+                } else if let Some((norm_type, _, _)) = global.get_const_resolved(name.as_str()) {
                     (norm_type.sizeof(), norm_type.fmt(), "const")
                 } else {
                     (0, "unknown".to_string(), "unknown")

@@ -79,16 +79,20 @@ fn main() -> Result<(), tasm::Error> {
         .section("irq", 0x0004, 0x0008)
         .section("code", 0x0008, 0x10000)
         .allocator();
+
+    let (fixed, auto) = global.instobjs()?;
+
     for (&name, code) in &codes {
         if labels.contains(name) {
-            if let Some((Some(addr), _)) = global.asms().get(name) {
-                ialoc.allocate(*addr, code.0.len(), name)?;
+            if let Some(Some(addr)) = global.get_asm_resolved(name) {
+                ialoc.allocate(addr, code.0.len(), name)?;
             }
         }
     }
+
     for (&name, code) in &codes {
         if labels.contains(name) {
-            if let Some((None, _)) = global.asms().get(name) {
+            if let Some(None) = global.get_asm_resolved(name) {
                 ialoc.section("code", code.0.len(), name)?;
             }
         }
@@ -96,39 +100,19 @@ fn main() -> Result<(), tasm::Error> {
 
     // 8-2. Allocate data objects
     let mut daloc = tasm::Memory::new(0, 0x10000)
-        .section("reg", 0x0000, 0x0010)
-        .section("csr", 0x0010, 0x0100)
-        .section("ioreg", 0x0100, 0x1000)
-        .section("vram", 0x1000, 0x3000)
         .section("const", 0x3000, 0x5000)
         .section("static", 0x5000, 0x10000)
         .allocator();
 
-    for (name, (ty, addr, _)) in global.statics() {
+    let (fixed, auto) = global.dataobjs()?;
+    for (name, size, addr) in fixed {
         if symbols.contains(name) {
-            if let Some(addr) = addr {
-                daloc.allocate(addr, ty.sizeof(), name)?;
-            }
+            daloc.allocate(addr, size, name)?;
         }
     }
-
-    for (name, (ty, _, addr, _)) in global.consts() {
+    for (name, size, section) in auto {
         if symbols.contains(name) {
-            if let Some(addr) = addr {
-                daloc.allocate(addr, ty.sizeof(), name)?;
-            }
-        }
-    }
-
-    for (name, (ty, addr, _)) in global.statics() {
-        if symbols.contains(name) && addr.is_none() {
-            daloc.section("static", ty.sizeof(), name)?;
-        }
-    }
-
-    for (name, (ty, _, addr, _)) in global.consts() {
-        if symbols.contains(name) && addr.is_none() {
-            daloc.section("const", ty.sizeof(), name)?;
+            daloc.section(section, size, name)?;
         }
     }
 

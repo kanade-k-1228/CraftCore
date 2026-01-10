@@ -76,9 +76,8 @@ pub fn gencbin(global: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u
         .iter()
         .filter_map(|(name, addr)| {
             global
-                .consts()
-                .get(name.as_str())
-                .map(|(norm_type, _, _, _)| addr + norm_type.sizeof())
+                .get_const_resolved(name.as_str())
+                .map(|(norm_type, _, _)| addr + norm_type.sizeof())
         })
         .max()
         .unwrap_or(0);
@@ -87,12 +86,14 @@ pub fn gencbin(global: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u
     let mut binary = vec![0u8; max_addr];
 
     // Place each constant at its specified address
-    for (name, (_, value, _, _)) in global.consts() {
-        if let Some(&addr) = dmmap.get(name) {
-            let bytes = value.bin();
-            let end = (addr + bytes.len()).min(binary.len());
-            if addr < binary.len() {
-                binary[addr..end].copy_from_slice(&bytes[..end - addr]);
+    for name in global.consts() {
+        if let Some((_, value, _)) = global.get_const_resolved(name) {
+            if let Some(&addr) = dmmap.get(name) {
+                let bytes = value.bin();
+                let end = (addr + bytes.len()).min(binary.len());
+                if addr < binary.len() {
+                    binary[addr..end].copy_from_slice(&bytes[..end - addr]);
+                }
             }
         }
     }

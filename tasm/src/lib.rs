@@ -7,6 +7,7 @@ mod util;
 
 pub use compile::{asm, func};
 pub use error::Error;
+pub use eval::constexpr::ConstExpr;
 pub use eval::global::Global;
 pub use grammer::lexer::Lexer;
 pub use grammer::parsercore::Parser;

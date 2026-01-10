@@ -9,8 +9,8 @@ use std::collections::HashMap;
 
 pub fn asm2code<'a>(global: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
     let mut result = HashMap::new();
-    for (name, (_, def)) in global.asms() {
-        if let ast::Def::Asm(_, _, stmts) = def {
+    for name in global.asms() {
+        if let Some(ast::Def::Asm(_, _, stmts)) = global.get(name) {
             result.insert(name, gen_asm(global, stmts)?);
         }
     }
@@ -150,18 +150,19 @@ impl<'a> ast::Expr {
             ast::Expr::Deref(_) => Err(Error::CannotDereferenceInAssembly),
             ast::Expr::Member(expr, field) => match expr.imm(global)? {
                 Imm::Symbol(ident, base) => {
-                    let offset = if let Some((norm_type, _, _)) =
-                        global.statics().get(ident.as_str())
-                    {
-                        norm_type
-                            .get_field_offset(field)
-                            .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
-                    } else if let Some((norm_type, _, _, _)) = global.consts().get(ident.as_str()) {
-                        norm_type
-                            .get_field_offset(field)
-                            .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
-                    } else {
-                        return Err(Error::UnknownSymbol(ident));
+                    let offset = match global.get(ident.as_str()) {
+                        Some(ast::Def::Static(_, _, ty)) => {
+                            let ty = global.normtype(ty)?;
+                            ty.get_field_offset(field)
+                                .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
+                        }
+                        Some(ast::Def::Const(_, _, expr)) => {
+                            let value = global.constexpr(expr)?;
+                            let ty = value.typeinfer()?;
+                            ty.get_field_offset(field)
+                                .ok_or_else(|| Error::FieldNotFoundInStruct(field.clone()))?
+                        }
+                        _ => return Err(Error::UnknownSymbol(ident)),
                     };
                     Ok(Imm::Symbol(ident, base + offset))
                 }
@@ -172,24 +173,22 @@ impl<'a> ast::Expr {
             ast::Expr::Index(expr, index) => match expr.imm(global)? {
                 Imm::Symbol(ident, base) => {
                     if let ast::Expr::NumberLit(idx) = index.as_ref() {
-                        let offset =
-                            if let Some((norm_type, _, _)) = global.statics().get(ident.as_str()) {
-                                norm_type
-                                    .get_array_offset(*idx)
-                                    .ok_or(Error::TypeIsNotArray)?
-                            } else if let Some((norm_type, value, _, _)) =
-                                global.consts().get(ident.as_str())
-                            {
+                        let offset = match global.get(ident.as_str()) {
+                            Some(ast::Def::Static(_, _, ty)) => {
+                                let ty = global.normtype(ty)?;
+                                ty.get_array_offset(*idx).ok_or(Error::TypeIsNotArray)?
+                            }
+                            Some(ast::Def::Const(_, _, expr)) => {
+                                let value = global.constexpr(expr)?;
                                 if matches!(value, crate::eval::constexpr::ConstExpr::String(_)) {
                                     idx * 1
                                 } else {
-                                    norm_type
-                                        .get_array_offset(*idx)
-                                        .ok_or(Error::TypeIsNotArray)?
+                                    let ty = value.typeinfer()?;
+                                    ty.get_array_offset(*idx).ok_or(Error::TypeIsNotArray)?
                                 }
-                            } else {
-                                return Err(Error::UnknownSymbol(ident));
-                            };
+                            }
+                            _ => return Err(Error::UnknownSymbol(ident)),
+                        };
                         Ok(Imm::Symbol(ident, base + offset))
                     } else {
                         Err(Error::NonConstantArrayIndex)

@@ -8,19 +8,24 @@ use crate::{
 
 pub struct Local<'a> {
     global: &'a Global<'a>,
-    locals: IndexMap<&'a str, NormType>,
-    addrs: IndexMap<&'a str, isize>,
-    next: isize,
+    stack: IndexMap<&'a str, (NormType, isize)>,
 }
 
 impl<'a> Local<'a> {
     pub fn fork(global: &'a Global<'a>) -> Self {
         Self {
             global,
-            locals: IndexMap::new(),
-            addrs: IndexMap::new(),
-            next: -1,
+            stack: IndexMap::new(),
         }
+    }
+
+    fn next_offset(&self) -> isize {
+        self.stack
+            .values()
+            .filter(|(_, offset)| *offset < 0)
+            .map(|(ty, offset)| offset - ty.sizeof() as isize)
+            .min()
+            .unwrap_or(-1)
     }
 
     pub fn args(&mut self, args: &'a [(String, ast::Type)]) -> Result<isize, Error> {
@@ -28,28 +33,21 @@ impl<'a> Local<'a> {
         for (name, ty) in args.iter().rev() {
             let ty = self.global.normtype(ty)?;
             let size = ty.sizeof() as isize;
-            self.locals.insert(name.as_str(), ty);
-            self.addrs.insert(name.as_str(), offset);
+            self.stack.insert(name.as_str(), (ty, offset));
             offset += size;
         }
         Ok(offset)
     }
 
     pub fn push(&mut self, name: &'a str, ty: &'a ast::Type) -> Result<isize, Error> {
-        if self.locals.contains_key(name) {
+        if self.stack.contains_key(name) {
             return Err(Error::DuplicateLocal(name.to_string()));
         }
 
         let norm_ty = self.global.normtype(ty)?;
-        let size = norm_ty.sizeof() as isize;
+        let offset = self.next_offset();
 
-        // Allocate stack space
-        let offset = self.next;
-        self.next -= size;
-
-        // Register the variable
-        self.locals.insert(name, norm_ty);
-        self.addrs.insert(name, offset);
+        self.stack.insert(name, (norm_ty, offset));
 
         Ok(offset)
     }
@@ -57,11 +55,11 @@ impl<'a> Local<'a> {
     pub fn pop(&mut self) {}
 
     pub fn vartype(&self, name: &str) -> Option<&NormType> {
-        self.locals.get(name)
+        self.stack.get(name).map(|(ty, _)| ty)
     }
 
     pub fn offset(&self, name: &str) -> Option<isize> {
-        self.addrs.get(name).copied()
+        self.stack.get(name).map(|(_, offset)| *offset)
     }
 
     /// Normalize a type - simply delegates to global
@@ -136,10 +134,10 @@ impl<'a> Local<'a> {
     }
 
     pub fn is_local(&self, name: &str) -> bool {
-        self.locals.contains_key(name)
+        self.stack.contains_key(name)
     }
 
     pub fn stack_size(&self) -> usize {
-        (-self.next - 1) as usize
+        (-self.next_offset() - 1) as usize
     }
 }
