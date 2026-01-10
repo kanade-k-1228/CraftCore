@@ -42,22 +42,23 @@ fn parse_stmt<'a>(
     idx: usize,
     stmt: &'a ast::Asm,
 ) -> Result<Inst<Reg, Imm>, Error> {
+    let g = global;
     let ast::Asm(inst, args, _) = stmt;
     match (inst.to_lowercase().as_str(), args.len()) {
         ("nop", 0) => Ok(Inst::NOP()),
         ("mov", 2) => Ok(Inst::MOV(args[0].reg()?, args[1].reg()?)),
         ("add", 3) => Ok(Inst::ADD(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
-        ("addi", 3) => Ok(Inst::ADDI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("subi", 3) => Ok(Inst::SUBI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("andi", 3) => Ok(Inst::ANDI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("ori", 3) => Ok(Inst::ORI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("xori", 3) => Ok(Inst::XORI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("eqi", 3) => Ok(Inst::EQI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("neqi", 3) => Ok(Inst::NEQI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("lti", 3) => Ok(Inst::LTI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("ltsi", 3) => Ok(Inst::LTSI(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("addi", 3) => Ok(Inst::ADDI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("subi", 3) => Ok(Inst::SUBI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("andi", 3) => Ok(Inst::ANDI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("ori", 3) => Ok(Inst::ORI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("xori", 3) => Ok(Inst::XORI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("eqi", 3) => Ok(Inst::EQI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("neqi", 3) => Ok(Inst::NEQI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("lti", 3) => Ok(Inst::LTI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("ltsi", 3) => Ok(Inst::LTSI(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
         ("not", 2) => Ok(Inst::NOT(args[0].reg()?, args[1].reg()?)),
-        ("loadi", 2) => Ok(Inst::LOADI(args[0].reg()?, args[1].imm(global)?)),
+        ("loadi", 2) => Ok(Inst::LOADI(args[0].reg()?, args[1].imm(g)?)),
         ("sub", 3) => Ok(Inst::SUB(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
         ("and", 3) => Ok(Inst::AND(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
         ("or", 3) => Ok(Inst::OR(args[0].reg()?, args[1].reg()?, args[2].reg()?)),
@@ -71,10 +72,10 @@ fn parse_stmt<'a>(
         ("srr", 2) => Ok(Inst::SRR(args[0].reg()?, args[1].reg()?)),
         ("sl", 2) => Ok(Inst::SL(args[0].reg()?, args[1].reg()?)),
         ("slr", 2) => Ok(Inst::SLR(args[0].reg()?, args[1].reg()?)),
-        ("load", 2) => Ok(Inst::LOADI(args[0].reg()?, args[1].imm(global)?)),
-        ("load", 3) => Ok(Inst::LOAD(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
-        ("store", 2) => Ok(Inst::STORE(args[1].reg()?, Reg::Z, args[0].imm(global)?)),
-        ("store", 3) => Ok(Inst::STORE(args[0].reg()?, args[1].reg()?, args[2].imm(global)?)),
+        ("load", 2) => Ok(Inst::LOADI(args[0].reg()?, args[1].imm(g)?)),
+        ("load", 3) => Ok(Inst::LOAD(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
+        ("store", 2) => Ok(Inst::STORE(args[1].reg()?, Reg::Z, args[0].imm(g)?)),
+        ("store", 3) => Ok(Inst::STORE(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
 
         // jumpif(cond, label)
         ("jumpif", 2) => {

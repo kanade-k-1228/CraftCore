@@ -7,7 +7,7 @@ pub fn binprint<'a>(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
     codes: &IndexMap<&'a str, Code>,
-    evaluator: &Global<'a>,
+    global: &Global<'a>,
 ) {
     // Program Memory Layout
     let mut iblocks: Vec<_> = imap
@@ -16,9 +16,9 @@ pub fn binprint<'a>(
             let code = codes.get(name.as_str());
             let size = code.map_or(0, |c| c.0.len());
             // Get type information
-            let (type_info, signature) = if evaluator.asms().contains_key(name.as_str()) {
+            let (type_info, signature) = if global.asms().contains_key(name.as_str()) {
                 ("asm", String::new())
-            } else if let Some((norm_type, _, _)) = evaluator.funcs().get(name.as_str()) {
+            } else if let Some((norm_type, _, _)) = global.funcs().get(name.as_str()) {
                 ("func", norm_type.fmt())
             } else {
                 ("unknown", String::new())
@@ -73,9 +73,9 @@ pub fn binprint<'a>(
         .iter()
         .map(|(name, addr)| {
             let (size, ty, kind) =
-                if let Some((norm_type, _, _)) = evaluator.statics().get(name.as_str()) {
+                if let Some((norm_type, _, _)) = global.statics().get(name.as_str()) {
                     (norm_type.sizeof(), norm_type.fmt(), "static")
-                } else if let Some((norm_type, _, _, _)) = evaluator.consts().get(name.as_str()) {
+                } else if let Some((norm_type, _, _, _)) = global.consts().get(name.as_str()) {
                     (norm_type.sizeof(), norm_type.fmt(), "const")
                 } else {
                     (0, "unknown".to_string(), "unknown")

@@ -67,48 +67,11 @@ fn main() -> Result<(), tasm::Error> {
     let funcs = tasm::func::func2code(&global)?;
     let codes: IndexMap<_, _> = funcs.into_iter().chain(asms).collect();
 
-    // 6. Dead code elimination
-    let deps = tasm::dependency(&codes);
-    let used = tasm::search(deps.clone(), vec!["reset", "irq", "main"]);
-    if args.verbose {
-        tasm::print_deps(&deps, &used);
-    }
+    // 6. Code dependencies graph
+    let deps = tasm::Deps::build(&codes);
 
-    // 7. Collect global objects
-    let iitems = {
-        let mut iitems = IndexMap::new();
-        for (name, (address, _)) in global.asms() {
-            // Only include if reachable
-            if used.contains(name) {
-                if let Some(code) = codes.get(name) {
-                    iitems.insert(name.to_string(), (code.0.len(), address));
-                }
-            }
-        }
-        for (&name, code) in &codes {
-            // Only include if reachable
-            if used.contains(name) && !global.asms().contains_key(name) {
-                iitems.insert(name.to_string(), (code.0.len(), None));
-            }
-        }
-        iitems
-    };
-    let ditems = {
-        let mut ditems = IndexMap::new();
-        for (name, (norm_type, address, _)) in global.statics() {
-            // Only include if reachable (data items referenced from reachable code)
-            if used.contains(name) {
-                ditems.insert(name.to_string(), (norm_type.sizeof(), address));
-            }
-        }
-        for (name, (norm_type, _, address, _)) in global.consts() {
-            // Only include if reachable
-            if used.contains(name) && !global.statics().contains_key(name) {
-                ditems.insert(name.to_string(), (norm_type.sizeof(), address));
-            }
-        }
-        ditems
-    };
+    // 7. Collect used objects
+    let (used_labels, used_symbols) = deps.entries(&["reset", "irq", "main"]);
 
     // 8. Allocate objects
     let imem = tasm::Memory::new(0, 0x10000)
@@ -127,40 +90,58 @@ fn main() -> Result<(), tasm::Error> {
     let mut ialoc = tasm::Allocator::new(0, 0x10000);
     let mut daloc = tasm::Allocator::new(0, 0x10000);
 
-    // Allocate items with fixed addresses first (for both instruction and data)
-    for (name, (size, addr)) in &iitems {
-        if let Some(addr) = addr {
-            ialoc.allocate(*addr, *size, name)?;
-        }
-    }
-    for (name, (size, addr)) in &ditems {
-        if let Some(addr) = addr {
-            daloc.allocate(*addr, *size, name)?;
+    // Allocate instruction items with fixed addresses first
+    for (&name, code) in &codes {
+        if used_labels.contains(name) {
+            if let Some((Some(addr), _)) = global.asms().get(name) {
+                ialoc.allocate(*addr, code.0.len(), name)?;
+            }
         }
     }
 
     // Allocate instruction items without fixed addresses
-    for (name, (size, addr)) in &iitems {
-        if addr.is_none() {
-            ialoc.section(imem.get("code")?, *size, name)?;
+    for (&name, code) in &codes {
+        if !used_labels.contains(name) {
+            continue;
+        }
+        let has_fixed = global
+            .asms()
+            .get(name)
+            .is_some_and(|(addr, _)| addr.is_some());
+        if !has_fixed {
+            ialoc.section(imem.get("code")?, code.0.len(), name)?;
         }
     }
 
-    // Allocate data items without fixed addresses to appropriate sections
-    // First, allocate consts to const section
-    for (name, (_, _, _addr, _)) in global.consts() {
-        if let Some((size, ditem_addr)) = ditems.get(name) {
-            if ditem_addr.is_none() {
-                daloc.section(dmem.get("const")?, *size, name)?;
+    // Allocate static items with fixed addresses first
+    for (name, (norm_type, addr, _)) in global.statics() {
+        if used_symbols.contains(name) {
+            if let Some(addr) = addr {
+                daloc.allocate(addr, norm_type.sizeof(), name)?;
             }
         }
     }
 
-    for (name, (_, address, _)) in global.statics() {
-        if address.is_none() {
-            if let Some((size, _)) = ditems.get(name) {
-                daloc.section(dmem.get("static")?, *size, name)?;
+    // Allocate const items with fixed addresses
+    for (name, (norm_type, _, addr, _)) in global.consts() {
+        if used_symbols.contains(name) {
+            if let Some(addr) = addr {
+                daloc.allocate(addr, norm_type.sizeof(), name)?;
             }
+        }
+    }
+
+    // Allocate static items without fixed addresses
+    for (name, (norm_type, addr, _)) in global.statics() {
+        if used_symbols.contains(name) && addr.is_none() {
+            daloc.section(dmem.get("static")?, norm_type.sizeof(), name)?;
+        }
+    }
+
+    // Allocate const items without fixed addresses
+    for (name, (norm_type, _, addr, _)) in global.consts() {
+        if used_symbols.contains(name) && addr.is_none() {
+            daloc.section(dmem.get("const")?, norm_type.sizeof(), name)?;
         }
     }
 
@@ -168,7 +149,7 @@ fn main() -> Result<(), tasm::Error> {
     let dmap: IndexMap<String, usize> = daloc.allocations().into_iter().collect();
 
     // 9. Resolve symbols
-    let resolved = tasm::resolve_symbols(&codes, &imap, &dmap, &global);
+    let resolved = tasm::resolve_symbols(&codes, &imap, &dmap);
     if args.verbose {
         tasm::binprint(&imap, &dmap, &codes, &global);
     }

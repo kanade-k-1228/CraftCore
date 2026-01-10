@@ -4,66 +4,30 @@ use crate::eval::global::Global;
 use arch::reg::Reg;
 use indexmap::IndexMap;
 
-/// Resolve symbols in the code using the memory maps
-/// Returns a map of code blocks with resolved u16 immediates
 pub fn resolve_symbols<'a>(
     codes: &IndexMap<&'a str, Code>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    evaluator: &Global,
 ) -> IndexMap<&'a str, Vec<arch::inst::Inst<Reg, u16>>> {
     let mut resolved = IndexMap::new();
-
     for (&name, code) in codes {
         let mut resolved_insts = Vec::new();
-
-        // Resolve symbols in each instruction
         for inst in &code.0 {
-            // Use the resolve method to convert Inst<Reg, Imm> to Inst<Reg, u16>
             let resolved_inst = inst.clone().resolve(|imm| match imm {
-                Imm::Symbol(symbol, calc_offset) => {
-                    // Simple symbol resolution - the offset has already been calculated in asm2code.rs
-                    // The symbol here is the base identifier, and calc_offset is the calculated offset from expressions
-                    let addr = evaluator
-                        .consts()
-                        .get(symbol.as_str())
-                        .and_then(|(_, value, _, _)| {
-                            // Check if it's a constant - use its value directly
-                            if let crate::eval::constexpr::ConstExpr::Number(n) = value {
-                                Some(*n as usize)
-                            } else {
-                                None
-                            }
-                        })
-                        .or_else(|| imap.get(&symbol).copied())
-                        .or_else(|| dmap.get(&symbol).copied());
-
-                    if let Some(resolved_addr) = addr {
-                        // Add the calculated offset to the resolved base address
-                        (resolved_addr + calc_offset) as u16
-                    } else {
-                        // Symbol not found - use 0 as placeholder
-                        // In a real system, this should probably be an error
-                        0
-                    }
-                }
-                Imm::Label(label) => {
-                    // Label resolution - look up in instruction memory map
-                    if let Some(&addr) = imap.get(&label) {
-                        addr as u16
-                    } else {
-                        // Label not found - use 0 as placeholder
-                        0
-                    }
-                }
+                Imm::Symbol(s, offset) => match dmap.get(&s) {
+                    Some(addr) => (addr + offset) as u16,
+                    None => todo!("Failed to find symbol: {}", s),
+                },
+                Imm::Label(label) => match imap.get(&label) {
+                    Some(&addr) => addr as u16,
+                    None => todo!("Failed to find label: {}", label),
+                },
                 Imm::Lit(val) => val as u16,
             });
             resolved_insts.push(resolved_inst);
         }
-
         resolved.insert(name, resolved_insts);
     }
-
     resolved
 }
 
