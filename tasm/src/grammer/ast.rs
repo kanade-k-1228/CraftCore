@@ -1,88 +1,84 @@
 #[derive(Debug, Clone)]
-pub struct AST(pub Vec<Def>); // Program is collection of definitions
+pub struct AST(pub Vec<Def>); // defs = { def }
 
-#[derive(Debug, Clone)]
-pub enum Def {
-    Type(String, Type),                              // name, type
-    Const(String, Option<Expr>, Option<Type>, Expr), // name, addr, type, value
-    Static(String, Option<Expr>, Type),              // name, addr, type
-    Asm(String, Option<Expr>, Vec<AsmStmt>),         // name, addr, body
-    Func(String, Vec<(String, Type)>, Type, Stmt),   // name, arg, ret, body
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
-    Int,                                  // data         | int
-    Custom(String),                       // user-defined | Type
-    Addr(Box<Type>),                      // address      | *Type
-    Array(Expr, Box<Type>),               // array        | Type[10]
-    Struct(Vec<(String, Type)>),          // struct       | {a: int, b: Type}
-    Func(Vec<(String, Type)>, Box<Type>), // function     | (a: int, b: Type) -> Type
-    Error,                                // placeholder for error
+    Int,                                  // "int"
+    Void,                                 // "void"
+    Custom(String),                       // ident
+    Addr(Box<Type>),                      // "*" type
+    Array(Expr, Box<Type>),               // "[" expr "]" type
+    Struct(Vec<(String, Type)>),          // "{" [ ident ":" type { "," ident ":" type } ] "}"
+    Func(Vec<(String, Type)>, Box<Type>), // "(" [ ident ":" type { "," ident ":" type } ] ")" "->" type
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum Def {
+    Type(String, Type),                                 // "type" ident "=" type ";"
+    Const(String, Option<Expr>, Expr),                  // "const" [ "@" expr ] ident "=" expr ";"
+    Static(String, Option<Expr>, Type),                 // "static" [ "@" expr ] ident ":" type ";"
+    Asm(String, Option<Expr>, Vec<AsmStmt>), // "asm" [ "@" expr ] ident "{" { asm-stmt } "}"
+    Func(String, Vec<(String, Type)>, Type, Vec<Stmt>), // "fn" ident "(" [ ident ":" type { "," ident ":" type } ] ")" [ "->" type ] "{" { stmt } "}"
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Stmt {
-    Block(Vec<Stmt>),                         // block       | { ... }
-    Expr(Expr),                               // expression  | expr
-    Assign(Expr, Expr),                       // assignment  | left-expr = expr ;
-    Cond(Expr, Box<Stmt>, Option<Box<Stmt>>), // conditional | 'if' '(' expr ')' stmt ?('else' stmt)
-    Loop(Expr, Box<Stmt>),                    // loop        | 'while' '(' expr ')' stmt
-    Return(Option<Expr>),                     // return      | 'return' ?( expr ) ';'
-    Var(String, Type, Option<Expr>),          // variable    | 'var' name ':' type ?('=' init) ';'
-    Error,                                    // placeholder for a statement that failed to parse
+    Block(Vec<Stmt>),                         // "{" { stmt } "}"
+    Expr(Expr),                               // expr ";"
+    Assign(Expr, Expr),                       // expr "=" expr ";"
+    Cond(Expr, Box<Stmt>, Option<Box<Stmt>>), // "if" "(" expr ")" stmt [ "else" stmt ]
+    Loop(Expr, Box<Stmt>),                    // "while" "(" expr ")" stmt
+    Return(Option<Expr>),                     // "return" [ expr ] ";"
+    Var(String, Type, Option<Expr>),          // "var" ident ":" type [ "=" expr ] ";"
 }
 
-// Assembly-specific AST types
-#[derive(Debug, Clone)]
-pub enum AsmStmt {
-    Label(String),           // label definition | name:
-    Inst(String, Vec<Expr>), // instruction      | inst(arg1, arg2, ...)
-}
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct AsmStmt(pub String, pub Vec<Expr>, pub Vec<String>); // { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
-    NumberLit(usize),                       // integer literal | 42
-    StructLit(Vec<(String, Expr)>),         // struct literal  | {a: expr1, b: expr2}
-    ArrayLit(Vec<Expr>),                    // array literal   | [expr1, expr2, ...]
-    CharLit(char),                          // char literal    | 'A'
-    StringLit(String),                      // string literal  | "ABC"
-    Ident(String),                          // variable        | var name: Type [= init]
-    Cond(Box<Expr>, Box<Expr>, Box<Expr>),  // conditional     | expr ? expr : expr
-    Unary(UnaryOp, Box<Expr>),              // unary op        | -expr, !expr, *expr, &expr
-    Binary(BinaryOp, Box<Expr>, Box<Expr>), // bin op          | expr1 + expr2
-    Call(Box<Expr>, Vec<Expr>),             // function call   | func(expr1, expr2, ...)
-    Cast(Box<Expr>, Box<Type>),             // cast            | expr : Type
-    Index(Box<Expr>, Box<Expr>),            // index           | expr[expr]
-    Member(Box<Expr>, String),              // member access   | expr.field
-    Error,                                  // placeholder for an expression that failed to parse
+    Cond(Box<Expr>, Box<Expr>, Box<Expr>), // (not in current EBNF - ternary conditional)
+    Binary(BinaryOp, Box<Expr>, Box<Expr>), // expr (binop) expr
+    Unary(UnaryOp, Box<Expr>),             // ( "+" | "-" | "!" ) expr
+    Call(Box<Expr>, Vec<Expr>),            // expr "(" [ expr { "," expr } ] ")"
+    Index(Box<Expr>, Box<Expr>),           // expr "[" expr "]"
+    Member(Box<Expr>, String),             // expr "." ident
+    Addr(Box<Expr>),                       // expr "*"
+    Deref(Box<Expr>),                      // expr "@"
+    Cast(Box<Expr>, Box<Type>),            // expr "as" type
+    Ident(String),                         // ident
+    NumberLit(usize),                      // num-lit
+    CharLit(char),                         // char-lit
+    StringLit(String),                     // string-lit
+    ArrayLit(Vec<Expr>),                   // "[" [ expr { "," expr } ] "]"
+    StructLit(Vec<(String, Expr)>),        // "{" [ ident ":" expr { "," ident ":" expr } ] "}"
+    SizeofType(Box<Type>),                 // "sizeof" "<" type ">"
+    SizeofExpr(Box<Expr>),                 // "sizeof" "(" expr ")"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
-    Pos,   // unary plus (+expr)
-    Neg,   // unary minus (-expr)
-    Not,   // logical not (!expr)
-    Deref, // value-at (*expr)
-    Ref,   // address-of (&expr)
+    Pos, // "+"
+    Neg, // "-"
+    Not, // "!"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
-    Add, // +  arithmetic addition
-    Sub, // -  arithmetic subtraction
-    Mul, // *  arithmetic multiplication
-    Div, // /  arithmetic division
-    Mod, // %  arithmetic modulus
-    And, // &  bitwise and
-    Or,  // |  bitwise or
-    Xor, // ^  bitwise xor
-    Shl, // << bitwise shift left
-    Shr, // >> bitwise shift right
-    Eq,  // == equal
-    Ne,  // != non-equal
-    Lt,  // <  less than
-    Le,  // <= less than or equal
-    Gt,  // >  greater than
-    Ge,  // >= greater than or equal
+    Add, // "+"
+    Sub, // "-"
+    Mul, // "*"
+    Div, // "/"
+    Mod, // "%"
+    And, // "&"
+    Or,  // "|"
+    Xor, // "^"
+    Shl, // "<<"
+    Shr, // ">>"
+    Eq,  // "=="
+    Ne,  // "!="
+    Lt,  // "<"
+    Le,  // "<="
+    Gt,  // ">"
+    Ge,  // ">="
 }

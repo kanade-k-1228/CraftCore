@@ -1,25 +1,19 @@
-static@0x0000 z:  usize;
-static@0x0001 sp: usize;
-static@0x0002 ra: usize;
-static@0x0003 s0: usize;
-static@0x0004 s1: usize;
-static@0x0005 s2: usize;
-static@0x001F s3: usize;
-
-const INTR = {
-    ENABLE = 0x0001,
-    MASK0 = 0x0004,
-    MASK1 = 0x0008,
-    MASK2 = 0x0010,
-    MASK3 = 0x0020,
-};
+// --------------------------------------------------------
+// 割り込み
 
 asm@0x0000 reset {
-    call(main);
+    call(init);
+    halt();
+}
+
+asm init {
+    loadi sp 0xffff
+    loadi fp 0xffff
+    call  os_init
 }
 
 asm@0x0004 intr {
-    csr = csr & ~INTR.ENABLE; // Disable interrupts
+    csr = csr & ~INTR.ENABLE; // Disable dual interrupts
     sp = sp - 10; // Allocate stack space
     store(sp + 10) = s0;
     store(sp + 9) = s0;
@@ -31,31 +25,310 @@ asm@0x0004 intr {
     store(sp + 3) = s0;
     store(sp + 2) = s0;
     store(sp + 1) = s0;
+    // Store TSB
+    load  t0 z task_running
+    store ira t0 .ra ; 戻りアドレスの保存
+    store sp  t0 .sp ; スタックポインタの保存
+    ; 割り込みフラグが立っている場合
+    ; 割り込み番号の処理にジャンプ
+    andi  t0 csr intr0_flag
+    jumpif    t0 intr0
+    andi  t0 csr intr1_flag
+    jumpif    t0 intr1
+    andi  t0 csr intr2_flag
+    jumpif    t0 intr2
+    andi  t0 csr intr3_flag
+    jumpif    t0 intr3
+    ; マッチしなかった場合
+    ; 元の処理に戻る
 }
 
-const mem_top = 0x2000;
-const mem_bottom = mem_top + 0x1000;
+// OS グローバル変数
+const os_global_size = 8;
+const heap_top = 0x0040;      // ヒープメモリの先頭
+const heap_bottom = 0x0041;    // ヒープメモリの末尾
+const task_running = 0x0042;   // 実行中のタスク(TCB)のアドレス
+const task_list = 0x0043;      // タスク(TCB)連結リストの先頭のアドレス
+const mem_top = 0x0040;
+const mem_bottom = 0xdfff;
 
-static@0x2000 heap: {top: usize, bottom: usize};
+const INTR = {
+    ENABLE = 0x0001,
+    MASK0 = 0x0004,
+    MASK1 = 0x0008,
+    MASK2 = 0x0010,
+    MASK3 = 0x0020,
+};
 
-fn heap_init() {
-    // Initialize the heap
-    heap.top = mem_top;
-    heap.bottom = mem_bottom;
+// --------------------------------------------------------
+// 割り込みハンドラのプレースホルダー
 
-    // Initialize the stack pointer
-    asm {
-        ldi r0, mem_top
-        out SPH, r0
-        ldi r0, mem_bottom
-        out SPL, r0
+fn intr0() {
+    // TODO: Implement interrupt 0 handler
+    os_restore_context();
+}
+
+fn intr1() {
+    // TODO: Implement interrupt 1 handler
+    os_restore_context();
+}
+
+fn intr2() {
+    // TODO: Implement interrupt 2 handler
+    os_restore_context();
+}
+
+fn intr3() {
+    // TODO: Implement interrupt 3 handler
+    os_restore_context();
+}
+
+// --------------------------------------------------------
+// OS の初期化処理
+
+// Placeholder for user_global_size (defined by user)
+const user_global_size = 0;
+
+// Placeholder for init_tasks (defined by user)
+fn init_tasks() {
+    // TODO: Initialize user tasks
+    return;
+}
+
+// Placeholder for _exit
+fn _exit() {
+    halt();
+}
+
+// Placeholder for malloc
+fn malloc(size: int) -> *int {
+    // Simple bump allocator
+    var addr: *int = load(heap_top);
+    store(heap_top) = addr + size;
+    return addr;
+}
+
+fn os_init() {
+    // グローバル変数の初期化
+    var heap_start: int = mem_top + os_global_size + user_global_size;
+    store(heap_top) = heap_start;
+    store(heap_bottom) = mem_bottom;
+    store(task_running) = 0;
+    store(task_list) = 0;
+
+    // 各種オブジェクトの初期化
+    init_tasks();
+    // os_heap_init();  // TODO: Enable when heap management is implemented
+
+    // スケジューラを起動
+    os_task_scheduler();
+}
+
+// --------------------------------------------------------
+// メモリ管理機能
+
+asm os_heap_init {
+    ; TODO: Implement heap initialization
+    ret
+}
+
+asm os_heap_aloc {
+    ; TODO: Implement heap allocation
+    ; a0: size -> return address in a0
+    ret
+}
+
+asm os_heap_free {
+    ; TODO: Implement heap free
+    ; a0: address
+    ret
+}
+
+// --------------------------------------------------------
+// タスク管理機能
+
+// Task Context Block
+type TCB = {
+    next: *TCB,  // 次のタスク
+    sp: *int,    // スタックポインタ
+    bp: *int,    // ベースポインタ
+    ra: *int,    // 戻りアドレス
+    state: int,  // タスクの状態
+};
+
+// Task state constants
+const task_state_ready = 0;
+const task_state_waiting = 1;
+const task_state_exit = 2;
+
+// タスクの初期化
+fn os_task_setup(
+    initial_state: int,  // タスクの初期状態
+    stack_size:    int,  // スタックサイズ
+    entry_address: *() -> int,  // 関数ポインタ
+)-> *TCB {
+    var last: *TCB = task_list;
+    while last != 0 {
+        last = last*.next;
+    }
+    var new_tcb = malloc(<TCB>) as *TCB; // タスクのTCB用メモリ確保
+    var new_stack = malloc(stack_size);  // 新規タスク用のスタックを確保
+    last*.next = new_tcb;
+    new_tcb* = {
+        next: 0 as *TCB,
+        sp: new_stack - 14, // 初期コンテキスト分だけスタックポインタを進める
+        bp: new_stack + stack_size,
+        ra: entry_address,
+    };
+    new_stack[14] = 0; // s0
+    new_stack[13] = 0; // s1
+    new_stack[12] = 0; // s2
+    new_stack[11] = 0; // s3
+    new_stack[10] = 0; // t0
+    new_stack[9] = 0; // t1
+    new_stack[8] = 0; // t2
+    new_stack[7] = 0; // t3
+    new_stack[6] = 0; // a0
+    new_stack[5] = 0; // a1
+    new_stack[4] = 0; // a2
+    new_stack[3] = 0; // a3
+    new_stack[2] = 0; // fp
+    new_stack[1] = os_task_exit;
+    return new_tcb;
+}
+
+// タスクの終了
+fn os_task_exit(){
+    csr = csr & 0xfffe; // 割り込み禁止
+    var tcb: *TCB = load(task_running);
+    tcb*.state = task_state_exit;
+    os_task_scheduler();
+}
+
+// 実行中のタスクを一時停止
+fn os_task_wait(){
+    csr = csr & 0xfffe; // 割り込み禁止
+
+    // コンテキストの保存
+    sp = sp - 14; // スタックを確保
+    store(sp + 14) = s0;
+    store(sp + 13) = s1;
+    store(sp + 12) = s2;
+    store(sp + 11) = s3;
+    store(sp + 10) = t0;
+    store(sp + 9) = t1;
+    store(sp + 8) = t2;
+    store(sp + 7) = t3;
+    store(sp + 6) = a0;
+    store(sp + 5) = a1;
+    store(sp + 4) = a2;
+    store(sp + 3) = a3;
+    store(sp + 2) = fp;
+    store(sp + 1) = ra;
+
+    // TCB の更新
+    var tcb: *TCB = load(task_running);
+    tcb*.sp = sp;
+    tcb*.ra = ra;
+
+    // 状態を waiting に変更
+    tcb*.state = task_state_waiting;
+    os_task_scheduler();
+}
+
+
+// 指定した ID のタスクを Ready 状態にする
+fn os_task_ready(task_id: *TCB) {
+    csr = csr & 0xfffe; // 割り込み禁止
+
+    // コンテキストの保存
+    sp = sp - 14; // スタックを確保
+    store(sp + 14) = s0;
+    store(sp + 13) = s1;
+    store(sp + 12) = s2;
+    store(sp + 11) = s3;
+    store(sp + 10) = t0;
+    store(sp + 9) = t1;
+    store(sp + 8) = t2;
+    store(sp + 7) = t3;
+    store(sp + 6) = a0;
+    store(sp + 5) = a1;
+    store(sp + 4) = a2;
+    store(sp + 3) = a3;
+    store(sp + 2) = fp;
+    store(sp + 1) = ra;
+
+    // 現在実行中のTCB の更新
+    var tcb: *TCB = load(task_running);
+    tcb*.sp = sp;
+    tcb*.ra = ra;
+
+    // 指定されたタスクの状態を ready に変更
+    task_id*.state = task_state_ready;
+    os_task_scheduler();
+}
+
+fn os_task_scheduler() {
+    // タスクリストから Ready 状態のタスクを探す
+    var cur: *TCB = load(task_list);
+
+    while(cur != 0) {
+        if(cur*.state == task_state_ready) {
+            // Ready状態のタスクを見つけた
+            store(task_running) = cur;
+            os_restore_context();
+            return;
+        }
+        cur = cur*.next;
     }
 
-    // Initialize the system timer
-    timer_init();
+    // Ready状態のタスクが見つからなかった（全てがexitなら終了）
+    _exit();
+}
 
-    // Enable interrupts
-    asm {
-        sei
-    }
+fn os_restore_context() {
+    // タスクを再開
+    var tcb: *TCB = load(task_running);
+    sp = tcb*.sp; // スタックポインタを復元
+    ira = tcb*.ra; // 戻りアドレスを 「IRA」に復元
+
+    // レジスタをスタックから復元
+    ra = load(sp + 1);
+    fp = load(sp + 2);
+    a3 = load(sp + 3);
+    a2 = load(sp + 4);
+    a1 = load(sp + 5);
+    a0 = load(sp + 6);
+    t3 = load(sp + 7);
+    t2 = load(sp + 8);
+    t1 = load(sp + 9);
+    t0 = load(sp + 10);
+    s3 = load(sp + 11);
+    s2 = load(sp + 12);
+    s1 = load(sp + 13);
+    s0 = load(sp + 14);
+
+    sp = sp + 14; // スタックを解放
+    csr = csr | 0x0001; // 割り込み許可
+    iret(); // 中断地点に戻る
+}
+
+// --------------------------------------------------------
+// 排他制御
+
+asm os_lock_init {
+    ; TODO: Implement lock initialization
+    ret
+}
+
+asm os_lock_aloc {
+    ; TODO: Implement lock allocation
+    ; a0: initial state -> return lock id in a0
+    ret
+}
+
+asm os_lock_free {
+    ; TODO: Implement lock free
+    ; a0: lock id
+    ret
 }

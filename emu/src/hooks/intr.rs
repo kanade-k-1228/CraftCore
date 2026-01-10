@@ -49,7 +49,7 @@ impl Hook for Intr {
         }
         state
     }
-    fn exec(&mut self, time: u64, _addr: u16, _code: u32, mut cpu: State) -> State {
+    fn exec(&mut self, time: u64, _: u16, _: u32, mut cpu: State) -> State {
         if let Some(intr) = self.get(time as u16) {
             println!("\x1b[1A\x1b[{}C!{}", INDENT, intr);
             cpu.interrupt();

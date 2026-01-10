@@ -1,6 +1,6 @@
-use crate::{collect::utils::CollectError, eval::normtype::NormType};
+use crate::{error::Error, eval::normtype::NormType};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConstExpr {
     Number(usize),                    // integer literal | 42
     Struct(Vec<(String, ConstExpr)>), // struct literal  | {a: expr1, b: expr2}
@@ -10,7 +10,7 @@ pub enum ConstExpr {
 }
 
 impl ConstExpr {
-    pub fn totype(&self) -> Result<NormType, CollectError> {
+    pub fn typeinfer(&self) -> Result<NormType, Error> {
         Ok(match self {
             ConstExpr::Number(_) => NormType::Int,
             ConstExpr::Char(_) => NormType::Int, // char is represented as int
@@ -18,15 +18,15 @@ impl ConstExpr {
             ConstExpr::Struct(fields) => {
                 let mut list = Vec::new();
                 for (name, field_lit) in fields {
-                    list.push((name.clone(), field_lit.totype()?));
+                    list.push((name.clone(), field_lit.typeinfer()?));
                 }
                 NormType::Struct(list)
             }
             ConstExpr::Array(elems) => {
                 if elems.is_empty() {
-                    return Err(CollectError::CannotInferTypeOfEmptyArray);
+                    return Err(Error::EmptyArrayTypeInference);
                 }
-                NormType::Array(elems.len(), Box::new(elems[0].totype()?))
+                NormType::Array(elems.len(), Box::new(elems[0].typeinfer()?))
             }
         })
     }
@@ -134,6 +134,36 @@ impl ConstExpr {
             ConstExpr::String(s) => s.len() > 20,
             ConstExpr::Array(elems) => elems.len() > 3,
             ConstExpr::Struct(fields) => fields.len() > 2,
+        }
+    }
+
+    /// Serialize a ConstExpr to bytes for binary output
+    pub fn serialize(&self) -> Vec<u8> {
+        match self {
+            ConstExpr::Number(n) => (*n as u32).to_le_bytes().to_vec(),
+            ConstExpr::Char(c) => {
+                vec![*c as u8]
+            }
+            ConstExpr::String(s) => {
+                let mut bytes = s.as_bytes().to_vec();
+                // Add null terminator
+                bytes.push(0);
+                bytes
+            }
+            ConstExpr::Array(exprs) => {
+                let mut result = Vec::new();
+                for expr in exprs {
+                    result.extend(expr.serialize());
+                }
+                result
+            }
+            ConstExpr::Struct(items) => {
+                let mut result = Vec::new();
+                for (_, expr) in items {
+                    result.extend(expr.serialize());
+                }
+                result
+            }
         }
     }
 }

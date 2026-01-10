@@ -1,28 +1,44 @@
-use crate::{
-    collect::{utils::CollectError, ConstMap, TypeMap},
-    eval::constexpr::ConstExpr,
-    grammer::ast,
-};
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NormType {
     Int,                                          // data         | int
+    Void,                                         // void type    | void
     Addr(Box<NormType>),                          // address      | *Type
     Array(usize, Box<NormType>),                  // array        | Type[10]
     Struct(Vec<(String, NormType)>),              // struct       | {a: int, b: Type}
     Func(Vec<(String, NormType)>, Box<NormType>), // function     | (a: int, b: Type) -> Type
-    Error,                                        // placeholder for error
 }
 
 impl NormType {
     pub fn sizeof(&self) -> usize {
         match self {
-            NormType::Int => 1,     // 1 byte for int in this architecture
-            NormType::Addr(_) => 1, // 1 byte for address
+            NormType::Int => 1,
+            NormType::Void => 0,
+            NormType::Addr(_) => 1,
             NormType::Array(len, elem) => len * elem.sizeof(),
             NormType::Struct(fields) => fields.iter().map(|(_, elem)| elem.sizeof()).sum(),
-            NormType::Func(_, _) => 0, // Funtion has no space on RAM
-            NormType::Error => 0,
+            NormType::Func(_, _) => 0,
+        }
+    }
+
+    /// Get field offset from a struct type
+    pub fn get_field_offset(&self, field: &str) -> Option<usize> {
+        if let NormType::Struct(fields) = self {
+            let mut offset = 0;
+            for (name, ty) in fields {
+                if name == field {
+                    return Some(offset);
+                }
+                offset += ty.sizeof();
+            }
+        }
+        None
+    }
+
+    /// Get array element offset for a given index
+    pub fn get_array_offset(&self, index: usize) -> Option<usize> {
+        match self {
+            NormType::Array(_, elem) => Some(index * elem.sizeof()),
+            _ => None,
         }
     }
 }
@@ -31,6 +47,7 @@ impl NormType {
     pub fn fmt(&self) -> String {
         match self {
             NormType::Int => "int".to_string(),
+            NormType::Void => "void".to_string(),
             NormType::Addr(inner) => format!("*{}", inner.fmt()),
             NormType::Array(len, elem) => format!("{}[{}]", elem.fmt(), len),
             NormType::Struct(fields) => {
@@ -47,57 +64,6 @@ impl NormType {
                 }
                 format!("fn({}) -> {}", strs.join(", "), ret.fmt())
             }
-            NormType::Error => "error".to_string(),
         }
-    }
-}
-
-pub fn collect_type(
-    ty: &ast::Type,
-    consts: &ConstMap,
-    types: &TypeMap,
-) -> Result<NormType, CollectError> {
-    match ty {
-        ast::Type::Int => Ok(NormType::Int),
-        ast::Type::Custom(name) => match types.0.get(name) {
-            Some((flat, _)) => Ok(flat.clone()),
-            None => Err(CollectError::TODO),
-        },
-        ast::Type::Addr(inner) => Ok(NormType::Addr(Box::new(collect_type(
-            inner, consts, types,
-        )?))),
-        ast::Type::Array(len, ty) => {
-            let len = match len {
-                ast::Expr::NumberLit(n) => *n,
-                ast::Expr::Ident(name) => match consts.0.get(name) {
-                    Some((_, expr, _)) => match expr {
-                        ConstExpr::Number(n) => *n,
-                        _ => return Err(CollectError::TODO),
-                    },
-                    None => return Err(CollectError::TODO),
-                },
-                _ => return Err(CollectError::NonLiteralArrayLength(Box::new(len.clone()))),
-            };
-            let ty = collect_type(ty, consts, types)?;
-            Ok(NormType::Array(len, Box::new(ty)))
-        }
-        ast::Type::Struct(fields) => {
-            let mut rets = Vec::<(String, NormType)>::new();
-            for (name, ty) in fields {
-                let ty = collect_type(&ty, consts, types)?;
-                rets.push((name.clone(), ty));
-            }
-            Ok(NormType::Struct(rets))
-        }
-        ast::Type::Func(params, ret) => {
-            let ty = collect_type(ret, consts, types)?;
-            let mut rets = Vec::<(String, NormType)>::new();
-            for (name, ty) in params {
-                let ty = collect_type(&ty, consts, types)?;
-                rets.push((name.clone(), ty));
-            }
-            Ok(NormType::Func(rets, Box::new(ty)))
-        }
-        ast::Type::Error => Ok(NormType::Error),
     }
 }

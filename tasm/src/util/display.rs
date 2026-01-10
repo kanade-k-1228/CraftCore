@@ -1,35 +1,25 @@
-use crate::collect::{AsmMap, ConstMap, FuncMap, StaticMap};
-use crate::convert::Code;
-use crate::link::structs::AsmInst;
-use bimap::BiMap;
+use crate::compile::Code;
+use crate::eval::global::Global;
 use color_print::cprintln;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
-pub fn binprint(
-    imap: &BiMap<String, u16>,
-    dmap: &BiMap<String, u16>,
-    codes: &HashMap<String, Code>,
-    statics: &StaticMap,
-    consts: &ConstMap,
-    asms: &AsmMap,
-    funcs: &FuncMap,
+pub fn binprint<'a>(
+    imap: &IndexMap<String, usize>,
+    dmap: &IndexMap<String, usize>,
+    codes: &IndexMap<&'a str, Code>,
+    evaluator: &Global<'a>,
 ) {
     // Program Memory Layout
     let mut iblocks: Vec<_> = imap
         .iter()
         .map(|(name, addr)| {
-            let code = codes.get(name);
-            let size = code.map_or(0, |c| {
-                c.instructions
-                    .iter()
-                    .filter(|line| matches!(line.inst, AsmInst::Inst(_)))
-                    .count()
-            }) as u16;
+            let code = codes.get(name.as_str());
+            let size = code.map_or(0, |c| c.0.len());
             // Get type information
-            let (type_info, signature) = if asms.0.contains_key(name) {
+            let (type_info, signature) = if evaluator.asms().contains_key(name.as_str()) {
                 ("asm", String::new())
-            } else if let Some((func_type, _)) = funcs.0.get(name) {
-                ("func", func_type.fmt())
+            } else if let Some((norm_type, _, _)) = evaluator.funcs().get(name.as_str()) {
+                ("func", norm_type.fmt())
             } else {
                 ("unknown", String::new())
             };
@@ -49,25 +39,20 @@ pub fn binprint(
 
         if let Some(code) = code {
             let mut current_addr = addr;
-            for line in &code.instructions {
-                match &line.inst {
-                    AsmInst::Inst(inst) => {
-                        let asm_text = inst.cformat();
-                        let bin = inst.clone().to_op().to_bin();
-                        let bytes = bin.to_le_bytes();
-                        cprintln!(
-                            "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",
-                            current_addr,
-                            bytes[0],
-                            bytes[1],
-                            bytes[2],
-                            bytes[3],
-                            asm_text
-                        );
-                        current_addr += 1;
-                    }
-                    _ => {}
-                }
+            for (inst, _symbol) in &code.0 {
+                let asm_text = inst.cformat();
+                let bin = inst.clone().to_op().to_bin();
+                let bytes = bin.to_le_bytes();
+                cprintln!(
+                    "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",
+                    current_addr,
+                    bytes[0],
+                    bytes[1],
+                    bytes[2],
+                    bytes[3],
+                    asm_text
+                );
+                current_addr += 1;
             }
         } else {
             for a in addr..(addr + size) {
@@ -81,13 +66,14 @@ pub fn binprint(
     let mut dblocks: Vec<_> = dmap
         .iter()
         .map(|(name, addr)| {
-            let (size, ty, kind) = if let Some((ty, _)) = statics.0.get(name) {
-                (ty.sizeof() as u16, ty.fmt(), "static")
-            } else if let Some((ty, _, _)) = consts.0.get(name) {
-                (ty.sizeof() as u16, ty.fmt(), "const")
-            } else {
-                (0, "unknown".to_string(), "unknown")
-            };
+            let (size, ty, kind) =
+                if let Some((norm_type, _, _)) = evaluator.statics().get(name.as_str()) {
+                    (norm_type.sizeof(), norm_type.fmt(), "static")
+                } else if let Some((norm_type, _, _, _)) = evaluator.consts().get(name.as_str()) {
+                    (norm_type.sizeof(), norm_type.fmt(), "const")
+                } else {
+                    (0, "unknown".to_string(), "unknown")
+                };
             (kind, name.clone(), *addr, size, ty)
         })
         .collect();

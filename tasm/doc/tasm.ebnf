@@ -1,0 +1,86 @@
+(* TASM Grammar in EBNF *)
+
+program = { def } ;
+
+(* Type -------------------------------------------------------------------- *)
+
+type = "int"
+     | "void"
+     | ident
+     | "*" type
+     | "[" expr "]" type
+     | "{" [ ident ":" type { "," ident ":" type } ] "}"
+     | "(" [ ident ":" type { "," ident ":" type } ] ")" "->" type ;
+
+(* Definitions ------------------------------------------------------------- *)
+
+def = "type" ident "=" type ";"
+    | "const" [ "@" expr ] ident "=" expr ";"
+    | "static" [ "@" expr ] ident ":" type ";"
+    | "asm" [ "@" expr ] ident "{" { asm-stmt } "}"
+    | "fn" ident "(" [ ident ":" type { "," ident ":" type } ] ")" [ "->" type ] "{" { stmt } "}" ;
+
+asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" ";" ;
+
+(* Statements -------------------------------------------------------------- *)
+
+stmt = "{" { stmt } "}" 
+     | "var" ident ":" type [ "=" expr ] ";" 
+     | "if" "(" expr ")" stmt [ "else" stmt ]
+     | "while" "(" expr ")" stmt
+     | "return" [ expr ] ";"
+     | expr "=" expr ";"
+     | expr ";" ;
+
+(* Expressions ------------------------------------------------------------- *)
+
+expr = or-expr ;
+
+or-expr = xor-expr { "|" xor-expr } ;
+xor-expr = and-expr { "^" and-expr } ;
+and-expr = eq-expr { "&" eq-expr } ;
+eq-expr = rel-expr { ( "==" | "!=" ) rel-expr } ;
+rel-expr = shift-expr [ ( "<" | "<=" | ">" | ">=" ) shift-expr ] ;
+shift-expr = add-expr [ ( "<<" | ">>" ) add-expr ] ;
+add-expr = mul-expr { ( "+" | "-" ) mul-expr } ;
+mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ] ;
+
+unary-expr = ( "+" | "-" | "!" ) unary-expr | postfix-expr ;
+
+postfix-expr = prim-expr { postfix-op } ;
+postfix-op = "(" [ expr { "," expr } ] ")"
+           | "[" expr "]"
+           | "." ident
+           | "*"
+           | "@"
+           | "as" type ;
+
+prim-expr = "(" expr ")"
+          | ident
+          | num-lit
+          | char-lit
+          | string-lit
+          | "[" [ expr { "," expr } ] "]"
+          | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
+          | "sizeof" "<" type ">"
+          | "sizeof" "(" expr ")" ;
+
+(* Terminal Symbols -------------------------------------------------------- *)
+
+whitespace = " " | "\t" | "\n" | "\r" ;
+
+(* Identifiers *)
+ident = ( "A".."Z" | "a".."z" | "_" ) { "0".."9" | "A".."Z" | "a".."z" | "_" } ;
+
+(* Number literal *)
+num-lit = hex | oct | bin | dec ;
+hex = "0x" { "_" | "0".."9" | "A".."F" | "a".."f" } ;
+oct = "0o" { "_" | "0".."7" } ;
+bin = "0b" { "_" | "0" | "1" } ;
+dec = "0".."9" { "0".."9" | "_" } ;
+
+(* String and Character literals *)
+string-lit = '"' { char } '"' ;
+char-lit = "'" char "'" ;
+char = esc | ? any character except ' and \ ? ;
+esc = "\" ( "n" | "t" | "r" | "\" | "'" | '"' | "0" ) ;
