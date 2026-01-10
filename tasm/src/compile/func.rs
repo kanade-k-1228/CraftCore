@@ -69,7 +69,7 @@ impl<'a> FuncCompiler<'a> {
         Ok(Code(insts))
     }
 
-    fn prologue(args: &[(String, NormType)]) -> Vec<(Inst, Option<Imm>)> {
+    fn prologue(args: &[(String, NormType)]) -> Vec<Inst<Reg, Imm>> {
         let mut insts = Vec::new();
 
         // Calculate total size needed for saved registers (RA + FP)
@@ -86,15 +86,15 @@ impl<'a> FuncCompiler<'a> {
 
         // 1. Allocate stack space
         if stack_alloc > 0 {
-            insts.push((Inst::SUBI(Reg::SP, Reg::SP, stack_alloc), None));
+            insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Literal(stack_alloc)));
         }
 
         // 2. Save return address and frame pointer
-        insts.push((Inst::STORE(Reg::RA, Reg::SP, 0), None));
-        insts.push((Inst::STORE(Reg::FP, Reg::SP, 1), None));
+        insts.push(Inst::STORE(Reg::RA, Reg::SP, Imm::Literal(0)));
+        insts.push(Inst::STORE(Reg::FP, Reg::SP, Imm::Literal(1)));
 
         // 3. Set new frame pointer
-        insts.push((Inst::MOV(Reg::FP, Reg::SP), None));
+        insts.push(Inst::MOV(Reg::FP, Reg::SP));
 
         // 4. Save arguments to stack
         // First 2 arguments come in A0, A1 registers
@@ -114,7 +114,7 @@ impl<'a> FuncCompiler<'a> {
                 // Store each word of the argument
                 for j in 0..arg_size {
                     if j == 0 {
-                        insts.push((Inst::STORE(arg_reg, Reg::FP, offset + j), None));
+                        insts.push(Inst::STORE(arg_reg, Reg::FP, Imm::Literal(offset + j)));
                     } else {
                         // For multi-word arguments, would need to handle appropriately
                         // For now, assume single-word arguments
@@ -129,7 +129,7 @@ impl<'a> FuncCompiler<'a> {
         insts
     }
 
-    fn epilogue(args: &[(String, NormType)], _ret: &NormType) -> Vec<(Inst, Option<Imm>)> {
+    fn epilogue(args: &[(String, NormType)], _ret: &NormType) -> Vec<Inst<Reg, Imm>> {
         let mut insts = Vec::new();
 
         // Calculate stack sizes
@@ -141,24 +141,24 @@ impl<'a> FuncCompiler<'a> {
         let stack_alloc = saved_regs_size + args_stack_size;
 
         // 1. Restore stack pointer (discard local variables)
-        insts.push((Inst::MOV(Reg::SP, Reg::FP), None));
+        insts.push(Inst::MOV(Reg::SP, Reg::FP));
 
         // 2. Restore frame pointer and return address
-        insts.push((Inst::LOAD(Reg::FP, Reg::SP, 1), None));
-        insts.push((Inst::LOAD(Reg::RA, Reg::SP, 0), None));
+        insts.push(Inst::LOAD(Reg::FP, Reg::SP, Imm::Literal(1)));
+        insts.push(Inst::LOAD(Reg::RA, Reg::SP, Imm::Literal(0)));
 
         // 3. Deallocate stack frame
         if stack_alloc > 0 {
-            insts.push((Inst::ADDI(Reg::SP, Reg::SP, stack_alloc), None));
+            insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Literal(stack_alloc)));
         }
 
         // 4. Return to caller
-        insts.push((Inst::RET(), None));
+        insts.push(Inst::RET());
 
         insts
     }
 
-    fn compile_stmt(&mut self, stmt: &'a ast::Stmt) -> Result<Vec<(Inst, Option<Imm>)>, Error> {
+    fn compile_stmt(&mut self, stmt: &'a ast::Stmt) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match stmt {
             ast::Stmt::Block(stmts) => {
                 let mut insts = Vec::new();
@@ -196,10 +196,10 @@ impl<'a> FuncCompiler<'a> {
 
                     Ok(chain!(
                         cond_insts,
-                        vec![(Inst::NOT(Reg::T1, cond_reg), None)],
-                        vec![(Inst::JUMPIFR(Reg::T1, else_jump_offset), None)],
+                        vec![Inst::NOT(Reg::T1, cond_reg)],
+                        vec![Inst::JUMPIFR(Reg::T1, Imm::Literal(else_jump_offset))],
                         then_insts,
-                        vec![(Inst::JUMPR(end_jump_offset), None)],
+                        vec![Inst::JUMPR(Imm::Literal(end_jump_offset))],
                         else_insts
                     )
                     .collect())
@@ -209,8 +209,8 @@ impl<'a> FuncCompiler<'a> {
 
                     Ok(chain!(
                         cond_insts,
-                        vec![(Inst::NOT(Reg::T1, cond_reg), None)],
-                        vec![(Inst::JUMPIFR(Reg::T1, jump_offset), None)],
+                        vec![Inst::NOT(Reg::T1, cond_reg)],
+                        vec![Inst::JUMPIFR(Reg::T1, Imm::Literal(jump_offset))],
                         then_insts
                     )
                     .collect())
@@ -230,10 +230,10 @@ impl<'a> FuncCompiler<'a> {
 
                 Ok(chain!(
                     cond_insts.clone(),
-                    vec![(Inst::NOT(Reg::T1, cond_reg), None)],
-                    vec![(Inst::JUMPIFR(Reg::T1, exit_offset), None)],
+                    vec![Inst::NOT(Reg::T1, cond_reg)],
+                    vec![Inst::JUMPIFR(Reg::T1, Imm::Literal(exit_offset))],
                     body_insts,
-                    vec![(Inst::JUMPR(loop_offset), None)]
+                    vec![Inst::JUMPR(Imm::Literal(loop_offset))]
                 )
                 .collect())
             }
@@ -251,7 +251,7 @@ impl<'a> FuncCompiler<'a> {
 
                     Ok(chain!(
                         init_insts,
-                        vec![(Inst::STORE(init_reg, Reg::FP, store_offset), None)]
+                        vec![Inst::STORE(init_reg, Reg::FP, Imm::Literal(store_offset))]
                     )
                     .collect())
                 } else {
@@ -266,15 +266,15 @@ impl<'a> FuncCompiler<'a> {
                     if expr_reg != Reg::A0 {
                         Ok(chain!(
                             expr_insts,
-                            vec![(Inst::MOV(Reg::A0, expr_reg), None)],
-                            vec![(Inst::RET(), None)]
+                            vec![Inst::MOV(Reg::A0, expr_reg)],
+                            vec![Inst::RET()]
                         )
                         .collect())
                     } else {
-                        Ok(chain!(expr_insts, vec![(Inst::RET(), None)]).collect())
+                        Ok(chain!(expr_insts, vec![Inst::RET()]).collect())
                     }
                 } else {
-                    Ok(vec![(Inst::RET(), None)])
+                    Ok(vec![Inst::RET()])
                 }
             }
         }
@@ -284,26 +284,24 @@ impl<'a> FuncCompiler<'a> {
         &mut self,
         expr: &'a ast::Expr,
         target: Reg,
-    ) -> Result<(Vec<(Inst, Option<Imm>)>, Reg), Error> {
+    ) -> Result<(Vec<Inst<Reg, Imm>>, Reg), Error> {
         let (insts, result_reg) = match expr {
             ast::Expr::NumberLit(n) => {
                 let mut insts = Vec::new();
-                insts.push((Inst::LOADI(target, *n as u16), None));
+                insts.push(Inst::LOADI(target, Imm::Literal(*n as u16)));
                 (insts, target)
             }
 
             ast::Expr::CharLit(c) => {
                 let mut insts = Vec::new();
-                insts.push((Inst::LOADI(target, *c as u16), None));
+                insts.push(Inst::LOADI(target, Imm::Literal(*c as u16)));
                 (insts, target)
             }
 
             ast::Expr::StringLit(_s) => {
                 let mut insts = Vec::new();
-                insts.push((
-                    Inst::LOADI(target, 0),
-                    Some(Imm::Symbol("string_placeholder".to_string(), 0)),
-                ));
+                // For string literals, we use a symbol that will be resolved later
+                insts.push(Inst::LOADI(target, Imm::Symbol("string_placeholder".to_string(), 0)));
                 (insts, target)
             }
 
@@ -313,13 +311,10 @@ impl<'a> FuncCompiler<'a> {
                 if let Some(offset) = self.local.offset(name) {
                     // Note: offset is negative (below FP), need to negate for LOAD instruction
                     let load_offset = (-offset) as u16;
-                    insts.push((Inst::LOAD(target, Reg::FP, load_offset), None));
+                    insts.push(Inst::LOAD(target, Reg::FP, Imm::Literal(load_offset)));
                 } else {
                     // Could be a global/static - emit with symbol reference
-                    insts.push((
-                        Inst::LOADI(target, 0), // Address will be resolved later
-                        Some(Imm::Symbol(name.clone(), 0)),
-                    ));
+                    insts.push(Inst::LOADI(target, Imm::Symbol(name.clone(), 0)));
                 }
                 (insts, target)
             }
@@ -331,28 +326,28 @@ impl<'a> FuncCompiler<'a> {
 
                 // Generate operation
                 let op_insts = match op {
-                    ast::BinaryOp::Add => vec![(Inst::ADD(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::Sub => vec![(Inst::SUB(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::And => vec![(Inst::AND(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::Or => vec![(Inst::OR(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::Xor => vec![(Inst::XOR(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::Eq => vec![(Inst::EQ(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::Ne => vec![(Inst::NEQ(target, lhs_reg, rhs_reg), None)],
-                    ast::BinaryOp::Lt => vec![(Inst::LT(target, lhs_reg, rhs_reg), None)],
+                    ast::BinaryOp::Add => vec![Inst::ADD(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::Sub => vec![Inst::SUB(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::And => vec![Inst::AND(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::Or => vec![Inst::OR(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::Xor => vec![Inst::XOR(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::Eq => vec![Inst::EQ(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::Ne => vec![Inst::NEQ(target, lhs_reg, rhs_reg)],
+                    ast::BinaryOp::Lt => vec![Inst::LT(target, lhs_reg, rhs_reg)],
                     ast::BinaryOp::Le => vec![
-                        (Inst::LT(Reg::T2, rhs_reg, lhs_reg), None),
-                        (Inst::NOT(target, Reg::T2), None),
+                        Inst::LT(Reg::T2, rhs_reg, lhs_reg),
+                        Inst::NOT(target, Reg::T2),
                     ],
-                    ast::BinaryOp::Gt => vec![(Inst::LT(target, rhs_reg, lhs_reg), None)],
+                    ast::BinaryOp::Gt => vec![Inst::LT(target, rhs_reg, lhs_reg)],
                     ast::BinaryOp::Ge => vec![
-                        (Inst::LT(Reg::T2, lhs_reg, rhs_reg), None),
-                        (Inst::NOT(target, Reg::T2), None),
+                        Inst::LT(Reg::T2, lhs_reg, rhs_reg),
+                        Inst::NOT(target, Reg::T2),
                     ],
-                    ast::BinaryOp::Shl => vec![(Inst::SL(target, lhs_reg), None)],
-                    ast::BinaryOp::Shr => vec![(Inst::SR(target, lhs_reg), None)],
+                    ast::BinaryOp::Shl => vec![Inst::SL(target, lhs_reg)],
+                    ast::BinaryOp::Shr => vec![Inst::SR(target, lhs_reg)],
                     _ => {
                         // Mul, Div, Mod not directly supported - would need software implementation
-                        vec![(Inst::LOADI(target, 0), None)]
+                        vec![Inst::LOADI(target, Imm::Literal(0))]
                     }
                 };
 
@@ -366,19 +361,19 @@ impl<'a> FuncCompiler<'a> {
                     ast::UnaryOp::Pos => {
                         // Positive is a no-op, just move the value
                         if operand_reg != target {
-                            vec![(Inst::MOV(target, operand_reg), None)]
+                            vec![Inst::MOV(target, operand_reg)]
                         } else {
                             vec![]
                         }
                     }
                     ast::UnaryOp::Neg => {
                         vec![
-                            (Inst::LOADI(Reg::T1, 0), None),
-                            (Inst::SUB(target, Reg::T1, operand_reg), None),
+                            Inst::LOADI(Reg::T1, Imm::Literal(0)),
+                            Inst::SUB(target, Reg::T1, operand_reg),
                         ]
                     }
                     ast::UnaryOp::Not => {
-                        vec![(Inst::NOT(target, operand_reg), None)]
+                        vec![Inst::NOT(target, operand_reg)]
                     }
                 };
 
@@ -390,7 +385,7 @@ impl<'a> FuncCompiler<'a> {
 
                 let insts = chain!(
                     operand_insts,
-                    vec![(Inst::LOAD(target, operand_reg, 0), None)]
+                    vec![Inst::LOAD(target, operand_reg, Imm::Literal(0))]
                 )
                 .collect();
                 (insts, target)
@@ -402,7 +397,7 @@ impl<'a> FuncCompiler<'a> {
                 let (operand_insts, operand_reg) = self.compile_expr(operand, Reg::T0)?;
 
                 let insts = if operand_reg != target {
-                    chain!(operand_insts, vec![(Inst::MOV(target, operand_reg), None)]).collect()
+                    chain!(operand_insts, vec![Inst::MOV(target, operand_reg)]).collect()
                 } else {
                     operand_insts
                 };
@@ -425,39 +420,36 @@ impl<'a> FuncCompiler<'a> {
                             _ => unreachable!(),
                         };
                         if arg_reg != dest_reg {
-                            insts.push((Inst::MOV(dest_reg, arg_reg), None));
+                            insts.push(Inst::MOV(dest_reg, arg_reg));
                         }
                     } else {
                         // Additional args go on stack
-                        insts.push((Inst::SUBI(Reg::SP, Reg::SP, 1), None));
-                        insts.push((Inst::STORE(arg_reg, Reg::SP, 0), None));
+                        insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Literal(1)));
+                        insts.push(Inst::STORE(arg_reg, Reg::SP, Imm::Literal(0)));
                     }
                 }
 
                 // Call the function
                 if let ast::Expr::Ident(func_name) = &**func_expr {
-                    insts.push((
-                        Inst::CALL(0), // Address will be resolved later
-                        Some(Imm::Symbol(func_name.clone(), 0)),
-                    ));
+                    insts.push(Inst::CALL(Imm::Symbol(func_name.clone(), 0)));
                 } else {
                     // Indirect call through register
                     let (func_insts, _func_reg) = self.compile_expr(func_expr, Reg::T0)?;
                     insts.extend(func_insts);
                     // Would need a CALLR instruction for indirect calls
                     // For now, just use placeholder
-                    insts.push((Inst::NOP(), None));
+                    insts.push(Inst::NOP());
                 }
 
                 // Clean up stack if we pushed arguments
                 let stack_args = if args.len() > 2 { args.len() - 2 } else { 0 };
                 if stack_args > 0 {
-                    insts.push((Inst::ADDI(Reg::SP, Reg::SP, stack_args as u16), None));
+                    insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Literal(stack_args as u16)));
                 }
 
                 // Result is in A0, move to target if needed
                 if target != Reg::A0 {
-                    insts.push((Inst::MOV(target, Reg::A0), None));
+                    insts.push(Inst::MOV(target, Reg::A0));
                 }
                 (insts, target)
             }
@@ -470,7 +462,7 @@ impl<'a> FuncCompiler<'a> {
                 insts.extend(cond_insts);
 
                 // Jump to else if false
-                insts.push((Inst::NOT(Reg::T1, cond_reg), None));
+                insts.push(Inst::NOT(Reg::T1, cond_reg));
 
                 // Compile both branches
                 let (then_insts, then_reg) = self.compile_expr(then_expr, target)?;
@@ -478,27 +470,27 @@ impl<'a> FuncCompiler<'a> {
 
                 // Jump to else if condition is false
                 let else_jump_offset = (then_insts.len() + 1) as u16; // +1 for the end jump
-                insts.push((Inst::JUMPIFR(Reg::T1, else_jump_offset), None));
+                insts.push(Inst::JUMPIFR(Reg::T1, Imm::Literal(else_jump_offset)));
 
                 // Then expression
                 insts.extend(then_insts);
                 if then_reg != target {
-                    insts.push((Inst::MOV(target, then_reg), None));
+                    insts.push(Inst::MOV(target, then_reg));
                 }
 
                 // Jump over else
                 let end_jump_offset = else_insts.len() as u16;
                 if else_reg != target {
                     // +1 for the MOV instruction
-                    insts.push((Inst::JUMPR(end_jump_offset + 1), None));
+                    insts.push(Inst::JUMPR(Imm::Literal(end_jump_offset + 1)));
                 } else {
-                    insts.push((Inst::JUMPR(end_jump_offset), None));
+                    insts.push(Inst::JUMPR(Imm::Literal(end_jump_offset)));
                 }
 
                 // Else expression
                 insts.extend(else_insts);
                 if else_reg != target {
-                    insts.push((Inst::MOV(target, else_reg), None));
+                    insts.push(Inst::MOV(target, else_reg));
                 }
 
                 (insts, target)
@@ -512,14 +504,14 @@ impl<'a> FuncCompiler<'a> {
                     .normtype(typ)
                     .map_err(|_| Error::TypeCollectionFailed("sizeof".to_string()))?;
                 let size = norm_type.sizeof() as u16;
-                insts.push((Inst::LOADI(target, size), None));
+                insts.push(Inst::LOADI(target, Imm::Literal(size)));
                 (insts, target)
             }
 
             _ => {
                 let mut insts = Vec::new();
                 // Other expression types not yet implemented
-                insts.push((Inst::LOADI(target, 0), None));
+                insts.push(Inst::LOADI(target, Imm::Literal(0)));
                 (insts, target)
             }
         };
@@ -531,20 +523,17 @@ impl<'a> FuncCompiler<'a> {
         &mut self,
         lvalue: &'a ast::Expr,
         value_reg: Reg,
-    ) -> Result<Vec<(Inst, Option<Imm>)>, Error> {
+    ) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match lvalue {
             ast::Expr::Ident(name) => {
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
                     // Note: offset is negative (below FP), need to negate for STORE instruction
                     let store_offset = (-offset) as u16;
-                    insts.push((Inst::STORE(value_reg, Reg::FP, store_offset), None));
+                    insts.push(Inst::STORE(value_reg, Reg::FP, Imm::Literal(store_offset)));
                 } else {
                     // Global/static variable - emit with symbol reference
-                    insts.push((
-                        Inst::STORE(value_reg, Reg::Z, 0), // Address will be resolved later
-                        Some(Imm::Symbol(name.clone(), 0)),
-                    ));
+                    insts.push(Inst::STORE(value_reg, Reg::Z, Imm::Symbol(name.clone(), 0)));
                 }
                 Ok(insts)
             }
@@ -554,7 +543,7 @@ impl<'a> FuncCompiler<'a> {
                 let (addr_insts, addr_reg) = self.compile_expr(addr_expr, Reg::T1)?;
                 Ok(chain!(
                     addr_insts,
-                    vec![(Inst::STORE(value_reg, addr_reg, 0), None)]
+                    vec![Inst::STORE(value_reg, addr_reg, Imm::Literal(0))]
                 )
                 .collect())
             }
@@ -567,8 +556,8 @@ impl<'a> FuncCompiler<'a> {
                 Ok(chain!(
                     array_insts,
                     index_insts,
-                    vec![(Inst::ADD(Reg::T1, array_reg, index_reg), None)],
-                    vec![(Inst::STORE(value_reg, Reg::T1, 0), None)]
+                    vec![Inst::ADD(Reg::T1, array_reg, index_reg)],
+                    vec![Inst::STORE(value_reg, Reg::T1, Imm::Literal(0))]
                 )
                 .collect())
             }
@@ -579,7 +568,7 @@ impl<'a> FuncCompiler<'a> {
                 let (struct_insts, struct_reg) = self.compile_expr(struct_expr, Reg::T1)?;
                 Ok(chain!(
                     struct_insts,
-                    vec![(Inst::STORE(value_reg, struct_reg, 0), None)]
+                    vec![Inst::STORE(value_reg, struct_reg, Imm::Literal(0))]
                 )
                 .collect())
             }

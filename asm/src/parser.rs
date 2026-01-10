@@ -230,7 +230,7 @@ impl Code {
 }
 
 impl Code {
-    pub fn resolve(&self, idents: &Idents) -> Result<Inst, error::Error> {
+    pub fn resolve(&self, idents: &Idents) -> Result<Inst<Reg, u16>, error::Error> {
         match self {
             Code::ADD(rd, rs1, rs2) => Ok(Inst::ADD(*rd, *rs1, *rs2)),
             Code::SUB(rd, rs1, rs2) => Ok(Inst::SUB(*rd, *rs1, *rs2)),

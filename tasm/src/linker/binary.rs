@@ -2,100 +2,71 @@ use crate::compile::{Code, Imm};
 use crate::error::Error;
 use crate::eval::global::Global;
 use indexmap::IndexMap;
+use arch::reg::Reg;
 
 /// Resolve symbols in the code using the memory maps
+/// Returns a map of code blocks with resolved u16 immediates
 pub fn resolve_symbols<'a>(
     codes: &IndexMap<&'a str, Code>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
     evaluator: &Global,
-) -> IndexMap<&'a str, Code> {
+) -> IndexMap<&'a str, Vec<arch::inst::Inst<Reg, u16>>> {
     let mut resolved = IndexMap::new();
 
     for (&name, code) in codes {
         let mut resolved_insts = Vec::new();
 
         // Resolve symbols in each instruction
-        for (inst, symbol_opt) in &code.0 {
-            if let Some(imm) = symbol_opt {
-                match imm {
-                    Imm::Symbol(symbol, calc_offset) => {
-                        // Simple symbol resolution - the offset has already been calculated in asm2code.rs
-                        // The symbol here is the base identifier, and calc_offset is the calculated offset from expressions
-                        let addr = evaluator
-                            .consts()
-                            .get(symbol.as_str())
-                            .and_then(|(_, value, _, _)| {
-                                // Check if it's a constant - use its value directly
-                                if let crate::eval::constexpr::ConstExpr::Number(n) = value {
-                                    Some(*n as usize)
-                                } else {
-                                    None
-                                }
-                            })
-                            .or_else(|| imap.get(symbol).copied())
-                            .or_else(|| dmap.get(symbol).copied());
+        for inst in &code.0 {
+            // Use the resolve method to convert Inst<Reg, Imm> to Inst<Reg, u16>
+            let resolved_inst = inst.clone().resolve(|imm| match imm {
+                Imm::Symbol(symbol, calc_offset) => {
+                    // Simple symbol resolution - the offset has already been calculated in asm2code.rs
+                    // The symbol here is the base identifier, and calc_offset is the calculated offset from expressions
+                    let addr = evaluator
+                        .consts()
+                        .get(symbol.as_str())
+                        .and_then(|(_, value, _, _)| {
+                            // Check if it's a constant - use its value directly
+                            if let crate::eval::constexpr::ConstExpr::Number(n) = value {
+                                Some(*n as usize)
+                            } else {
+                                None
+                            }
+                        })
+                        .or_else(|| imap.get(&symbol).copied())
+                        .or_else(|| dmap.get(&symbol).copied());
 
-                        if let Some(resolved_addr) = addr {
-                            // Update instruction with resolved address
-                            // Add the calculated offset to the resolved base address
-                            use arch::inst::Inst;
-                            let final_addr = (resolved_addr + calc_offset) as u16;
-                            let updated_inst = match inst {
-                                Inst::LOADI(rd, _) => Inst::LOADI(*rd, final_addr),
-                                Inst::STORE(rs2, rs1, _) => Inst::STORE(*rs2, *rs1, final_addr),
-                                Inst::LOAD(rd, rs, _) => Inst::LOAD(*rd, *rs, final_addr),
-                                Inst::JUMPIF(cond, _) => Inst::JUMPIF(*cond, final_addr),
-                                Inst::JUMPIFR(cond, _) => Inst::JUMPIFR(*cond, final_addr),
-                                Inst::JUMP(_) => Inst::JUMP(final_addr),
-                                Inst::JUMPR(_) => Inst::JUMPR(final_addr),
-                                Inst::CALL(_) => Inst::CALL(final_addr),
-                                Inst::ADDI(rd, rs, _) => Inst::ADDI(*rd, *rs, final_addr),
-                                Inst::SUBI(rd, rs, _) => Inst::SUBI(*rd, *rs, final_addr),
-                                Inst::ANDI(rd, rs, _) => Inst::ANDI(*rd, *rs, final_addr),
-                                Inst::ORI(rd, rs, _) => Inst::ORI(*rd, *rs, final_addr),
-                                Inst::XORI(rd, rs, _) => Inst::XORI(*rd, *rs, final_addr),
-                                Inst::EQI(rd, rs, _) => Inst::EQI(*rd, *rs, final_addr),
-                                Inst::NEQI(rd, rs, _) => Inst::NEQI(*rd, *rs, final_addr),
-                                Inst::LTI(rd, rs, _) => Inst::LTI(*rd, *rs, final_addr),
-                                Inst::LTSI(rd, rs, _) => Inst::LTSI(*rd, *rs, final_addr),
-                                _ => inst.clone(),
-                            };
-                            resolved_insts.push((updated_inst, None));
-                        } else {
-                            // Symbol not found - keep original
-                            resolved_insts.push((
-                                inst.clone(),
-                                Some(Imm::Symbol(symbol.clone(), *calc_offset)),
-                            ));
-                        }
-                    }
-                    Imm::Literal(_) => {
-                        // Literal values don't need resolution
-                        resolved_insts.push((inst.clone(), Some(imm.clone())));
+                    if let Some(resolved_addr) = addr {
+                        // Add the calculated offset to the resolved base address
+                        (resolved_addr + calc_offset) as u16
+                    } else {
+                        // Symbol not found - use 0 as placeholder
+                        // In a real system, this should probably be an error
+                        0
                     }
                 }
-            } else {
-                // No symbol to resolve
-                resolved_insts.push((inst.clone(), None));
-            }
+                Imm::Literal(val) => val,
+            });
+            resolved_insts.push(resolved_inst);
         }
 
-        resolved.insert(name, Code(resolved_insts));
+        resolved.insert(name, resolved_insts);
     }
 
     resolved
 }
 
 pub fn genibin<'a>(
-    codes: &IndexMap<&'a str, Code>,
+    codes: &IndexMap<&'a str, Vec<arch::inst::Inst<Reg, u16>>>,
     pmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, Error> {
     let max_addr = pmmap
         .iter()
         .filter_map(|(name, addr)| {
             codes.get(name.as_str()).map(|code| {
-                let size = code.0.len() * 4; // Each instruction is 4 bytes
+                let size = code.len() * 4; // Each instruction is 4 bytes
                 addr + size
             })
         })
@@ -109,7 +80,7 @@ pub fn genibin<'a>(
     for (&name, code) in codes {
         if let Some(&addr) = pmmap.get(&name.to_string()) {
             let mut offset = addr;
-            for (inst, _) in &code.0 {
+            for inst in code {
                 let op = inst.clone().to_op();
                 let bin = op.to_bin();
                 let bytes = bin.to_le_bytes();

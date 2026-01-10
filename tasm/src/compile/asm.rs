@@ -17,10 +17,10 @@ pub fn asm2code<'a>(globals: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, E
     Ok(result)
 }
 
-fn gen_asm<'a>(stmts: &'a [ast::AsmStmt], globals: &'a Global<'a>) -> Result<Code, Error> {
+fn gen_asm<'a>(stmts: &'a [ast::Asm], globals: &'a Global<'a>) -> Result<Code, Error> {
     // 1. Collect label
     let mut locals: HashMap<&str, usize> = HashMap::new();
-    for (pc, ast::AsmStmt(_, _, labs)) in stmts.iter().enumerate() {
+    for (pc, ast::Asm(_, _, labs)) in stmts.iter().enumerate() {
         for label in labs {
             locals.insert(label.as_str(), pc);
         }
@@ -38,256 +38,186 @@ fn gen_asm<'a>(stmts: &'a [ast::AsmStmt], globals: &'a Global<'a>) -> Result<Cod
 
 fn parse_stmt<'a>(
     pc: u16,
-    stmt: &'a ast::AsmStmt,
+    stmt: &'a ast::Asm,
     locals: &HashMap<&str, usize>,
     globals: &'a Global<'a>,
-) -> Result<(Inst, Option<Imm>), Error> {
-    let ast::AsmStmt(inst, args, _) = stmt;
+) -> Result<Inst<Reg, Imm>, Error> {
+    let ast::Asm(inst, args, _) = stmt;
     match inst.to_lowercase().as_str() {
-        "nop" => Ok((Inst::NOP(), None)),
+        "nop" => Ok(Inst::NOP()),
         "mov" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::MOV(rd, rs), None))
+            Ok(Inst::MOV(rd, rs))
         }
         "add" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::ADD(rd, rs1, rs2), None))
+            Ok(Inst::ADD(rd, rs1, rs2))
         }
         "addi" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::ADDI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::ADDI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::ADDI(rd, rs, imm))
         }
         "subi" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::SUBI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::SUBI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::SUBI(rd, rs, imm))
         }
         "andi" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::ANDI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::ANDI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::ANDI(rd, rs, imm))
         }
         "ori" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::ORI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::ORI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::ORI(rd, rs, imm))
         }
         "xori" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::XORI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::XORI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::XORI(rd, rs, imm))
         }
         "eqi" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::EQI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::EQI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::EQI(rd, rs, imm))
         }
         "neqi" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::NEQI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::NEQI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::NEQI(rd, rs, imm))
         }
         "lti" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::LTI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::LTI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::LTI(rd, rs, imm))
         }
         "ltsi" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::LTSI(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::LTSI(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::LTSI(rd, rs, imm))
         }
         "not" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::NOT(rd, rs), None))
+            Ok(Inst::NOT(rd, rs))
         }
         "loadi" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             // Use the new expression evaluator
-            match parse_imm(&args[1], globals)? {
-                Imm::Literal(val) => Ok((Inst::LOADI(rd, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::LOADI(rd, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[1], globals)?;
+            Ok(Inst::LOADI(rd, imm))
         }
         "sub" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::SUB(rd, rs1, rs2), None))
+            Ok(Inst::SUB(rd, rs1, rs2))
         }
         "and" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::AND(rd, rs1, rs2), None))
+            Ok(Inst::AND(rd, rs1, rs2))
         }
         "or" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::OR(rd, rs1, rs2), None))
+            Ok(Inst::OR(rd, rs1, rs2))
         }
         "xor" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::XOR(rd, rs1, rs2), None))
+            Ok(Inst::XOR(rd, rs1, rs2))
         }
         "eq" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::EQ(rd, rs1, rs2), None))
+            Ok(Inst::EQ(rd, rs1, rs2))
         }
         "neq" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::NEQ(rd, rs1, rs2), None))
+            Ok(Inst::NEQ(rd, rs1, rs2))
         }
         "lt" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::LT(rd, rs1, rs2), None))
+            Ok(Inst::LT(rd, rs1, rs2))
         }
         "lts" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
             let rs2 = parse_reg(&args[2])?;
-            Ok((Inst::LTS(rd, rs1, rs2), None))
+            Ok(Inst::LTS(rd, rs1, rs2))
         }
         "sr" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::SR(rd, rs), None))
+            Ok(Inst::SR(rd, rs))
         }
         "srs" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::SRS(rd, rs), None))
+            Ok(Inst::SRS(rd, rs))
         }
         "srr" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::SRR(rd, rs), None))
+            Ok(Inst::SRR(rd, rs))
         }
         "sl" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::SL(rd, rs), None))
+            Ok(Inst::SL(rd, rs))
         }
         "slr" if args.len() == 2 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            Ok((Inst::SLR(rd, rs), None))
+            Ok(Inst::SLR(rd, rs))
         }
         "load" if args.len() == 2 => {
             // load(rd, addr/imm)
             let rd = parse_reg(&args[0])?;
             // Use expression evaluator for complex expressions
-            match parse_imm(&args[1], globals)? {
-                Imm::Literal(val) => Ok((Inst::LOADI(rd, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::LOADI(rd, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[1], globals)?;
+            Ok(Inst::LOADI(rd, imm))
         }
         "load" if args.len() == 3 => {
             let rd = parse_reg(&args[0])?;
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::LOAD(rd, rs, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::LOAD(rd, rs, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::LOAD(rd, rs, imm))
         }
         "store" if args.len() == 2 => {
             // store(symbol, rs)
             let rs = parse_reg(&args[1])?;
-            match parse_imm(&args[0], globals)? {
-                Imm::Literal(val) => Ok((Inst::STORE(rs, Reg::Z, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::STORE(rs, Reg::Z, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[0], globals)?;
+            Ok(Inst::STORE(rs, Reg::Z, imm))
         }
         "store" if args.len() == 3 => {
             let rs2 = parse_reg(&args[0])?;
             let rs1 = parse_reg(&args[1])?;
-            match parse_imm(&args[2], globals)? {
-                Imm::Literal(val) => Ok((Inst::STORE(rs2, rs1, val), None)),
-                Imm::Symbol(name, offset) => Ok((
-                    Inst::STORE(rs2, rs1, offset as u16),
-                    Some(Imm::Symbol(name, offset)),
-                )),
-            }
+            let imm = parse_imm(&args[2], globals)?;
+            Ok(Inst::STORE(rs2, rs1, imm))
         }
 
         // jumpif(cond, label)
@@ -298,10 +228,10 @@ fn parse_stmt<'a>(
                     // Local label: Compiled to relative jump
                     Some(&goto) => {
                         let offset = (goto as i32 - pc as i32) as u16;
-                        Ok((Inst::JUMPIFR(cond, offset), None))
+                        Ok(Inst::JUMPIFR(cond, Imm::Literal(offset)))
                     }
                     // Global label: Compiled to absolute jump
-                    None => Ok((Inst::JUMPIF(cond, 0), Some(Imm::Symbol(label.clone(), 0)))),
+                    None => Ok(Inst::JUMPIF(cond, Imm::Symbol(label.clone(), 0))),
                 },
                 _ => Err(Error::TODO),
             }
@@ -314,10 +244,10 @@ fn parse_stmt<'a>(
                     // Local label: Compiled to relative jump
                     Some(&goto) => {
                         let offset = (goto as i32 - pc as i32) as u16;
-                        Ok((Inst::JUMPR(offset), None))
+                        Ok(Inst::JUMPR(Imm::Literal(offset)))
                     }
                     // Global label: Compiled to absolute jump
-                    None => Ok((Inst::JUMP(0), Some(Imm::Symbol(label.clone(), 0)))),
+                    None => Ok(Inst::JUMP(Imm::Symbol(label.clone(), 0))),
                 },
                 _ => Err(Error::TODO),
             }
@@ -326,11 +256,11 @@ fn parse_stmt<'a>(
         // call(label)
         "call" if args.len() == 1 => match &args[0] {
             // Global label only
-            ast::Expr::Ident(label) => Ok((Inst::CALL(0), Some(Imm::Symbol(label.clone(), 0)))),
+            ast::Expr::Ident(label) => Ok(Inst::CALL(Imm::Symbol(label.clone(), 0))),
             _ => Err(Error::TODO),
         },
-        "ret" if args.is_empty() => Ok((Inst::RET(), None)),
-        "iret" if args.is_empty() => Ok((Inst::IRET(), None)),
+        "ret" if args.is_empty() => Ok(Inst::RET()),
+        "iret" if args.is_empty() => Ok(Inst::IRET()),
         _ => Err(Error::InvalidInstruction(inst.to_string())),
     }
 }

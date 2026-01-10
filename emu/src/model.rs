@@ -89,7 +89,7 @@ impl State {
         Ok(())
     }
 
-    pub fn exec(&mut self) -> (u16, u32, Op, Inst) {
+    pub fn exec(&mut self) -> (u16, u32, Op, Inst<Reg, u16>) {
         let pc = self.dmem[Reg::PC as usize];
         let bin = self.imem[pc as usize];
         let op = Op::from_bin(bin);

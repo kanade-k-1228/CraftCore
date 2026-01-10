@@ -39,9 +39,14 @@ pub fn binprint<'a>(
 
         if let Some(code) = code {
             let mut current_addr = addr;
-            for (inst, _symbol) in &code.0 {
+            for inst in &code.0 {
                 let asm_text = inst.cformat();
-                let bin = inst.clone().to_op().to_bin();
+                // Resolve Imm to u16 for now (placeholder - actual resolution would happen in linking)
+                let resolved_inst = inst.clone().resolve(|imm| match imm {
+                    crate::compile::Imm::Literal(val) => val,
+                    crate::compile::Imm::Symbol(_, _) => 0, // Placeholder for unresolved symbols
+                });
+                let bin = resolved_inst.to_op().to_bin();
                 let bytes = bin.to_le_bytes();
                 cprintln!(
                     "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",

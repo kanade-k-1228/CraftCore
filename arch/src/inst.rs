@@ -1,53 +1,124 @@
 use crate::{alu::ALU, op::Op, reg::Reg};
 
 use color_print::cformat;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Inst {
-    ADD(Reg, Reg, Reg),
-    ADDI(Reg, Reg, u16),
-    SUB(Reg, Reg, Reg),
-    SUBI(Reg, Reg, u16),
+pub enum Inst<R, I> {
+    ADD(R, R, R),
+    ADDI(R, R, I),
+    SUB(R, R, R),
+    SUBI(R, R, I),
 
-    NOT(Reg, Reg),
-    AND(Reg, Reg, Reg),
-    ANDI(Reg, Reg, u16),
-    OR(Reg, Reg, Reg),
-    ORI(Reg, Reg, u16),
-    XOR(Reg, Reg, Reg),
-    XORI(Reg, Reg, u16),
+    NOT(R, R),
+    AND(R, R, R),
+    ANDI(R, R, I),
+    OR(R, R, R),
+    ORI(R, R, I),
+    XOR(R, R, R),
+    XORI(R, R, I),
 
-    EQ(Reg, Reg, Reg),
-    EQI(Reg, Reg, u16),
-    NEQ(Reg, Reg, Reg),
-    NEQI(Reg, Reg, u16),
-    LT(Reg, Reg, Reg),
-    LTI(Reg, Reg, u16),
-    LTS(Reg, Reg, Reg),
-    LTSI(Reg, Reg, u16),
+    EQ(R, R, R),
+    EQI(R, R, I),
+    NEQ(R, R, R),
+    NEQI(R, R, I),
+    LT(R, R, R),
+    LTI(R, R, I),
+    LTS(R, R, R),
+    LTSI(R, R, I),
 
-    SR(Reg, Reg),
-    SRS(Reg, Reg),
-    SRR(Reg, Reg),
-    SL(Reg, Reg),
-    SLR(Reg, Reg),
+    SR(R, R),
+    SRS(R, R),
+    SRR(R, R),
+    SL(R, R),
+    SLR(R, R),
 
-    MOV(Reg, Reg),
-    LOAD(Reg, Reg, u16),
-    LOADI(Reg, u16),
-    STORE(Reg, Reg, u16),
+    MOV(R, R),
+    LOAD(R, R, I),
+    LOADI(R, I),
+    STORE(R, R, I),
 
     NOP(),
-    JUMP(u16),
-    JUMPR(u16),
-    JUMPIF(Reg, u16),
-    JUMPIFR(Reg, u16),
-    CALL(u16),
+    JUMP(I),
+    JUMPR(I),
+    JUMPIF(R, I),
+    JUMPIFR(R, I),
+    CALL(I),
     RET(),
     IRET(),
 }
 
-impl Inst {
+impl<R, I> Inst<R, I> {
+    /// Returns a reference to the immediate value if this instruction has one
+    pub fn imm(&self) -> Option<&I> {
+        match self {
+            Inst::ADDI(_, _, imm) |
+            Inst::SUBI(_, _, imm) |
+            Inst::ANDI(_, _, imm) |
+            Inst::ORI(_, _, imm) |
+            Inst::XORI(_, _, imm) |
+            Inst::EQI(_, _, imm) |
+            Inst::NEQI(_, _, imm) |
+            Inst::LTI(_, _, imm) |
+            Inst::LTSI(_, _, imm) |
+            Inst::LOAD(_, _, imm) |
+            Inst::LOADI(_, imm) |
+            Inst::STORE(_, _, imm) |
+            Inst::JUMP(imm) |
+            Inst::JUMPR(imm) |
+            Inst::JUMPIF(_, imm) |
+            Inst::JUMPIFR(_, imm) |
+            Inst::CALL(imm) => Some(imm),
+            _ => None,
+        }
+    }
+}
+
+impl<R: Clone, I> Inst<R, I> {
+    /// Resolves immediate values using the provided function
+    pub fn resolve<O>(self, f: impl Fn(I) -> O) -> Inst<R, O> {
+        match self {
+            Inst::ADD(rd, rs1, rs2) => Inst::ADD(rd, rs1, rs2),
+            Inst::ADDI(rd, rs, imm) => Inst::ADDI(rd, rs, f(imm)),
+            Inst::SUB(rd, rs1, rs2) => Inst::SUB(rd, rs1, rs2),
+            Inst::SUBI(rd, rs, imm) => Inst::SUBI(rd, rs, f(imm)),
+            Inst::NOT(rd, rs) => Inst::NOT(rd, rs),
+            Inst::AND(rd, rs1, rs2) => Inst::AND(rd, rs1, rs2),
+            Inst::ANDI(rd, rs, imm) => Inst::ANDI(rd, rs, f(imm)),
+            Inst::OR(rd, rs1, rs2) => Inst::OR(rd, rs1, rs2),
+            Inst::ORI(rd, rs, imm) => Inst::ORI(rd, rs, f(imm)),
+            Inst::XOR(rd, rs1, rs2) => Inst::XOR(rd, rs1, rs2),
+            Inst::XORI(rd, rs, imm) => Inst::XORI(rd, rs, f(imm)),
+            Inst::EQ(rd, rs1, rs2) => Inst::EQ(rd, rs1, rs2),
+            Inst::EQI(rd, rs, imm) => Inst::EQI(rd, rs, f(imm)),
+            Inst::NEQ(rd, rs1, rs2) => Inst::NEQ(rd, rs1, rs2),
+            Inst::NEQI(rd, rs, imm) => Inst::NEQI(rd, rs, f(imm)),
+            Inst::LT(rd, rs1, rs2) => Inst::LT(rd, rs1, rs2),
+            Inst::LTI(rd, rs, imm) => Inst::LTI(rd, rs, f(imm)),
+            Inst::LTS(rd, rs1, rs2) => Inst::LTS(rd, rs1, rs2),
+            Inst::LTSI(rd, rs, imm) => Inst::LTSI(rd, rs, f(imm)),
+            Inst::SR(rd, rs) => Inst::SR(rd, rs),
+            Inst::SRS(rd, rs) => Inst::SRS(rd, rs),
+            Inst::SRR(rd, rs) => Inst::SRR(rd, rs),
+            Inst::SL(rd, rs) => Inst::SL(rd, rs),
+            Inst::SLR(rd, rs) => Inst::SLR(rd, rs),
+            Inst::MOV(rd, rs) => Inst::MOV(rd, rs),
+            Inst::LOAD(rd, rs, imm) => Inst::LOAD(rd, rs, f(imm)),
+            Inst::LOADI(rd, imm) => Inst::LOADI(rd, f(imm)),
+            Inst::STORE(rd, rs, imm) => Inst::STORE(rd, rs, f(imm)),
+            Inst::NOP() => Inst::NOP(),
+            Inst::JUMP(imm) => Inst::JUMP(f(imm)),
+            Inst::JUMPR(imm) => Inst::JUMPR(f(imm)),
+            Inst::JUMPIF(rd, imm) => Inst::JUMPIF(rd, f(imm)),
+            Inst::JUMPIFR(rd, imm) => Inst::JUMPIFR(rd, f(imm)),
+            Inst::CALL(imm) => Inst::CALL(f(imm)),
+            Inst::RET() => Inst::RET(),
+            Inst::IRET() => Inst::IRET(),
+        }
+    }
+}
+
+impl Inst<Reg, u16> {
     pub fn to_op(self) -> Op {
         match self {
             Inst::ADD(rd, rs1, rs2) => Op::CALC(ALU::ADD, rd, rs1, rs2),
@@ -94,7 +165,7 @@ impl Inst {
         }
     }
 
-    pub fn from_op(op: Op) -> Inst {
+    pub fn from_op(op: Op) -> Inst<Reg, u16> {
         match op {
             Op::CALC(alu, rd, rs1, rs2) => match alu {
                 ALU::ADD => match (rs1, rs2) {
@@ -154,7 +225,7 @@ impl Inst {
     }
 }
 
-impl Inst {
+impl<R: Display, I: Display + std::fmt::LowerHex + std::fmt::UpperHex> Inst<R, I> {
     pub fn cformat(&self) -> String {
         macro_rules! rrr {
             ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {
@@ -224,9 +295,9 @@ mod tests {
             $(
                 #[test]
                 fn $name() {
-                    let inst = $inst;
+                    let inst: Inst<Reg, u16> = $inst;
                     let op = inst.clone().to_op();
-                    let inst_back = Inst::from_op(op);
+                    let inst_back = Inst::<Reg, u16>::from_op(op);
                     assert_eq!(inst, inst_back);
                 }
             )*

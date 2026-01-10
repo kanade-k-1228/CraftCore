@@ -8,9 +8,12 @@ pub fn dependency<'a>(codes: &'a IndexMap<&'a str, Code>) -> IndexMap<&'a str, H
     let mut deps = IndexMap::new();
     for (&name, code) in codes {
         let mut refs = HashSet::new();
-        for (_, label) in &code.0 {
-            if let Some(Imm::Symbol(symbol, _)) = label {
-                refs.insert(symbol.as_str());
+        for inst in &code.0 {
+            // Extract immediate value from instruction if it has one
+            if let Some(imm) = inst.imm() {
+                if let Imm::Symbol(symbol, _) = imm {
+                    refs.insert(symbol.as_str());
+                }
             }
         }
         deps.insert(name, refs);

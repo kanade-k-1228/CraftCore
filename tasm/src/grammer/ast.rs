@@ -17,7 +17,7 @@ pub enum Def {
     Type(String, Type),                                 // "type" ident "=" type ";"
     Const(String, Option<Expr>, Expr),                  // "const" [ "@" expr ] ident "=" expr ";"
     Static(String, Option<Expr>, Type),                 // "static" [ "@" expr ] ident ":" type ";"
-    Asm(String, Option<Expr>, Vec<AsmStmt>), // "asm" [ "@" expr ] ident "{" { asm-stmt } "}"
+    Asm(String, Option<Expr>, Vec<Asm>),                // "asm" [ "@" expr ] ident "{" { asm } "}"
     Func(String, Vec<(String, Type)>, Type, Vec<Stmt>), // "fn" ident "(" [ ident ":" type { "," ident ":" type } ] ")" [ "->" type ] "{" { stmt } "}"
 }
 
@@ -33,7 +33,7 @@ pub enum Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct AsmStmt(pub String, pub Vec<Expr>, pub Vec<String>); // { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
+pub struct Asm(pub String, pub Vec<Expr>, pub Vec<String>); // { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {

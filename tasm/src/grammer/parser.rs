@@ -1,4 +1,4 @@
-use super::ast::{AsmStmt, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
+use super::ast::{Asm, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
 use super::parsercore::Parser;
 use super::token::{Token, TokenKind::*};
 use crate::error::Error;
@@ -161,7 +161,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
-    fn parse_asm_stmt(&mut self) -> Result<AsmStmt, Error> {
+    fn parse_asm_stmt(&mut self) -> Result<Asm, Error> {
         let mut labels = Vec::new();
 
         // Parse labels (ident ":")
@@ -178,7 +178,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 let args = repeat!(self, self.parse_expr(), Comma, RParen);
                 expect!(self, RParen)?;
                 expect!(self, Semicolon)?;
-                return Ok(AsmStmt(ident, args, labels));
+                return Ok(Asm(ident, args, labels));
             }
         }
 
