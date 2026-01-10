@@ -86,12 +86,12 @@ impl<'a> FuncCompiler<'a> {
 
         // 1. Allocate stack space
         if stack_alloc > 0 {
-            insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Literal(stack_alloc)));
+            insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(stack_alloc as usize)));
         }
 
         // 2. Save return address and frame pointer
-        insts.push(Inst::STORE(Reg::RA, Reg::SP, Imm::Literal(0)));
-        insts.push(Inst::STORE(Reg::FP, Reg::SP, Imm::Literal(1)));
+        insts.push(Inst::STORE(Reg::RA, Reg::SP, Imm::Lit(0)));
+        insts.push(Inst::STORE(Reg::FP, Reg::SP, Imm::Lit(1)));
 
         // 3. Set new frame pointer
         insts.push(Inst::MOV(Reg::FP, Reg::SP));
@@ -114,7 +114,11 @@ impl<'a> FuncCompiler<'a> {
                 // Store each word of the argument
                 for j in 0..arg_size {
                     if j == 0 {
-                        insts.push(Inst::STORE(arg_reg, Reg::FP, Imm::Literal(offset + j)));
+                        insts.push(Inst::STORE(
+                            arg_reg,
+                            Reg::FP,
+                            Imm::Lit((offset + j) as usize),
+                        ));
                     } else {
                         // For multi-word arguments, would need to handle appropriately
                         // For now, assume single-word arguments
@@ -144,12 +148,12 @@ impl<'a> FuncCompiler<'a> {
         insts.push(Inst::MOV(Reg::SP, Reg::FP));
 
         // 2. Restore frame pointer and return address
-        insts.push(Inst::LOAD(Reg::FP, Reg::SP, Imm::Literal(1)));
-        insts.push(Inst::LOAD(Reg::RA, Reg::SP, Imm::Literal(0)));
+        insts.push(Inst::LOAD(Reg::FP, Reg::SP, Imm::Lit(1)));
+        insts.push(Inst::LOAD(Reg::RA, Reg::SP, Imm::Lit(0)));
 
         // 3. Deallocate stack frame
         if stack_alloc > 0 {
-            insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Literal(stack_alloc)));
+            insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Lit(stack_alloc as usize)));
         }
 
         // 4. Return to caller
@@ -197,9 +201,9 @@ impl<'a> FuncCompiler<'a> {
                     Ok(chain!(
                         cond_insts,
                         vec![Inst::NOT(Reg::T1, cond_reg)],
-                        vec![Inst::JUMPIFR(Reg::T1, Imm::Literal(else_jump_offset))],
+                        vec![Inst::JUMPIFR(Reg::T1, Imm::Lit(else_jump_offset as usize))],
                         then_insts,
-                        vec![Inst::JUMPR(Imm::Literal(end_jump_offset))],
+                        vec![Inst::JUMPR(Imm::Lit(end_jump_offset as usize))],
                         else_insts
                     )
                     .collect())
@@ -210,7 +214,7 @@ impl<'a> FuncCompiler<'a> {
                     Ok(chain!(
                         cond_insts,
                         vec![Inst::NOT(Reg::T1, cond_reg)],
-                        vec![Inst::JUMPIFR(Reg::T1, Imm::Literal(jump_offset))],
+                        vec![Inst::JUMPIFR(Reg::T1, Imm::Lit(jump_offset as usize))],
                         then_insts
                     )
                     .collect())
@@ -231,9 +235,9 @@ impl<'a> FuncCompiler<'a> {
                 Ok(chain!(
                     cond_insts.clone(),
                     vec![Inst::NOT(Reg::T1, cond_reg)],
-                    vec![Inst::JUMPIFR(Reg::T1, Imm::Literal(exit_offset))],
+                    vec![Inst::JUMPIFR(Reg::T1, Imm::Lit(exit_offset as usize))],
                     body_insts,
-                    vec![Inst::JUMPR(Imm::Literal(loop_offset))]
+                    vec![Inst::JUMPR(Imm::Lit(loop_offset as usize))]
                 )
                 .collect())
             }
@@ -251,7 +255,11 @@ impl<'a> FuncCompiler<'a> {
 
                     Ok(chain!(
                         init_insts,
-                        vec![Inst::STORE(init_reg, Reg::FP, Imm::Literal(store_offset))]
+                        vec![Inst::STORE(
+                            init_reg,
+                            Reg::FP,
+                            Imm::Lit(store_offset as usize)
+                        )]
                     )
                     .collect())
                 } else {
@@ -288,20 +296,23 @@ impl<'a> FuncCompiler<'a> {
         let (insts, result_reg) = match expr {
             ast::Expr::NumberLit(n) => {
                 let mut insts = Vec::new();
-                insts.push(Inst::LOADI(target, Imm::Literal(*n as u16)));
+                insts.push(Inst::LOADI(target, Imm::Lit(*n as usize)));
                 (insts, target)
             }
 
             ast::Expr::CharLit(c) => {
                 let mut insts = Vec::new();
-                insts.push(Inst::LOADI(target, Imm::Literal(*c as u16)));
+                insts.push(Inst::LOADI(target, Imm::Lit(*c as usize)));
                 (insts, target)
             }
 
             ast::Expr::StringLit(_s) => {
                 let mut insts = Vec::new();
                 // For string literals, we use a symbol that will be resolved later
-                insts.push(Inst::LOADI(target, Imm::Symbol("string_placeholder".to_string(), 0)));
+                insts.push(Inst::LOADI(
+                    target,
+                    Imm::Symbol("string_placeholder".to_string(), 0),
+                ));
                 (insts, target)
             }
 
@@ -311,7 +322,7 @@ impl<'a> FuncCompiler<'a> {
                 if let Some(offset) = self.local.offset(name) {
                     // Note: offset is negative (below FP), need to negate for LOAD instruction
                     let load_offset = (-offset) as u16;
-                    insts.push(Inst::LOAD(target, Reg::FP, Imm::Literal(load_offset)));
+                    insts.push(Inst::LOAD(target, Reg::FP, Imm::Lit(load_offset as usize)));
                 } else {
                     // Could be a global/static - emit with symbol reference
                     insts.push(Inst::LOADI(target, Imm::Symbol(name.clone(), 0)));
@@ -347,7 +358,7 @@ impl<'a> FuncCompiler<'a> {
                     ast::BinaryOp::Shr => vec![Inst::SR(target, lhs_reg)],
                     _ => {
                         // Mul, Div, Mod not directly supported - would need software implementation
-                        vec![Inst::LOADI(target, Imm::Literal(0))]
+                        vec![Inst::LOADI(target, Imm::Lit(0))]
                     }
                 };
 
@@ -368,7 +379,7 @@ impl<'a> FuncCompiler<'a> {
                     }
                     ast::UnaryOp::Neg => {
                         vec![
-                            Inst::LOADI(Reg::T1, Imm::Literal(0)),
+                            Inst::LOADI(Reg::T1, Imm::Lit(0)),
                             Inst::SUB(target, Reg::T1, operand_reg),
                         ]
                     }
@@ -385,7 +396,7 @@ impl<'a> FuncCompiler<'a> {
 
                 let insts = chain!(
                     operand_insts,
-                    vec![Inst::LOAD(target, operand_reg, Imm::Literal(0))]
+                    vec![Inst::LOAD(target, operand_reg, Imm::Lit(0))]
                 )
                 .collect();
                 (insts, target)
@@ -424,14 +435,14 @@ impl<'a> FuncCompiler<'a> {
                         }
                     } else {
                         // Additional args go on stack
-                        insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Literal(1)));
-                        insts.push(Inst::STORE(arg_reg, Reg::SP, Imm::Literal(0)));
+                        insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(1)));
+                        insts.push(Inst::STORE(arg_reg, Reg::SP, Imm::Lit(0)));
                     }
                 }
 
                 // Call the function
                 if let ast::Expr::Ident(func_name) = &**func_expr {
-                    insts.push(Inst::CALL(Imm::Symbol(func_name.clone(), 0)));
+                    insts.push(Inst::CALL(Imm::Label(func_name.clone())));
                 } else {
                     // Indirect call through register
                     let (func_insts, _func_reg) = self.compile_expr(func_expr, Reg::T0)?;
@@ -444,7 +455,7 @@ impl<'a> FuncCompiler<'a> {
                 // Clean up stack if we pushed arguments
                 let stack_args = if args.len() > 2 { args.len() - 2 } else { 0 };
                 if stack_args > 0 {
-                    insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Literal(stack_args as u16)));
+                    insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Lit(stack_args)));
                 }
 
                 // Result is in A0, move to target if needed
@@ -470,7 +481,7 @@ impl<'a> FuncCompiler<'a> {
 
                 // Jump to else if condition is false
                 let else_jump_offset = (then_insts.len() + 1) as u16; // +1 for the end jump
-                insts.push(Inst::JUMPIFR(Reg::T1, Imm::Literal(else_jump_offset)));
+                insts.push(Inst::JUMPIFR(Reg::T1, Imm::Lit(else_jump_offset as usize)));
 
                 // Then expression
                 insts.extend(then_insts);
@@ -482,9 +493,9 @@ impl<'a> FuncCompiler<'a> {
                 let end_jump_offset = else_insts.len() as u16;
                 if else_reg != target {
                     // +1 for the MOV instruction
-                    insts.push(Inst::JUMPR(Imm::Literal(end_jump_offset + 1)));
+                    insts.push(Inst::JUMPR(Imm::Lit((end_jump_offset + 1) as usize)));
                 } else {
-                    insts.push(Inst::JUMPR(Imm::Literal(end_jump_offset)));
+                    insts.push(Inst::JUMPR(Imm::Lit(end_jump_offset as usize)));
                 }
 
                 // Else expression
@@ -504,14 +515,14 @@ impl<'a> FuncCompiler<'a> {
                     .normtype(typ)
                     .map_err(|_| Error::TypeCollectionFailed("sizeof".to_string()))?;
                 let size = norm_type.sizeof() as u16;
-                insts.push(Inst::LOADI(target, Imm::Literal(size)));
+                insts.push(Inst::LOADI(target, Imm::Lit(size as usize)));
                 (insts, target)
             }
 
             _ => {
                 let mut insts = Vec::new();
                 // Other expression types not yet implemented
-                insts.push(Inst::LOADI(target, Imm::Literal(0)));
+                insts.push(Inst::LOADI(target, Imm::Lit(0)));
                 (insts, target)
             }
         };
@@ -530,7 +541,11 @@ impl<'a> FuncCompiler<'a> {
                 if let Some(offset) = self.local.offset(name) {
                     // Note: offset is negative (below FP), need to negate for STORE instruction
                     let store_offset = (-offset) as u16;
-                    insts.push(Inst::STORE(value_reg, Reg::FP, Imm::Literal(store_offset)));
+                    insts.push(Inst::STORE(
+                        value_reg,
+                        Reg::FP,
+                        Imm::Lit(store_offset as usize),
+                    ));
                 } else {
                     // Global/static variable - emit with symbol reference
                     insts.push(Inst::STORE(value_reg, Reg::Z, Imm::Symbol(name.clone(), 0)));
@@ -543,7 +558,7 @@ impl<'a> FuncCompiler<'a> {
                 let (addr_insts, addr_reg) = self.compile_expr(addr_expr, Reg::T1)?;
                 Ok(chain!(
                     addr_insts,
-                    vec![Inst::STORE(value_reg, addr_reg, Imm::Literal(0))]
+                    vec![Inst::STORE(value_reg, addr_reg, Imm::Lit(0))]
                 )
                 .collect())
             }
@@ -557,7 +572,7 @@ impl<'a> FuncCompiler<'a> {
                     array_insts,
                     index_insts,
                     vec![Inst::ADD(Reg::T1, array_reg, index_reg)],
-                    vec![Inst::STORE(value_reg, Reg::T1, Imm::Literal(0))]
+                    vec![Inst::STORE(value_reg, Reg::T1, Imm::Lit(0))]
                 )
                 .collect())
             }
@@ -568,7 +583,7 @@ impl<'a> FuncCompiler<'a> {
                 let (struct_insts, struct_reg) = self.compile_expr(struct_expr, Reg::T1)?;
                 Ok(chain!(
                     struct_insts,
-                    vec![Inst::STORE(value_reg, struct_reg, Imm::Literal(0))]
+                    vec![Inst::STORE(value_reg, struct_reg, Imm::Lit(0))]
                 )
                 .collect())
             }

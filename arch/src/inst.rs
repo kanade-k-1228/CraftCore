@@ -52,23 +52,23 @@ impl<R, I> Inst<R, I> {
     /// Returns a reference to the immediate value if this instruction has one
     pub fn imm(&self) -> Option<&I> {
         match self {
-            Inst::ADDI(_, _, imm) |
-            Inst::SUBI(_, _, imm) |
-            Inst::ANDI(_, _, imm) |
-            Inst::ORI(_, _, imm) |
-            Inst::XORI(_, _, imm) |
-            Inst::EQI(_, _, imm) |
-            Inst::NEQI(_, _, imm) |
-            Inst::LTI(_, _, imm) |
-            Inst::LTSI(_, _, imm) |
-            Inst::LOAD(_, _, imm) |
-            Inst::LOADI(_, imm) |
-            Inst::STORE(_, _, imm) |
-            Inst::JUMP(imm) |
-            Inst::JUMPR(imm) |
-            Inst::JUMPIF(_, imm) |
-            Inst::JUMPIFR(_, imm) |
-            Inst::CALL(imm) => Some(imm),
+            Inst::ADDI(_, _, imm)
+            | Inst::SUBI(_, _, imm)
+            | Inst::ANDI(_, _, imm)
+            | Inst::ORI(_, _, imm)
+            | Inst::XORI(_, _, imm)
+            | Inst::EQI(_, _, imm)
+            | Inst::NEQI(_, _, imm)
+            | Inst::LTI(_, _, imm)
+            | Inst::LTSI(_, _, imm)
+            | Inst::LOAD(_, _, imm)
+            | Inst::LOADI(_, imm)
+            | Inst::STORE(_, _, imm)
+            | Inst::JUMP(imm)
+            | Inst::JUMPR(imm)
+            | Inst::JUMPIF(_, imm)
+            | Inst::JUMPIFR(_, imm)
+            | Inst::CALL(imm) => Some(imm),
             _ => None,
         }
     }

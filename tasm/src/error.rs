@@ -144,6 +144,15 @@ pub enum Error {
     #[error("Cannot index immediate value")]
     CannotIndexImmediate,
 
+    #[error("Cannot index label")]
+    CannotIndexLabel,
+
+    #[error("Cannot access field of label")]
+    CannotAccessFieldOfLabel,
+
+    #[error("Cannot perform arithmetic operations on labels")]
+    CannotPerformArithmeticOnLabel,
+
     #[error("Cannot add two symbols")]
     CannotAddSymbols,
 

@@ -11,8 +11,14 @@ pub fn dependency<'a>(codes: &'a IndexMap<&'a str, Code>) -> IndexMap<&'a str, H
         for inst in &code.0 {
             // Extract immediate value from instruction if it has one
             if let Some(imm) = inst.imm() {
-                if let Imm::Symbol(symbol, _) = imm {
-                    refs.insert(symbol.as_str());
+                match imm {
+                    Imm::Symbol(symbol, _) => {
+                        refs.insert(symbol.as_str());
+                    }
+                    Imm::Label(label) => {
+                        refs.insert(label.as_str());
+                    }
+                    Imm::Lit(_) => {}
                 }
             }
         }

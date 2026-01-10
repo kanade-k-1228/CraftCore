@@ -228,10 +228,10 @@ fn parse_stmt<'a>(
                     // Local label: Compiled to relative jump
                     Some(&goto) => {
                         let offset = (goto as i32 - pc as i32) as u16;
-                        Ok(Inst::JUMPIFR(cond, Imm::Literal(offset)))
+                        Ok(Inst::JUMPIFR(cond, Imm::Lit(offset as usize)))
                     }
                     // Global label: Compiled to absolute jump
-                    None => Ok(Inst::JUMPIF(cond, Imm::Symbol(label.clone(), 0))),
+                    None => Ok(Inst::JUMPIF(cond, Imm::Label(label.clone()))),
                 },
                 _ => Err(Error::TODO),
             }
@@ -244,10 +244,10 @@ fn parse_stmt<'a>(
                     // Local label: Compiled to relative jump
                     Some(&goto) => {
                         let offset = (goto as i32 - pc as i32) as u16;
-                        Ok(Inst::JUMPR(Imm::Literal(offset)))
+                        Ok(Inst::JUMPR(Imm::Lit(offset as usize)))
                     }
                     // Global label: Compiled to absolute jump
-                    None => Ok(Inst::JUMP(Imm::Symbol(label.clone(), 0))),
+                    None => Ok(Inst::JUMP(Imm::Label(label.clone()))),
                 },
                 _ => Err(Error::TODO),
             }
@@ -256,7 +256,7 @@ fn parse_stmt<'a>(
         // call(label)
         "call" if args.len() == 1 => match &args[0] {
             // Global label only
-            ast::Expr::Ident(label) => Ok(Inst::CALL(Imm::Symbol(label.clone(), 0))),
+            ast::Expr::Ident(label) => Ok(Inst::CALL(Imm::Label(label.clone()))),
             _ => Err(Error::TODO),
         },
         "ret" if args.is_empty() => Ok(Inst::RET()),
@@ -293,13 +293,13 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Er
     // Check type size only for complex expressions that need evaluation
     // Simple literals and identifiers don't need type checking
     match expr {
-        ast::Expr::NumberLit(n) => Ok(Imm::Literal(*n as u16)),
-        ast::Expr::CharLit(ch) => Ok(Imm::Literal(*ch as u16)),
+        ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
+        ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
         ast::Expr::Ident(name) => Ok(Imm::Symbol(name.clone(), 0)),
         ast::Expr::Unary(op, inner) => match op {
             ast::UnaryOp::Pos => parse_imm(inner, globals),
             ast::UnaryOp::Neg => match parse_imm(inner, globals) {
-                Ok(Imm::Literal(val)) => Ok(Imm::Literal((-(val as i16)) as u16)),
+                Ok(Imm::Lit(val)) => Ok(Imm::Lit((-(val as isize)) as usize)),
                 _ => Err(Error::CannotNegateSymbol),
             },
             ast::UnaryOp::Not => todo!(),
@@ -322,7 +322,8 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Er
                 };
                 Ok(Imm::Symbol(ident, base + offset))
             }
-            Imm::Literal(_) => Err(Error::CannotAccessFieldOfImmediate),
+            Imm::Lit(_) => Err(Error::CannotAccessFieldOfImmediate),
+            Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel),
         },
 
         ast::Expr::Index(expr, index) => {
@@ -357,7 +358,8 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Er
                         Err(Error::NonConstantArrayIndex)
                     }
                 }
-                Imm::Literal(_) => Err(Error::CannotIndexImmediate),
+                Imm::Lit(_) => Err(Error::CannotIndexImmediate),
+                Imm::Label(_) => Err(Error::CannotIndexLabel),
             }
         }
 
@@ -365,7 +367,7 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Er
             let lhs = parse_imm(left, globals)?;
             let rhs = parse_imm(right, globals)?;
             match (lhs, rhs) {
-                (Imm::Symbol(ident, left_offset), Imm::Literal(right_val)) => match op {
+                (Imm::Symbol(ident, left_offset), Imm::Lit(right_val)) => match op {
                     ast::BinaryOp::Add => Ok(Imm::Symbol(ident, left_offset + right_val as usize)),
                     ast::BinaryOp::Sub => Ok(Imm::Symbol(
                         ident,
@@ -373,29 +375,32 @@ fn parse_imm<'a>(expr: &'a ast::Expr, globals: &'a Global<'a>) -> Result<Imm, Er
                     )),
                     _ => Err(Error::UnsupportedOperationInAddress),
                 },
-                (Imm::Literal(left_val), Imm::Symbol(ident, right_offset)) => match op {
+                (Imm::Lit(left_val), Imm::Symbol(ident, right_offset)) => match op {
                     ast::BinaryOp::Add => Ok(Imm::Symbol(ident, left_val as usize + right_offset)),
                     _ => Err(Error::InvalidSubtractionInAddress),
                 },
-                (Imm::Literal(left_val), Imm::Literal(right_val)) => match op {
-                    ast::BinaryOp::Add => Ok(Imm::Literal(left_val.wrapping_add(right_val))),
-                    ast::BinaryOp::Sub => Ok(Imm::Literal(left_val.wrapping_sub(right_val))),
+                (Imm::Lit(left_val), Imm::Lit(right_val)) => match op {
+                    ast::BinaryOp::Add => Ok(Imm::Lit(left_val.wrapping_add(right_val))),
+                    ast::BinaryOp::Sub => Ok(Imm::Lit(left_val.wrapping_sub(right_val))),
                     _ => Err(Error::UnsupportedOperationInAddress),
                 },
                 (Imm::Symbol(_, _), Imm::Symbol(_, _)) => match op {
                     ast::BinaryOp::Add => Err(Error::CannotAddSymbols),
                     _ => Err(Error::InvalidSubtractionInAddress),
                 },
+                (Imm::Label(_), _) | (_, Imm::Label(_)) => {
+                    Err(Error::CannotPerformArithmeticOnLabel)
+                }
             }
         }
 
         ast::Expr::SizeofType(ty) => match globals.normtype(ty) {
-            Ok(ty) => Ok(Imm::Literal(ty.sizeof() as u16)),
+            Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
             Err(e) => Err(Error::CannotEvaluateSizeofType(e.to_string())),
         },
 
         ast::Expr::SizeofExpr(inner) => match globals.typeinfer(inner) {
-            Ok(ty) => Ok(Imm::Literal(ty.sizeof() as u16)),
+            Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
             Err(e) => Err(Error::CannotEvaluateSizeofExpr(e.to_string())),
         },
 

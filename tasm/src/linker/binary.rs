@@ -1,8 +1,8 @@
 use crate::compile::{Code, Imm};
 use crate::error::Error;
 use crate::eval::global::Global;
-use indexmap::IndexMap;
 use arch::reg::Reg;
+use indexmap::IndexMap;
 
 /// Resolve symbols in the code using the memory maps
 /// Returns a map of code blocks with resolved u16 immediates
@@ -47,7 +47,16 @@ pub fn resolve_symbols<'a>(
                         0
                     }
                 }
-                Imm::Literal(val) => val,
+                Imm::Label(label) => {
+                    // Label resolution - look up in instruction memory map
+                    if let Some(&addr) = imap.get(&label) {
+                        addr as u16
+                    } else {
+                        // Label not found - use 0 as placeholder
+                        0
+                    }
+                }
+                Imm::Lit(val) => val as u16,
             });
             resolved_insts.push(resolved_inst);
         }
