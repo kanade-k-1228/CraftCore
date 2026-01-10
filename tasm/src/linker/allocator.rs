@@ -3,13 +3,32 @@ use std::collections::HashMap;
 
 pub struct Allocator {
     segments: Vec<Segment>,
+    sections: HashMap<String, (usize, usize)>,
 }
 
 impl Allocator {
     pub fn new(begin: usize, end: usize) -> Self {
         Self {
             segments: vec![Segment::new(begin, end, None)],
+            sections: HashMap::new(),
         }
+    }
+
+    pub fn from_memory(range: (usize, usize), sections: HashMap<String, (usize, usize)>) -> Self {
+        // Collect section boundaries and sort them
+        let mut boundaries: Vec<usize> = sections.values().flat_map(|&(s, e)| [s, e]).collect();
+        boundaries.push(range.0);
+        boundaries.push(range.1);
+        boundaries.sort();
+        boundaries.dedup();
+
+        // Create segments from boundaries
+        let segments = boundaries
+            .windows(2)
+            .map(|w| Segment::new(w[0], w[1], None))
+            .collect();
+
+        Self { segments, sections }
     }
 
     /// Allocate memory at a specific address
@@ -48,13 +67,14 @@ impl Allocator {
         ))
     }
 
-    /// Allocate memory within a section range [start, end)
-    pub fn section(
-        &mut self,
-        range: (usize, usize),
-        size: usize,
-        name: &str,
-    ) -> Result<usize, Error> {
+    /// Allocate memory within a named section
+    pub fn section(&mut self, section: &str, size: usize, name: &str) -> Result<usize, Error> {
+        let range = self
+            .sections
+            .get(section)
+            .copied()
+            .ok_or_else(|| Error::SectionNotFound(section.to_string()))?;
+
         if size == 0 {
             return Err(Error::AddressSpaceOverflow(name.to_string(), size));
         }

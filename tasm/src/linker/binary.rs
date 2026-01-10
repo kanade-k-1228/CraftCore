@@ -70,12 +70,12 @@ pub fn genibin<'a>(
     Ok(binary)
 }
 
-pub fn gencbin(evaluator: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, Error> {
+pub fn gencbin(global: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, Error> {
     // Find the maximum address to determine binary size
     let max_addr = dmmap
         .iter()
         .filter_map(|(name, addr)| {
-            evaluator
+            global
                 .consts()
                 .get(name.as_str())
                 .map(|(norm_type, _, _, _)| addr + norm_type.sizeof())
@@ -87,7 +87,7 @@ pub fn gencbin(evaluator: &Global, dmmap: &IndexMap<String, usize>) -> Result<Ve
     let mut binary = vec![0u8; max_addr];
 
     // Place each constant at its specified address
-    for (name, (_, value, _, _)) in evaluator.consts() {
+    for (name, (_, value, _, _)) in global.consts() {
         if let Some(&addr) = dmmap.get(name) {
             let bytes = value.bin();
             let end = (addr + bytes.len()).min(binary.len());

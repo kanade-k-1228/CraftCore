@@ -71,77 +71,64 @@ fn main() -> Result<(), tasm::Error> {
     let deps = tasm::Deps::build(&codes);
 
     // 7. Collect used objects
-    let (used_labels, used_symbols) = deps.entries(&["reset", "irq", "main"]);
+    let (labels, symbols) = deps.entries(&vec!["reset", "irq", "main"]);
 
-    // 8. Allocate objects
-    let imem = tasm::Memory::new(0, 0x10000)
+    // 8-1. Allocate code objects
+    let mut ialoc = tasm::Memory::new(0, 0x10000)
         .section("reset", 0x0000, 0x0004)
         .section("irq", 0x0004, 0x0008)
-        .section("code", 0x0008, 0x10000);
-
-    let dmem = tasm::Memory::new(0, 0x10000)
-        .section("reg", 0x0000, 0x0010)
-        .section("csr", 0x0010, 0x0100)
-        .section("ioreg", 0x0100, 0x1000)
-        .section("vram", 0x1000, 0x3000)
-        .section("const", 0x3000, 0x5000)
-        .section("static", 0x5000, 0x10000);
-
-    let mut ialoc = tasm::Allocator::new(0, 0x10000);
-    let mut daloc = tasm::Allocator::new(0, 0x10000);
-
-    // Allocate instruction items with fixed addresses first
+        .section("code", 0x0008, 0x10000)
+        .allocator();
     for (&name, code) in &codes {
-        if used_labels.contains(name) {
+        if labels.contains(name) {
             if let Some((Some(addr), _)) = global.asms().get(name) {
                 ialoc.allocate(*addr, code.0.len(), name)?;
             }
         }
     }
-
-    // Allocate instruction items without fixed addresses
     for (&name, code) in &codes {
-        if !used_labels.contains(name) {
-            continue;
-        }
-        let has_fixed = global
-            .asms()
-            .get(name)
-            .is_some_and(|(addr, _)| addr.is_some());
-        if !has_fixed {
-            ialoc.section(imem.get("code")?, code.0.len(), name)?;
-        }
-    }
-
-    // Allocate static items with fixed addresses first
-    for (name, (norm_type, addr, _)) in global.statics() {
-        if used_symbols.contains(name) {
-            if let Some(addr) = addr {
-                daloc.allocate(addr, norm_type.sizeof(), name)?;
+        if labels.contains(name) {
+            if let Some((None, _)) = global.asms().get(name) {
+                ialoc.section("code", code.0.len(), name)?;
             }
         }
     }
 
-    // Allocate const items with fixed addresses
-    for (name, (norm_type, _, addr, _)) in global.consts() {
-        if used_symbols.contains(name) {
+    // 8-2. Allocate data objects
+    let mut daloc = tasm::Memory::new(0, 0x10000)
+        .section("reg", 0x0000, 0x0010)
+        .section("csr", 0x0010, 0x0100)
+        .section("ioreg", 0x0100, 0x1000)
+        .section("vram", 0x1000, 0x3000)
+        .section("const", 0x3000, 0x5000)
+        .section("static", 0x5000, 0x10000)
+        .allocator();
+
+    for (name, (ty, addr, _)) in global.statics() {
+        if symbols.contains(name) {
             if let Some(addr) = addr {
-                daloc.allocate(addr, norm_type.sizeof(), name)?;
+                daloc.allocate(addr, ty.sizeof(), name)?;
             }
         }
     }
 
-    // Allocate static items without fixed addresses
-    for (name, (norm_type, addr, _)) in global.statics() {
-        if used_symbols.contains(name) && addr.is_none() {
-            daloc.section(dmem.get("static")?, norm_type.sizeof(), name)?;
+    for (name, (ty, _, addr, _)) in global.consts() {
+        if symbols.contains(name) {
+            if let Some(addr) = addr {
+                daloc.allocate(addr, ty.sizeof(), name)?;
+            }
         }
     }
 
-    // Allocate const items without fixed addresses
-    for (name, (norm_type, _, addr, _)) in global.consts() {
-        if used_symbols.contains(name) && addr.is_none() {
-            daloc.section(dmem.get("const")?, norm_type.sizeof(), name)?;
+    for (name, (ty, addr, _)) in global.statics() {
+        if symbols.contains(name) && addr.is_none() {
+            daloc.section("static", ty.sizeof(), name)?;
+        }
+    }
+
+    for (name, (ty, _, addr, _)) in global.consts() {
+        if symbols.contains(name) && addr.is_none() {
+            daloc.section("const", ty.sizeof(), name)?;
         }
     }
 

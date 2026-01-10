@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::linker::allocator::Allocator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -26,6 +27,10 @@ impl Memory {
             .get(name)
             .copied()
             .ok_or_else(|| Error::SectionNotFound(name.to_string()))
+    }
+
+    pub fn allocator(self) -> Allocator {
+        Allocator::from_memory(self.range, self.sections)
     }
 }
 
