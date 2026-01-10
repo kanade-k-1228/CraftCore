@@ -9,8 +9,8 @@ use super::{
 use arch::{inst::Inst, reg::Reg};
 use itertools::chain;
 
-impl<'a> Global<'a> {
-    pub fn func2code(&'a self, name: &str) -> Result<Code, Error> {
+impl Global {
+    pub fn func2code(&self, name: &str) -> Result<Code, Error> {
         match self.get(name) {
             Some(ast::Def::Func(_, args, ret, stmts)) => gen_func(self, args, ret, stmts),
             Some(_) => Err(Error::NotAFunction(name.to_string())),
@@ -19,14 +19,14 @@ impl<'a> Global<'a> {
     }
 }
 
-fn gen_func<'a>(
-    global: &'a Global<'a>,
-    args: &'a [(String, ast::Type)],
-    ret: &'a ast::Type,
-    stmts: &'a [ast::Stmt],
+fn gen_func(
+    global: &Global,
+    args: &[(String, ast::Type)],
+    ret: &ast::Type,
+    stmts: &[ast::Stmt],
 ) -> Result<Code, Error> {
     let compiler = FuncCompiler::new(global, args)?;
-    compiler.compile_from_slices(args, ret, stmts)
+    compiler.compile(args, ret, stmts)
 }
 
 struct FuncCompiler<'a> {
@@ -34,26 +34,17 @@ struct FuncCompiler<'a> {
 }
 
 impl<'a> FuncCompiler<'a> {
-    fn new(global: &'a Global<'a>, args: &'a [(String, ast::Type)]) -> Result<Self, Error> {
+    fn new(global: &'a Global, args: &[(String, ast::Type)]) -> Result<Self, Error> {
         let mut local = Local::fork(global);
         local.args(args)?;
         Ok(Self { local })
     }
 
     fn compile(
-        self,
-        args: &'a Vec<(String, ast::Type)>,
-        ret: &'a ast::Type,
-        stmts: &'a Vec<ast::Stmt>,
-    ) -> Result<Code, Error> {
-        self.compile_from_slices(args.as_slice(), ret, stmts.as_slice())
-    }
-
-    fn compile_from_slices(
         mut self,
-        args: &'a [(String, ast::Type)],
-        ret: &'a ast::Type,
-        stmts: &'a [ast::Stmt],
+        args: &[(String, ast::Type)],
+        ret: &ast::Type,
+        stmts: &[ast::Stmt],
     ) -> Result<Code, Error> {
         let mut insts = Vec::new();
 
@@ -180,7 +171,7 @@ impl<'a> FuncCompiler<'a> {
         insts
     }
 
-    fn compile_stmt(&mut self, stmt: &'a ast::Stmt) -> Result<Vec<Inst<Reg, Imm>>, Error> {
+    fn compile_stmt(&mut self, stmt: &ast::Stmt) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match stmt {
             ast::Stmt::Block(stmts) => {
                 let mut insts = Vec::new();
@@ -308,7 +299,7 @@ impl<'a> FuncCompiler<'a> {
 
     fn compile_expr(
         &mut self,
-        expr: &'a ast::Expr,
+        expr: &ast::Expr,
         target: Reg,
     ) -> Result<(Vec<Inst<Reg, Imm>>, Reg), Error> {
         let (insts, result_reg) = match expr {
@@ -550,7 +541,7 @@ impl<'a> FuncCompiler<'a> {
 
     fn compile_lvalue(
         &mut self,
-        lvalue: &'a ast::Expr,
+        lvalue: &ast::Expr,
         value_reg: Reg,
     ) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match lvalue {

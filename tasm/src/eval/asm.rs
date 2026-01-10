@@ -7,8 +7,8 @@ use super::{
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-impl<'a> Global<'a> {
-    pub fn asm2code(&'a self, name: &str) -> Result<Code, Error> {
+impl Global {
+    pub fn asm2code(&self, name: &str) -> Result<Code, Error> {
         match self.get(name) {
             Some(ast::Def::Asm(_, _, stmts)) => gen_asm(self, stmts),
             Some(_) => Err(Error::NotAnAsm(name.to_string())),
@@ -17,7 +17,7 @@ impl<'a> Global<'a> {
     }
 }
 
-fn gen_asm<'a>(global: &'a Global<'a>, stmts: &'a [ast::Asm]) -> Result<Code, Error> {
+fn gen_asm(global: &Global, stmts: &[ast::Asm]) -> Result<Code, Error> {
     // 1. Collect local labels
     let mut local: HashMap<&str, usize> = HashMap::new();
     for (idx, ast::Asm(_, _, labels)) in stmts.iter().enumerate() {
@@ -36,11 +36,11 @@ fn gen_asm<'a>(global: &'a Global<'a>, stmts: &'a [ast::Asm]) -> Result<Code, Er
     Ok(Code(insts))
 }
 
-fn parse_stmt<'a>(
-    global: &'a Global<'a>,
+fn parse_stmt(
+    global: &Global,
     local: &HashMap<&str, usize>,
     idx: usize,
-    stmt: &'a ast::Asm,
+    stmt: &ast::Asm,
 ) -> Result<Inst<Reg, Imm>, Error> {
     let g = global;
     let ast::Asm(inst, args, _) = stmt;
@@ -122,7 +122,7 @@ fn parse_stmt<'a>(
     }
 }
 
-impl<'a> ast::Expr {
+impl ast::Expr {
     fn reg(&self) -> Result<Reg, Error> {
         match self {
             ast::Expr::Ident(name) => match Reg::parse(name) {
@@ -133,7 +133,7 @@ impl<'a> ast::Expr {
         }
     }
 
-    fn imm(&'a self, global: &'a Global<'a>) -> Result<Imm, Error> {
+    fn imm(&self, global: &Global) -> Result<Imm, Error> {
         match self {
             ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
             ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),

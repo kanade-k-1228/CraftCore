@@ -3,7 +3,7 @@ use std::fmt;
 use thiserror::Error;
 
 // Token information without lifetime
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenInfo {
     pub kind: TokenKind,
     pub file: String,
@@ -43,11 +43,17 @@ impl<'a> From<&Token<'a>> for TokenInfo {
     }
 }
 
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::Io(err.to_string())
+    }
+}
+
 // Unified error type for TASM
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum Error {
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(String),
 
     // Parse errors
     #[error("TODO: not implemented yet")]

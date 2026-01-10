@@ -3,11 +3,11 @@ use crate::eval::global::Global;
 use color_print::cprintln;
 use indexmap::IndexMap;
 
-pub fn binprint<'a>(
+pub fn binprint(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    codes: &IndexMap<&'a str, Code>,
-    global: &Global<'a>,
+    codes: &IndexMap<&str, Code>,
+    global: &Global,
 ) {
     // Program Memory Layout
     let mut iblocks: Vec<_> = imap

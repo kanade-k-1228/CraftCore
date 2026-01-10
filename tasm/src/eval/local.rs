@@ -7,12 +7,12 @@ use crate::{
 };
 
 pub struct Local<'a> {
-    global: &'a Global<'a>,
-    stack: IndexMap<&'a str, (NormType, isize)>,
+    global: &'a Global,
+    stack: IndexMap<String, (NormType, isize)>,
 }
 
 impl<'a> Local<'a> {
-    pub fn fork(global: &'a Global<'a>) -> Self {
+    pub fn fork(global: &'a Global) -> Self {
         Self {
             global,
             stack: IndexMap::new(),
@@ -28,18 +28,18 @@ impl<'a> Local<'a> {
             .unwrap_or(-1)
     }
 
-    pub fn args(&mut self, args: &'a [(String, ast::Type)]) -> Result<isize, Error> {
+    pub fn args(&mut self, args: &[(String, ast::Type)]) -> Result<isize, Error> {
         let mut offset = 2isize;
         for (name, ty) in args.iter().rev() {
             let ty = self.global.normtype(ty)?;
             let size = ty.sizeof() as isize;
-            self.stack.insert(name.as_str(), (ty, offset));
+            self.stack.insert(name.clone(), (ty, offset));
             offset += size;
         }
         Ok(offset)
     }
 
-    pub fn push(&mut self, name: &'a str, ty: &'a ast::Type) -> Result<isize, Error> {
+    pub fn push(&mut self, name: &str, ty: &ast::Type) -> Result<isize, Error> {
         if self.stack.contains_key(name) {
             return Err(Error::DuplicateLocal(name.to_string()));
         }
@@ -47,7 +47,7 @@ impl<'a> Local<'a> {
         let norm_ty = self.global.normtype(ty)?;
         let offset = self.next_offset();
 
-        self.stack.insert(name, (norm_ty, offset));
+        self.stack.insert(name.to_string(), (norm_ty, offset));
 
         Ok(offset)
     }
@@ -63,13 +63,13 @@ impl<'a> Local<'a> {
     }
 
     /// Normalize a type - simply delegates to global
-    pub fn normtype(&self, ty: &'a ast::Type) -> Result<NormType, Error> {
+    pub fn normtype(&self, ty: &ast::Type) -> Result<NormType, Error> {
         self.global.normtype(ty)
     }
 
     /// Evaluate a constant expression - delegates to global
     /// Local variables are not constant expressions
-    pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, Error> {
+    pub fn constexpr(&self, expr: &ast::Expr) -> Result<ConstExpr, Error> {
         // Local variables cannot be used in constant expressions
         if let ast::Expr::Ident(name) = expr {
             if self.is_local(name) {
@@ -80,7 +80,7 @@ impl<'a> Local<'a> {
     }
 
     /// Infer the type of an expression with local context
-    pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, Error> {
+    pub fn typeinfer(&self, expr: &ast::Expr) -> Result<NormType, Error> {
         match expr {
             ast::Expr::Ident(name) => {
                 // Check local scope first
@@ -97,7 +97,7 @@ impl<'a> Local<'a> {
 
     /// Infer address of expr with unresolved symbol
     /// Local variables cannot have static addresses
-    pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
+    pub fn addrexpr(&self, expr: &ast::Expr) -> Result<(String, usize), Error> {
         match expr {
             ast::Expr::Ident(name) => {
                 // Local variables don't have static addresses

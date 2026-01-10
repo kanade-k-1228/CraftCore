@@ -60,7 +60,7 @@ fn main() -> Result<(), tasm::Error> {
     }
 
     // 4. Evaluator
-    let global = tasm::Global::new(&ast)?;
+    let global = tasm::Global::new(ast)?;
 
     // 5. Generate codes
     let mut codes = IndexMap::new();
