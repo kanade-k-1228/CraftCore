@@ -283,4 +283,10 @@ pub enum Error {
 
     #[error("Duplicate local variable: {0}")]
     DuplicateLocal(String),
+
+    #[error("{0} is not an asm block")]
+    NotAnAsm(String),
+
+    #[error("{0} is not a function")]
+    NotAFunction(String),
 }

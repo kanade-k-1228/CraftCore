@@ -1,14 +1,17 @@
-mod compile;
 mod error;
 mod eval;
 mod grammer;
 mod linker;
 mod util;
 
-pub use compile::{asm, func};
 pub use error::Error;
-pub use eval::constexpr::ConstExpr;
-pub use eval::global::Global;
+pub use eval::{
+    asm,
+    code::{Code, Imm},
+    constexpr::ConstExpr,
+    func,
+    global::Global,
+};
 pub use grammer::lexer::Lexer;
 pub use grammer::parsercore::Parser;
 pub use linker::allocator::Allocator;

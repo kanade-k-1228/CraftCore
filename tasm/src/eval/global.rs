@@ -4,12 +4,13 @@ use std::sync::RwLock;
 
 use crate::{
     error::Error,
-    eval::{constexpr::ConstExpr, normtype::NormType},
     grammer::ast::{self, BinaryOp, UnaryOp},
 };
 
+use super::{constexpr::ConstExpr, normtype::NormType};
+
 pub struct Global<'a> {
-    defs: IndexMap<&'a str, &'a ast::Def>,
+    pub(super) defs: IndexMap<&'a str, &'a ast::Def>,
     _normtype: RwLock<HashMap<&'a ast::Type, NormType>>,
     _constexpr: RwLock<HashMap<&'a ast::Expr, ConstExpr>>,
     _typeinfer: RwLock<HashMap<&'a ast::Expr, NormType>>,

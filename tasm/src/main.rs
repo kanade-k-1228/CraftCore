@@ -62,10 +62,14 @@ fn main() -> Result<(), tasm::Error> {
     // 4. Evaluator
     let global = tasm::Global::new(&ast)?;
 
-    // 5. Generate code from functions and assembly blocks
-    let asms = tasm::asm::asm2code(&global)?;
-    let funcs = tasm::func::func2code(&global)?;
-    let codes: IndexMap<_, _> = funcs.into_iter().chain(asms).collect();
+    // 5. Generate codes
+    let mut codes = IndexMap::new();
+    for a in global.asms() {
+        codes.insert(a, global.asm2code(a)?);
+    }
+    for f in global.funcs() {
+        codes.insert(f, global.func2code(f)?);
+    }
 
     // 6. Code dependencies graph
     let deps = tasm::Deps::build(&codes);
@@ -80,7 +84,9 @@ fn main() -> Result<(), tasm::Error> {
         .section("code", 0x0008, 0x10000)
         .allocator();
 
-    let (fixed, auto) = global.instobjs()?;
+    // let (fixed, auto) = global.instobjs()?;
+    // let asms = global.asms().filter(|n| labels.contains(n)).collect();
+    // let funcs = global.funcs().filter(|n| labels.contains(n)).collect();
 
     for (&name, code) in &codes {
         if labels.contains(name) {

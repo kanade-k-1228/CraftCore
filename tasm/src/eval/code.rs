@@ -1,6 +1,3 @@
-pub mod asm;
-pub mod func;
-
 use arch::inst::Inst;
 use arch::reg::Reg;
 

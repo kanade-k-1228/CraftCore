@@ -1,5 +1,5 @@
-use crate::compile::{Code, Imm};
 use crate::error::Error;
+use crate::eval::code::{Code, Imm};
 use crate::eval::global::Global;
 use arch::reg::Reg;
 use indexmap::IndexMap;

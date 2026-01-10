@@ -1,20 +1,20 @@
-use crate::{
-    compile::{Code, Imm},
-    error::Error,
-    eval::global::Global,
-    grammer::ast,
+use crate::{error::Error, grammer::ast};
+
+use super::{
+    code::{Code, Imm},
+    global::Global,
 };
 use arch::{inst::Inst, reg::Reg};
 use std::collections::HashMap;
 
-pub fn asm2code<'a>(global: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
-    let mut result = HashMap::new();
-    for name in global.asms() {
-        if let Some(ast::Def::Asm(_, _, stmts)) = global.get(name) {
-            result.insert(name, gen_asm(global, stmts)?);
+impl<'a> Global<'a> {
+    pub fn asm2code(&'a self, name: &str) -> Result<Code, Error> {
+        match self.get(name) {
+            Some(ast::Def::Asm(_, _, stmts)) => gen_asm(self, stmts),
+            Some(_) => Err(Error::NotAnAsm(name.to_string())),
+            None => Err(Error::UnknownIdentifier(name.to_string())),
         }
     }
-    Ok(result)
 }
 
 fn gen_asm<'a>(global: &'a Global<'a>, stmts: &'a [ast::Asm]) -> Result<Code, Error> {

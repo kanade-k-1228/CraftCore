@@ -1,4 +1,4 @@
-use crate::compile::Code;
+use crate::eval::code::{Code, Imm};
 use crate::eval::global::Global;
 use color_print::cprintln;
 use indexmap::IndexMap;
@@ -43,9 +43,9 @@ pub fn binprint<'a>(
                 let asm_text = inst.cformat();
                 // Resolve Imm to u16 for now (placeholder - actual resolution would happen in linking)
                 let resolved_inst = inst.clone().resolve(|imm| match imm {
-                    crate::compile::Imm::Lit(val) => val as u16,
-                    crate::compile::Imm::Symbol(_, _) => 0, // Placeholder for unresolved symbols
-                    crate::compile::Imm::Label(_) => 0,     // Placeholder for unresolved labels
+                    Imm::Lit(val) => val as u16,
+                    Imm::Symbol(_, _) => 0, // Placeholder for unresolved symbols
+                    Imm::Label(_) => 0,     // Placeholder for unresolved labels
                 });
                 let bin = resolved_inst.to_op().to_bin();
                 let bytes = bin.to_le_bytes();

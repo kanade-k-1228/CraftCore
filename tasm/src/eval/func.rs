@@ -1,23 +1,32 @@
-use crate::{
-    compile::{Code, Imm},
-    error::Error,
-    eval::{global::Global, local::Local, normtype::NormType},
-    grammer::ast,
+use crate::{error::Error, grammer::ast};
+
+use super::{
+    code::{Code, Imm},
+    global::Global,
+    local::Local,
+    normtype::NormType,
 };
 use arch::{inst::Inst, reg::Reg};
 use itertools::chain;
-use std::collections::HashMap;
 
-pub fn func2code<'a>(global: &'a Global<'a>) -> Result<HashMap<&'a str, Code>, Error> {
-    let mut result = HashMap::new();
-    for name in global.funcs() {
-        if let Some(ast::Def::Func(_, args, ret, stmts)) = global.get(name) {
-            let compiler = FuncCompiler::new(global, args)?;
-            let code = compiler.compile(args, ret, stmts)?;
-            result.insert(name, code);
+impl<'a> Global<'a> {
+    pub fn func2code(&'a self, name: &str) -> Result<Code, Error> {
+        match self.get(name) {
+            Some(ast::Def::Func(_, args, ret, stmts)) => gen_func(self, args, ret, stmts),
+            Some(_) => Err(Error::NotAFunction(name.to_string())),
+            None => Err(Error::UnknownIdentifier(name.to_string())),
         }
     }
-    Ok(result)
+}
+
+fn gen_func<'a>(
+    global: &'a Global<'a>,
+    args: &'a [(String, ast::Type)],
+    ret: &'a ast::Type,
+    stmts: &'a [ast::Stmt],
+) -> Result<Code, Error> {
+    let compiler = FuncCompiler::new(global, args)?;
+    compiler.compile_from_slices(args, ret, stmts)
 }
 
 struct FuncCompiler<'a> {
@@ -32,10 +41,19 @@ impl<'a> FuncCompiler<'a> {
     }
 
     fn compile(
-        mut self,
+        self,
         args: &'a Vec<(String, ast::Type)>,
         ret: &'a ast::Type,
         stmts: &'a Vec<ast::Stmt>,
+    ) -> Result<Code, Error> {
+        self.compile_from_slices(args.as_slice(), ret, stmts.as_slice())
+    }
+
+    fn compile_from_slices(
+        mut self,
+        args: &'a [(String, ast::Type)],
+        ret: &'a ast::Type,
+        stmts: &'a [ast::Stmt],
     ) -> Result<Code, Error> {
         let mut insts = Vec::new();
 
