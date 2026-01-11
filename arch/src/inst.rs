@@ -236,7 +236,7 @@ impl<R: Display, I: Display + std::fmt::LowerHex + std::fmt::UpperHex> Inst<R, I
         macro_rules! rri {
             ($name:expr, $rd:expr, $rs1:expr, $imm:expr) => {
                 cformat!(
-                    "<r>{:<6}</><b>{:<2} {:<2} <y>0x{:0>4X}</></>",
+                    "<r>{:<6}</><b>{:<2} {:<2} <y>{:X}</></>",
                     $name,
                     $rd,
                     $rs1,

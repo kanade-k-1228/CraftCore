@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::u16;
 
-use arch::alu::{alu_model, ALU};
+use arch::alu::ALU;
 use arch::inst::Inst;
 use arch::op::Op;
 use arch::reg::Reg;
@@ -106,14 +106,12 @@ impl State {
     }
 
     fn calc(&mut self, alu: ALU, rd: Reg, rs1: Reg, rs2: Reg) {
-        let calc = alu_model(alu, self.get(rs1), self.get(rs2));
-        self.set(rd, calc);
+        self.set(rd, alu.calc(self.get(rs1), self.get(rs2)));
         self.inc_pc();
     }
 
     fn calci(&mut self, alu: ALU, rd: Reg, rs1: Reg, imm: u16) {
-        let calc = alu_model(alu, self.get(rs1), imm);
-        self.set(rd, calc);
+        self.set(rd, alu.calc(self.get(rs1), imm));
         self.inc_pc();
     }
 

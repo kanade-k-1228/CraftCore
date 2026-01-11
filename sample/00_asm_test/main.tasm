@@ -7,9 +7,9 @@ static foo : int;
 static bar : int;
 static exit : int;
 
-const cst = 0x0100;
+const cst = 0x0123;
 
-asm @ 0x0000 reset {
+asm @ 0x0008 reset {
     add(t2, t0, t1);
     sub(t2, t0, t1);
     and(t2, t0, t1);
@@ -48,16 +48,16 @@ asm @ 0x0000 reset {
     store(t2, t0, fuga);
 
   a:
-    jumpif(t1, b);
+    jumpif(t1, reset);
     jumpifr(t1, b);
-    jump(e);
-    jumpr(1);
+    jump(reset);
+    jumpr(b);
   b:
-    call(c);
+    call(reset);
   c:
     ret();
   d:
     iret();
   e:
-    jump(e);
+    jumpr(e);
 }

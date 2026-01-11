@@ -127,7 +127,13 @@ impl<'a> ast::Expr {
         match self {
             ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
             ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
-            ast::Expr::Ident(name) => Ok(Imm::Symbol(name.clone(), 0)),
+            ast::Expr::Ident(name) => match global.get(name.as_str()) {
+                Some(ast::Def::Const(_, _, expr)) => {
+                    let value = global.constexpr(expr)?;
+                    Ok(Imm::Lit(value.to_usize()))
+                }
+                _ => Ok(Imm::Symbol(name.clone(), 0)),
+            },
             ast::Expr::Unary(op, inner) => match op {
                 ast::UnaryOp::Pos => inner.imm(global),
                 ast::UnaryOp::Neg => match inner.imm(global) {

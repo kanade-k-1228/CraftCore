@@ -10,6 +10,16 @@ pub enum ConstExpr {
 }
 
 impl ConstExpr {
+    pub fn to_usize(&self) -> usize {
+        match self {
+            ConstExpr::Number(n) => *n,
+            ConstExpr::Char(c) => *c as usize,
+            ConstExpr::String(_) => 0,
+            ConstExpr::Array(_) => 0,
+            ConstExpr::Struct(_) => 0,
+        }
+    }
+
     pub fn typeinfer(&self) -> Result<NormType, Error> {
         Ok(match self {
             ConstExpr::Number(_) => NormType::Int,

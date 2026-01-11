@@ -27,11 +27,13 @@ struct Args {
     #[arg(default_value = "const.bin")]
     cbin: String,
 
-    #[arg(long = "sin")]
-    serial_in: Option<String>,
+    /// Serial input file
+    #[arg(long)]
+    sin: Option<String>,
 
-    #[arg(long = "sout")]
-    serial_out: Option<String>,
+    /// Serial output file
+    #[arg(long)]
+    sout: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[INIT]");
 
     let mut hooks: Vec<Box<dyn Hook>> = vec![
-        Box::new(Serial::arg(true, args.serial_out, args.serial_in)),
+        Box::new(Serial::arg(true, args.sout, args.sin)),
         Box::new(Intr::arg(args.intr_cfg)),
         Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
     ];
@@ -69,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tmax = args.tmax.unwrap_or(u64::MAX);
     for time in 0..tmax {
-        // Execute instruction
+        // 1. Execute instruction
         let (addr, code, _, inst) = state.exec();
         println!("[{:0>4}] {}", time, inst.cformat());
 
