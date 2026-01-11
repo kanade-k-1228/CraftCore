@@ -289,4 +289,19 @@ pub enum Error {
 
     #[error("{0} is not a function")]
     NotAFunction(String),
+
+    #[error("{0} is not a global label")]
+    NotGlobalLabel(String),
+
+    #[error("Undefined global label: {0}")]
+    UndefinedGlobalLabel(String),
+
+    #[error("Expected a global label")]
+    GlobalLabelExpected,
+
+    #[error("Undefined local label: {0}")]
+    UndefinedLocalLabel(String),
+
+    #[error("Expected a local label")]
+    LocalLabelExpected,
 }

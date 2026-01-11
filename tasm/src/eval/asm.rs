@@ -77,45 +77,14 @@ fn parse_stmt<'a>(
         ("store", 2) => Ok(Inst::STORE(args[1].reg()?, Reg::Z, args[0].imm(g)?)),
         ("store", 3) => Ok(Inst::STORE(args[0].reg()?, args[1].reg()?, args[2].imm(g)?)),
 
-        // jumpif(cond, label)
-        ("jumpif", 2) => {
-            let cond = args[0].reg()?;
-            match &args[1] {
-                ast::Expr::Ident(label) => match local.get(label.as_str()) {
-                    // Local label: Compiled to relative jump
-                    Some(&goto) => {
-                        let offset = (goto as i32 - idx as i32) as u16;
-                        Ok(Inst::JUMPIFR(cond, Imm::Lit(offset as usize)))
-                    }
-                    // Global label: Compiled to absolute jump
-                    None => Ok(Inst::JUMPIF(cond, Imm::Label(label.clone()))),
-                },
-                _ => Err(Error::TODO),
-            }
-        }
+        ("jumpif", 2) => Ok(Inst::JUMPIF(args[0].reg()?, args[1].global(&global)?)),
+        ("jumpifr", 2) => Ok(Inst::JUMPIFR(args[0].reg()?, args[1].local(&local, idx)?)),
 
-        // jump(label)
-        ("jump", 1) => {
-            match &args[0] {
-                ast::Expr::Ident(label) => match local.get(label.as_str()) {
-                    // Local label: Compiled to relative jump
-                    Some(&goto) => {
-                        let offset = (goto as i32 - idx as i32) as u16;
-                        Ok(Inst::JUMPR(Imm::Lit(offset as usize)))
-                    }
-                    // Global label: Compiled to absolute jump
-                    None => Ok(Inst::JUMP(Imm::Label(label.clone()))),
-                },
-                _ => Err(Error::TODO),
-            }
-        }
+        ("jump", 1) => Ok(Inst::JUMP(args[0].global(&global)?)),
+        ("jumpr", 1) => Ok(Inst::JUMPR(args[0].local(&local, idx)?)),
 
-        // call(label)
-        ("call", 1) => match &args[0] {
-            // Global label only
-            ast::Expr::Ident(label) => Ok(Inst::CALL(Imm::Label(label.clone()))),
-            _ => Err(Error::TODO),
-        },
+        ("call", 1) => Ok(Inst::CALL(args[0].global(&global)?)),
+
         ("ret", 0) => Ok(Inst::RET()),
         ("iret", 0) => Ok(Inst::IRET()),
         _ => Err(Error::InvalidInstruction(inst.to_string())),
@@ -130,6 +99,27 @@ impl<'a> ast::Expr {
                 None => Err(Error::InvalidRegister(name.to_string())),
             },
             _ => Err(Error::InvalidRegister(format!("{:?}", self))),
+        }
+    }
+
+    fn global(&'a self, global: &'a Global<'a>) -> Result<Imm, Error> {
+        match self {
+            ast::Expr::Ident(label) => match global.get(label.as_str()) {
+                Some(ast::Def::Asm(..) | ast::Def::Func(..)) => Ok(Imm::Label(label.to_string())),
+                Some(_) => Err(Error::NotGlobalLabel(label.clone())),
+                None => Err(Error::UndefinedGlobalLabel(label.clone())),
+            },
+            _ => Err(Error::GlobalLabelExpected),
+        }
+    }
+
+    fn local(&'a self, local: &HashMap<&str, usize>, idx: usize) -> Result<Imm, Error> {
+        match self {
+            ast::Expr::Ident(label) => match local.get(label.as_str()) {
+                Some(&goto) => Ok(Imm::Lit((goto as i32 - idx as i32) as usize)),
+                None => Err(Error::UndefinedLocalLabel(label.clone())),
+            },
+            _ => Err(Error::LocalLabelExpected),
         }
     }
 
