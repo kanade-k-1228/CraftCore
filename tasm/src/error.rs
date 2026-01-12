@@ -2,33 +2,40 @@ use crate::grammer::token::{Token, TokenKind};
 use std::fmt;
 use thiserror::Error;
 
-// Token information without lifetime
+/// Source location information
 #[derive(Debug, Clone)]
-pub struct TokenInfo {
-    pub kind: TokenKind,
+pub struct Loc {
     pub file: String,
     pub row: usize,
     pub col: usize,
 }
 
-impl fmt::Display for TokenInfo {
+impl fmt::Display for Loc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:?} at {}:{}:{}",
-            self.kind, self.file, self.row, self.col
-        )
+        write!(f, "{}:{}:{}", self.file, self.row, self.col)
     }
 }
 
-impl<'a> From<Token<'a>> for TokenInfo {
-    fn from(token: Token<'a>) -> Self {
-        TokenInfo {
-            kind: token.kind,
+impl<'a> From<&Token<'a>> for Loc {
+    fn from(token: &Token<'a>) -> Self {
+        Loc {
             file: token.pos.file.to_string(),
             row: token.pos.row,
             col: token.pos.col,
         }
+    }
+}
+
+/// Owned token information (for storing in errors)
+#[derive(Debug, Clone)]
+pub struct TokenInfo {
+    pub kind: TokenKind,
+    pub loc: Loc,
+}
+
+impl fmt::Display for TokenInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?} at {}", self.kind, self.loc)
     }
 }
 
@@ -36,16 +43,23 @@ impl<'a> From<&Token<'a>> for TokenInfo {
     fn from(token: &Token<'a>) -> Self {
         TokenInfo {
             kind: token.kind.clone(),
-            file: token.pos.file.to_string(),
-            row: token.pos.row,
-            col: token.pos.col,
+            loc: Loc::from(token),
         }
+    }
+}
+
+impl<'a> From<Token<'a>> for TokenInfo {
+    fn from(token: Token<'a>) -> Self {
+        TokenInfo::from(&token)
     }
 }
 
 // Unified error type for TASM
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("{1}: {0}")]
+    At(Box<Error>, Loc),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -313,4 +327,27 @@ pub enum Error {
 
     #[error("'{0}' is not a valid immediate value")]
     InvalidImmediateValue(String),
+}
+
+impl Error {
+    /// Attach location information to this error
+    pub fn at(self, loc: Loc) -> Self {
+        Error::At(Box::new(self), loc)
+    }
+}
+
+/// Trait for attaching location to Results
+pub trait ResultExt<T> {
+    fn at(self, loc: Loc) -> Result<T, Error>;
+    fn at_token(self, token: &Token) -> Result<T, Error>;
+}
+
+impl<T> ResultExt<T> for Result<T, Error> {
+    fn at(self, loc: Loc) -> Result<T, Error> {
+        self.map_err(|e| e.at(loc))
+    }
+
+    fn at_token(self, token: &Token) -> Result<T, Error> {
+        self.map_err(|e| e.at(Loc::from(token)))
+    }
 }

@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub kind: TokenKind,
@@ -7,6 +9,16 @@ pub struct Token<'a> {
 impl<'a> Token<'a> {
     pub fn new(kind: TokenKind, pos: Pos<'a>) -> Self {
         Token { kind, pos }
+    }
+}
+
+impl<'a> fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} at {}:{}:{}",
+            self.kind, self.pos.file, self.pos.row, self.pos.col
+        )
     }
 }
 

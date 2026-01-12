@@ -55,7 +55,7 @@ fn main() -> Result<(), tasm::Error> {
     let (ast, errors) = tasm::Parser::new(tokens.into_iter()).parse();
     if !errors.is_empty() {
         for e in &errors {
-            eprintln!("  {:?}", e);
+            eprintln!("error: {}", e);
         }
         std::process::exit(-1);
     }
