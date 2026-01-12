@@ -64,12 +64,8 @@ fn main() -> Result<(), tasm::Error> {
     let global = tasm::Global::new(&ast)?;
 
     // 5. Resolve dependencies from entry points
-
-    let (labels, symbols) = ["reset", "irq", "main"]
-        .iter()
-        .try_fold((HashSet::new(), HashSet::new()), |(l, s), entry| {
-            global.deps(entry, l, s)
-        })?;
+    let (labels, symbols) =
+        global.deps(&["reset", "irq", "main"], HashSet::new(), HashSet::new())?;
 
     // 6-1. Allocate code objects
     let mut ialoc = tasm::Memory::new(0, 0x10000)
@@ -113,14 +109,11 @@ fn main() -> Result<(), tasm::Error> {
     let imap: IndexMap<String, usize> = ialoc.allocations().into_iter().collect();
     let dmap: IndexMap<String, usize> = daloc.allocations().into_iter().collect();
 
-    // 7. Resolve symbols
-    let resolved = tasm::resolve_symbols(&global, &imap, &dmap)?;
+    // 7. Generate binary
     if args.verbose {
         tasm::binprint(&imap, &dmap, &global);
     }
-
-    // 8. Generate binary
-    let main_bin = tasm::genibin(&resolved, &imap)?;
+    let main_bin = tasm::genibin(&global, &imap, &dmap)?;
     let const_bin = tasm::gencbin(&global, &dmap)?;
     let symbol_map = tasm::SymbolMap::generate(&global, &imap, &dmap);
 
