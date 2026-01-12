@@ -1,4 +1,4 @@
-use crate::eval::code::{Code, Imm};
+use crate::eval::code::Imm;
 use crate::eval::global::Global;
 use arch::inst::Inst;
 use arch::reg::Reg;
@@ -83,26 +83,22 @@ fn resolve_imm(imm: Imm, dmap: &IndexMap<String, usize>) -> u16 {
     }
 }
 
-pub fn binprint(
+pub fn binprint<'a>(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    codes: &IndexMap<&str, Code>,
-    global: &Global,
+    global: &'a Global<'a>,
 ) {
     let sep = format!("{} + {}", "-".repeat(18), "-".repeat(39));
 
     // Program Memory
-    let mut iblocks: Vec<_> = imap
-        .iter()
-        .map(|(name, &addr)| (addr, name.as_str(), codes.get(name.as_str())))
-        .collect();
-    iblocks.sort_by_key(|(addr, _, _)| *addr);
+    let mut iblocks: Vec<_> = imap.iter().map(|(name, &addr)| (addr, name)).collect();
+    iblocks.sort_by_key(|(addr, _)| *addr);
 
-    for (mut addr, name, code) in iblocks {
+    for (mut addr, name) in iblocks {
         print!("{sep}");
         println!("{} + {}", "-".repeat(18), name);
 
-        if let Some(code) = code {
+        if let Ok(code) = global.code(name) {
             for inst in &code.0 {
                 let resolved = inst.clone().resolve(|imm| resolve_imm(imm, dmap));
                 let bytes = resolved.to_op().to_bin().to_le_bytes();

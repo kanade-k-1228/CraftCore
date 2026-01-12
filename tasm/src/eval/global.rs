@@ -7,13 +7,14 @@ use crate::{
     grammer::ast::{self, BinaryOp, UnaryOp},
 };
 
-use super::{constexpr::ConstExpr, normtype::NormType};
+use super::{code::Code, constexpr::ConstExpr, normtype::NormType};
 
 pub struct Global<'a> {
     defs: IndexMap<&'a str, &'a ast::Def>,
     _normtype: RwLock<HashMap<&'a ast::Type, NormType>>,
     _constexpr: RwLock<HashMap<&'a ast::Expr, ConstExpr>>,
     _typeinfer: RwLock<HashMap<&'a ast::Expr, NormType>>,
+    _code: RwLock<HashMap<&'a str, Code>>,
 }
 
 impl<'a> Global<'a> {
@@ -40,6 +41,7 @@ impl<'a> Global<'a> {
             _normtype: RwLock::new(HashMap::new()),
             _constexpr: RwLock::new(HashMap::new()),
             _typeinfer: RwLock::new(HashMap::new()),
+            _code: RwLock::new(HashMap::new()),
         })
     }
 }
@@ -613,5 +615,36 @@ impl<'a> Global<'a> {
         }
 
         Ok((fixed, auto))
+    }
+}
+
+impl<'a> Global<'a> {
+    /// Generate code for an asm or func definition with caching
+    pub fn code(&'a self, name: &str) -> Result<Code, Error> {
+        // Check cache first
+        {
+            let cache = self._code.read().unwrap();
+            if let Some(cached) = cache.get(name) {
+                return Ok(cached.clone());
+            }
+        }
+
+        // Generate code based on definition type
+        let result = match self.get(name) {
+            Some(ast::Def::Asm(..)) => self.asm2code(name),
+            Some(ast::Def::Func(..)) => self.func2code(name),
+            Some(_) => Err(Error::NotCodeGeneratable(name.to_string())),
+            None => Err(Error::UnknownIdentifier(name.to_string())),
+        };
+
+        // Cache the result if successful
+        if let Ok(ref code) = result {
+            if let Some(&key) = self.defs.keys().find(|&&k| k == name) {
+                let mut cache = self._code.write().unwrap();
+                cache.insert(key, code.clone());
+            }
+        }
+
+        result
     }
 }

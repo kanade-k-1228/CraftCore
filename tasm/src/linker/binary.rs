@@ -1,16 +1,17 @@
 use crate::error::Error;
-use crate::eval::code::{Code, Imm};
+use crate::eval::code::Imm;
 use crate::eval::global::Global;
 use arch::reg::Reg;
 use indexmap::IndexMap;
 
-pub fn resolve_symbols(
-    codes: &IndexMap<&str, Code>,
+pub fn resolve_symbols<'a>(
+    global: &'a Global<'a>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-) -> IndexMap<&str, Vec<arch::inst::Inst<Reg, u16>>> {
+) -> Result<IndexMap<String, Vec<arch::inst::Inst<Reg, u16>>>, Error> {
     let mut resolved = IndexMap::new();
-    for (&name, code) in codes {
+    for name in imap.keys() {
+        let code = global.code(name)?;
         let mut resolved_insts = Vec::new();
         for inst in &code.0 {
             let resolved_inst = inst.clone().resolve(|imm| match imm {
@@ -27,19 +28,19 @@ pub fn resolve_symbols(
             });
             resolved_insts.push(resolved_inst);
         }
-        resolved.insert(name, resolved_insts);
+        resolved.insert(name.to_string(), resolved_insts);
     }
-    resolved
+    Ok(resolved)
 }
 
 pub fn genibin(
-    codes: &IndexMap<&str, Vec<arch::inst::Inst<Reg, u16>>>,
+    codes: &IndexMap<String, Vec<arch::inst::Inst<Reg, u16>>>,
     pmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, Error> {
     let max_addr = pmmap
         .iter()
         .filter_map(|(name, addr)| {
-            codes.get(name.as_str()).map(|code| {
+            codes.get(name).map(|code| {
                 let size = code.len() * 4; // Each instruction is 4 bytes
                 addr + size
             })
@@ -51,8 +52,8 @@ pub fn genibin(
     let mut binary = vec![0u8; max_addr];
 
     // Place each code block at its specified address
-    for (&name, code) in codes {
-        if let Some(&addr) = pmmap.get(&name.to_string()) {
+    for (name, code) in codes {
+        if let Some(&addr) = pmmap.get(name) {
             let mut offset = addr;
             for inst in code {
                 let op = inst.clone().to_op();

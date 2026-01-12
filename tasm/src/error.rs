@@ -290,6 +290,9 @@ pub enum Error {
     #[error("{0} is not a function")]
     NotAFunction(String),
 
+    #[error("{0} is not code generatable (not asm or func)")]
+    NotCodeGeneratable(String),
+
     #[error("{0} is not a global label")]
     NotGlobalLabel(String),
 

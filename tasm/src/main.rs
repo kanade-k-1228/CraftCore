@@ -59,52 +59,36 @@ fn main() -> Result<(), tasm::Error> {
         std::process::exit(-1);
     }
 
-    // 4. Evaluator
+    // 4. Evaluator Database
     let global = tasm::Global::new(&ast)?;
 
-    // 5. Generate codes
-    let mut codes = IndexMap::new();
-    for a in global.asms() {
-        codes.insert(a, global.asm2code(a)?);
-    }
-    for f in global.funcs() {
-        codes.insert(f, global.func2code(f)?);
-    }
+    // 5. Resolve dependencies from entry points
+    let deps = tasm::Deps::resolve(&global, &["reset", "irq", "main"])?;
+    let labels: &std::collections::HashSet<String> = deps.labels();
+    let symbols = deps.symbols();
 
-    // 6. Code dependencies graph
-    let deps = tasm::Deps::build(&codes);
-
-    // 7. Collect used objects
-    let (labels, symbols) = deps.entries(&vec!["reset", "irq", "main"]);
-
-    // 8-1. Allocate code objects
+    // 6-1. Allocate code objects
     let mut ialoc = tasm::Memory::new(0, 0x10000)
         .section("reset", 0x0000, 0x0004)
         .section("irq", 0x0004, 0x0008)
         .section("code", 0x0008, 0x10000)
         .allocator();
 
-    // let (fixed, auto) = global.instobjs()?;
-    // let asms = global.asms().filter(|n| labels.contains(n)).collect();
-    // let funcs = global.funcs().filter(|n| labels.contains(n)).collect();
-
-    for (&name, code) in &codes {
-        if labels.contains(name) {
-            if let Some(Some(addr)) = global.get_asm_resolved(name) {
-                ialoc.allocate(addr, code.0.len(), name)?;
-            }
+    for name in labels.iter() {
+        let code = global.code(name)?;
+        if let Some(Some(addr)) = global.get_asm_resolved(name) {
+            ialoc.allocate(addr, code.0.len(), name)?;
         }
     }
 
-    for (&name, code) in &codes {
-        if labels.contains(name) {
-            if let Some(None) = global.get_asm_resolved(name) {
-                ialoc.section("code", code.0.len(), name)?;
-            }
+    for name in labels.iter() {
+        let code = global.code(name)?;
+        if let Some(None) = global.get_asm_resolved(name) {
+            ialoc.section("code", code.0.len(), name)?;
         }
     }
 
-    // 8-2. Allocate data objects
+    // 6-2. Allocate data objects
     let mut daloc = tasm::Memory::new(0, 0x10000)
         .section("const", 0x3000, 0x5000)
         .section("static", 0x5000, 0x10000)
@@ -125,18 +109,18 @@ fn main() -> Result<(), tasm::Error> {
     let imap: IndexMap<String, usize> = ialoc.allocations().into_iter().collect();
     let dmap: IndexMap<String, usize> = daloc.allocations().into_iter().collect();
 
-    // 9. Resolve symbols
-    let resolved = tasm::resolve_symbols(&codes, &imap, &dmap);
+    // 7. Resolve symbols
+    let resolved = tasm::resolve_symbols(&global, &imap, &dmap)?;
     if args.verbose {
-        tasm::binprint(&imap, &dmap, &codes, &global);
+        tasm::binprint(&imap, &dmap, &global);
     }
 
-    // 10. Generate binary
+    // 8. Generate binary
     let main_bin = tasm::genibin(&resolved, &imap)?;
     let const_bin = tasm::gencbin(&global, &dmap)?;
     let symbol_map = tasm::SymbolMap::generate(&global, &imap, &dmap);
 
-    // 12. Write output files
+    // 9. Write output files
     fs::write(&args.out, main_bin)?;
     fs::write(&args.rom, const_bin)?;
     if let Some(ref file) = args.map {
