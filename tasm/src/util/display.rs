@@ -95,7 +95,7 @@ pub fn binprint<'a>(
     iblocks.sort_by_key(|(addr, _)| *addr);
 
     for (mut addr, name) in iblocks {
-        print!("{sep}");
+        print!("{sep}\r");
         println!("{} + {}", "-".repeat(18), name);
 
         if let Ok(code) = global.code(name) {
