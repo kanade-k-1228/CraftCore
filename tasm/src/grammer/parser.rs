@@ -86,10 +86,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => Err(Error::UnexpectedToken(
-                    token.clone().into(),
-                    token.pos.clone(),
-                )),
+                _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
             }
         } else {
             Err(Error::UnexpectedEOF(Pos::default()))
@@ -157,10 +154,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     expect!(self, RCurly)?;
                     Ok(Def::Func(name, args, ret, stmts))
                 }
-                _ => Err(Error::UnexpectedToken(
-                    token.clone().into(),
-                    token.pos.clone(),
-                )),
+                _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
             }
         } else {
             Err(Error::UnexpectedEOF(Pos::default()))
@@ -611,10 +605,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     return Ok(Expr::StringLit(s));
                 }
 
-                _ => Err(Error::UnexpectedToken(
-                    token.clone().into(),
-                    token.pos.clone(),
-                )),
+                _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
             }
         } else {
             Err(Error::UnexpectedEOF(Pos::default()))
@@ -628,10 +619,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 kind: Ident(s),
                 pos,
             }) => Ok((s, pos)),
-            Some(token) => Err(Error::UnexpectedToken(
-                token.clone().into(),
-                token.pos.clone(),
-            )),
+            Some(token) => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
             None => Err(Error::UnexpectedEOF(Pos::default())),
         }
     }

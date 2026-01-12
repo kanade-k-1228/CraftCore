@@ -25,8 +25,8 @@ impl<'a> Global<'a> {
                 | ast::Def::Const((_, pos), _, _)
                 | ast::Def::Static((_, pos), _, _)
                 | ast::Def::Asm((_, pos), _, _),
-            ) => Err(Error::NotAFunction(name.to_string(), pos.clone())),
-            None => Err(Error::UnknownIdentifier(name.to_string(), Pos::default())),
+            ) => Err(Error::NotAFunction(pos.clone(), name.to_string())),
+            None => Err(Error::UnknownIdentifier(Pos::default(), name.to_string())),
         }
     }
 }
@@ -61,14 +61,14 @@ impl<'a> Context<'a> {
             let norm_type = self
                 .local
                 .normtype(arg_type)
-                .map_err(|_| Error::TypeCollectionFailed(name.clone(), loc.clone()))?;
+                .map_err(|_| Error::TypeCollectionFailed(loc.clone(), name.clone()))?;
             norm_args.push((name.clone(), norm_type));
         }
 
         let norm_ret_type = self
             .local
             .normtype(ret)
-            .map_err(|_| Error::TypeCollectionFailed("return type".to_string(), loc.clone()))?;
+            .map_err(|_| Error::TypeCollectionFailed(loc.clone(), "return type".to_string()))?;
 
         // Add prologue
         insts.extend(Self::prologue(&norm_args));
@@ -263,8 +263,8 @@ impl<'a> Context<'a> {
                 // Allocate stack space for the variable
                 let offset = self.local.push(ident, ty).map_err(|e| {
                     Error::TypeCollectionFailed(
-                        format!("local variable {}: {}", name, e),
                         pos.clone(),
+                        format!("local variable {}: {}", name, e),
                     )
                 })?;
 
@@ -531,7 +531,7 @@ impl<'a> Context<'a> {
                 let mut insts = Vec::new();
                 // Calculate size at compile time
                 let norm_type = self.local.normtype(typ).map_err(|_| {
-                    Error::TypeCollectionFailed("sizeof".to_string(), Pos::default())
+                    Error::TypeCollectionFailed(Pos::default(), "sizeof".to_string())
                 })?;
                 let size = norm_type.sizeof() as u16;
                 insts.push(Inst::LOADI(target, Imm::Lit(size as usize)));
@@ -608,8 +608,8 @@ impl<'a> Context<'a> {
             }
 
             _ => Err(Error::InvalidLValue(
-                format!("{:?}", lvalue),
                 lvalue.pos_or_default(),
+                format!("{:?}", lvalue),
             )),
         }
     }

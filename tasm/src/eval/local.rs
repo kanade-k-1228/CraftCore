@@ -42,7 +42,7 @@ impl<'a> Local<'a> {
     pub fn push(&mut self, ident: &'a ast::Ident, ty: &'a ast::Type) -> Result<isize, Error> {
         let (name, pos) = ident;
         if self.stack.contains_key(name.as_str()) {
-            return Err(Error::DuplicateLocal(name.clone(), pos.clone()));
+            return Err(Error::DuplicateLocal(pos.clone(), name.clone()));
         }
 
         let norm_ty = self.global.normtype(ty)?;
@@ -103,7 +103,7 @@ impl<'a> Local<'a> {
             ast::Expr::Ident((name, pos)) => {
                 // Local variables don't have static addresses
                 if self.is_local(name) {
-                    return Err(Error::NotAddressable(name.clone(), pos.clone()));
+                    return Err(Error::NotAddressable(pos.clone(), name.clone()));
                 }
                 // Delegate to global for static/const/func
                 self.global.addrexpr(expr)
@@ -114,8 +114,8 @@ impl<'a> Local<'a> {
                 if let ast::Expr::Ident((name, pos)) = base.as_ref() {
                     if self.is_local(name) {
                         return Err(Error::NotAddressable(
-                            format!("local variable {}", name),
                             pos.clone(),
+                            format!("local variable {}", name),
                         ));
                     }
                 }
@@ -127,8 +127,8 @@ impl<'a> Local<'a> {
                 if let ast::Expr::Ident((name, pos)) = base.as_ref() {
                     if self.is_local(name) {
                         return Err(Error::NotAddressable(
-                            format!("local variable {}", name),
                             pos.clone(),
+                            format!("local variable {}", name),
                         ));
                     }
                 }

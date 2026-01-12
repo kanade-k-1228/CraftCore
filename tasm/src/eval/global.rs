@@ -33,7 +33,7 @@ impl<'a> Global<'a> {
             };
 
             if defs.contains_key(name) {
-                return Err(Error::Duplicate(name.to_string(), pos.clone()));
+                return Err(Error::Duplicate(pos.clone(), name.to_string()));
             }
 
             defs.insert(name, def);
@@ -118,11 +118,11 @@ impl<'a> Global<'a> {
                         | ast::Def::Static((_, pos), _, _)
                         | ast::Def::Asm((_, pos), _, _)
                         | ast::Def::Func((_, pos), _, _, _) => {
-                            Err(Error::NotAType(name.clone(), pos.clone()))
+                            Err(Error::NotAType(pos.clone(), name.clone()))
                         }
                     }
                 } else {
-                    Err(Error::UnknownType(name.clone(), pos.clone()))
+                    Err(Error::UnknownType(pos.clone(), name.clone()))
                 }
             }
             ast::Type::Addr(inner) => {
@@ -203,11 +203,11 @@ impl<'a> Global<'a> {
                         | ast::Def::Static((_, pos), _, _)
                         | ast::Def::Asm((_, pos), _, _)
                         | ast::Def::Func((_, pos), _, _, _) => {
-                            Err(Error::NotAConstant(name.clone(), pos.clone()))
+                            Err(Error::NotAConstant(pos.clone(), name.clone()))
                         }
                     }
                 } else {
-                    Err(Error::UnknownConstant(name.clone(), pos.clone()))
+                    Err(Error::UnknownConstant(pos.clone(), name.clone()))
                 }
             }
             ast::Expr::Binary(op, left, right) => {
@@ -329,7 +329,7 @@ impl<'a> Global<'a> {
                             let const_val = self.constexpr(expr)?;
                             const_val
                                 .typeinfer()
-                                .map_err(|_| Error::NotAValue(name.clone(), pos.clone()))
+                                .map_err(|_| Error::NotAValue(pos.clone(), name.clone()))
                         }
                         ast::Def::Func(_, params, ret_ty, _) => {
                             // Build function type
@@ -342,11 +342,11 @@ impl<'a> Global<'a> {
                             Ok(NormType::Func(norm_params, Box::new(norm_ret)))
                         }
                         ast::Def::Type((_, pos), _) | ast::Def::Asm((_, pos), _, _) => {
-                            Err(Error::NotAValue(name.clone(), pos.clone()))
+                            Err(Error::NotAValue(pos.clone(), name.clone()))
                         }
                     }
                 } else {
-                    Err(Error::UnknownIdentifier(name.clone(), pos.clone()))
+                    Err(Error::UnknownIdentifier(pos.clone(), name.clone()))
                 }
             }
             ast::Expr::Binary(op, left, right) => {
@@ -394,7 +394,7 @@ impl<'a> Global<'a> {
             ast::Expr::Member(base_expr, (field, field_pos)) => match self.typeinfer(base_expr)? {
                 NormType::Struct(fields) => match fields.iter().find(|(name, _)| name == field) {
                     Some((_, ty)) => return Ok(ty.clone()),
-                    None => return Err(Error::NoSuchField(field.clone(), field_pos.clone())),
+                    None => return Err(Error::NoSuchField(field_pos.clone(), field.clone())),
                 },
                 _ => Err(Error::NotAStruct(base_expr.pos_or_default())),
             },
@@ -416,9 +416,9 @@ impl<'a> Global<'a> {
                     Ok(cast)
                 } else {
                     Err(Error::InvalidCastSize(
+                        inner.pos_or_default(),
                         base.sizeof(),
                         cast.sizeof(),
-                        inner.pos_or_default(),
                     ))
                 }
             }
@@ -449,10 +449,10 @@ impl<'a> Global<'a> {
                     | ast::Def::Func(_, _, _, _)
                     | ast::Def::Asm(_, _, _) => Ok((name.clone(), 0)),
                     ast::Def::Type((_, pos), _) => {
-                        Err(Error::NotAddressable(name.clone(), pos.clone()))
+                        Err(Error::NotAddressable(pos.clone(), name.clone()))
                     }
                 },
-                None => Err(Error::UnknownIdentifier(name.clone(), pos.clone())),
+                None => Err(Error::UnknownIdentifier(pos.clone(), name.clone())),
             },
 
             ast::Expr::Index(base, index) => {
@@ -477,15 +477,15 @@ impl<'a> Global<'a> {
                 let ty = self.typeinfer(base)?;
                 let ofs = ty
                     .get_field_offset(field)
-                    .ok_or(Error::NoSuchField(field.clone(), field_pos.clone()))?;
+                    .ok_or(Error::NoSuchField(field_pos.clone(), field.clone()))?;
                 Ok((symbol, offset + ofs))
             }
 
             ast::Expr::Cast(inner, _) => self.addrexpr(inner),
 
             _ => Err(Error::NotAddressable(
-                format!("{:?}", expr),
                 expr.pos_or_default(),
+                format!("{:?}", expr),
             )),
         }
     }
@@ -577,8 +577,8 @@ impl<'a> Global<'a> {
                                 ConstExpr::Number(n) => n,
                                 _ => {
                                     return Err(Error::InvalidImmediate(
-                                        "address must be numeric".to_string(),
                                         addr_expr.pos_or_default(),
+                                        "address must be numeric".to_string(),
                                     ))
                                 }
                             };
@@ -613,8 +613,8 @@ impl<'a> Global<'a> {
                                 ConstExpr::Number(n) => n,
                                 _ => {
                                     return Err(Error::InvalidImmediate(
-                                        "address must be numeric".to_string(),
                                         addr_expr.pos_or_default(),
+                                        "address must be numeric".to_string(),
                                     ))
                                 }
                             };
@@ -631,8 +631,8 @@ impl<'a> Global<'a> {
                                 ConstExpr::Number(n) => n,
                                 _ => {
                                     return Err(Error::InvalidImmediate(
-                                        "address must be numeric".to_string(),
                                         addr_expr.pos_or_default(),
+                                        "address must be numeric".to_string(),
                                     ))
                                 }
                             };
@@ -668,8 +668,8 @@ impl<'a> Global<'a> {
                 ast::Def::Type((_, pos), _)
                 | ast::Def::Const((_, pos), _, _)
                 | ast::Def::Static((_, pos), _, _),
-            ) => Err(Error::NotCodeGeneratable(name.to_string(), pos.clone())),
-            None => Err(Error::UnknownIdentifier(name.to_string(), Pos::default())),
+            ) => Err(Error::NotCodeGeneratable(pos.clone(), name.to_string())),
+            None => Err(Error::UnknownIdentifier(Pos::default(), name.to_string())),
         };
 
         // Cache the result if successful

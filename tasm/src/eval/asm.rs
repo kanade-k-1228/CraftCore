@@ -19,8 +19,8 @@ impl<'a> Global<'a> {
                 | ast::Def::Const((_, pos), _, _)
                 | ast::Def::Static((_, pos), _, _)
                 | ast::Def::Func((_, pos), _, _, _),
-            ) => Err(Error::NotAnAsm(name.to_string(), pos.clone())),
-            None => Err(Error::UnknownIdentifier(name.to_string(), Pos::default())),
+            ) => Err(Error::NotAnAsm(pos.clone(), name.to_string())),
+            None => Err(Error::UnknownIdentifier(Pos::default(), name.to_string())),
         }
     }
 }
@@ -186,7 +186,7 @@ fn parse_stmt<'a>(
 
         ("ret", 0) => Ok(Inst::RET()),
         ("iret", 0) => Ok(Inst::IRET()),
-        _ => Err(Error::InvalidInstruction(inst.clone(), loc)),
+        _ => Err(Error::InvalidInstruction(loc, inst.clone())),
     }
 }
 
@@ -195,9 +195,9 @@ impl ast::Expr {
         match self {
             ast::Expr::Ident((name, _)) => match Reg::parse(name) {
                 Some(r) => Ok(r),
-                None => Err(Error::InvalidRegister(name.clone(), loc.clone())),
+                None => Err(Error::InvalidRegister(loc.clone(), name.clone())),
             },
-            _ => Err(Error::InvalidRegister(format!("{:?}", self), loc.clone())),
+            _ => Err(Error::InvalidRegister(loc.clone(), format!("{:?}", self))),
         }
     }
 
@@ -205,8 +205,8 @@ impl ast::Expr {
         match self {
             ast::Expr::Ident((label, _)) => match global.get(label.as_str()) {
                 Some(ast::Def::Asm(..) | ast::Def::Func(..)) => Ok(Imm::Label(label.clone())),
-                Some(_) => Err(Error::NotGlobalLabel(label.clone(), loc.clone())),
-                None => Err(Error::UndefinedGlobalLabel(label.clone(), loc.clone())),
+                Some(_) => Err(Error::NotGlobalLabel(loc.clone(), label.clone())),
+                None => Err(Error::UndefinedGlobalLabel(loc.clone(), label.clone())),
             },
             _ => Err(Error::GlobalLabelExpected(loc.clone())),
         }
@@ -216,7 +216,7 @@ impl ast::Expr {
         match self {
             ast::Expr::Ident((label, _)) => match local.get(label.as_str()) {
                 Some(&goto) => Ok(Imm::Lit((goto as i32 - idx as i32) as usize)),
-                None => Err(Error::UndefinedLocalLabel(label.clone(), loc.clone())),
+                None => Err(Error::UndefinedLocalLabel(loc.clone(), label.clone())),
             },
             _ => Err(Error::LocalLabelExpected(loc.clone())),
         }
@@ -232,12 +232,12 @@ impl ast::Expr {
                     Ok(Imm::Const(name.clone(), value.to_usize()))
                 }
                 Some(ast::Def::Static(..)) => {
-                    Err(Error::StaticRequiresAddressOf(name.clone(), loc.clone()))
+                    Err(Error::StaticRequiresAddressOf(loc.clone(), name.clone()))
                 }
                 Some(ast::Def::Asm(..) | ast::Def::Func(..) | ast::Def::Type(..)) => {
-                    Err(Error::InvalidImmediateValue(name.clone(), loc.clone()))
+                    Err(Error::InvalidImmediateValue(loc.clone(), name.clone()))
                 }
-                None => Err(Error::UnknownIdentifier(name.clone(), loc.clone())),
+                None => Err(Error::UnknownIdentifier(loc.clone(), name.clone())),
             },
             ast::Expr::Unary(op, inner) => match op {
                 ast::UnaryOp::Pos => inner.imm(global, loc),
@@ -252,8 +252,8 @@ impl ast::Expr {
                     Some(ast::Def::Static(..)) => Ok(Imm::Symbol(name.clone(), 0)),
                     Some(ast::Def::Const(..)) => Ok(Imm::Symbol(name.clone(), 0)),
                     _ => Err(Error::InvalidImmediateValue(
-                        format!("{}*", name),
                         loc.clone(),
+                        format!("{}*", name),
                     )),
                 },
                 _ => inner.imm(global, loc),
@@ -265,17 +265,17 @@ impl ast::Expr {
                         Some(ast::Def::Static(_, _, ty)) => {
                             let ty = global.normtype(ty)?;
                             ty.get_field_offset(field).ok_or_else(|| {
-                                Error::FieldNotFoundInStruct(field.clone(), loc.clone())
+                                Error::FieldNotFoundInStruct(loc.clone(), field.clone())
                             })?
                         }
                         Some(ast::Def::Const(_, _, expr)) => {
                             let value = global.constexpr(expr)?;
                             let ty = value.typeinfer()?;
                             ty.get_field_offset(field).ok_or_else(|| {
-                                Error::FieldNotFoundInStruct(field.clone(), loc.clone())
+                                Error::FieldNotFoundInStruct(loc.clone(), field.clone())
                             })?
                         }
-                        _ => return Err(Error::UnknownSymbol(ident, loc.clone())),
+                        _ => return Err(Error::UnknownSymbol(loc.clone(), ident)),
                     };
                     Ok(Imm::Symbol(ident, base + offset))
                 }
@@ -304,7 +304,7 @@ impl ast::Expr {
                                         .ok_or(Error::TypeIsNotArray(loc.clone()))?
                                 }
                             }
-                            _ => return Err(Error::UnknownSymbol(ident, loc.clone())),
+                            _ => return Err(Error::UnknownSymbol(loc.clone(), ident)),
                         };
                         Ok(Imm::Symbol(ident, base + offset))
                     } else {
@@ -370,17 +370,17 @@ impl ast::Expr {
 
             ast::Expr::SizeofType(ty) => match global.normtype(ty) {
                 Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
-                Err(e) => Err(Error::CannotEvaluateSizeofType(e.to_string(), loc.clone())),
+                Err(e) => Err(Error::CannotEvaluateSizeofType(loc.clone(), e.to_string())),
             },
 
             ast::Expr::SizeofExpr(inner) => match global.typeinfer(inner) {
                 Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
-                Err(e) => Err(Error::CannotEvaluateSizeofExpr(e.to_string(), loc.clone())),
+                Err(e) => Err(Error::CannotEvaluateSizeofExpr(loc.clone(), e.to_string())),
             },
 
             _ => Err(Error::UnsupportedExprType(
-                format!("{:?}", self),
                 loc.clone(),
+                format!("{:?}", self),
             )),
         }
     }

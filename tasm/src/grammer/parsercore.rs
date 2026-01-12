@@ -82,10 +82,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 self.tokens.next();
                 Ok(token)
             } else {
-                Err(Error::UnexpectedToken(
-                    token.clone().into(),
-                    token.pos.clone(),
-                ))
+                Err(Error::UnexpectedToken(token.pos.clone(), token.clone()))
             }
         } else {
             Err(Error::UnexpectedEOF(Pos::default()))
