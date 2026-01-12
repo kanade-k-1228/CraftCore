@@ -12,36 +12,3 @@ pub enum Imm {
     Const(String, usize),  // Named constant (name, value)
     Symbol(String, usize), // Address of data (name, offset)
 }
-
-impl std::fmt::Display for Imm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Imm::Lit(val) => write!(f, "{}", val),
-            Imm::Label(name) => write!(f, "{}", name),
-            Imm::Const(name, val) => write!(f, "{} ({})", val, name),
-            Imm::Symbol(name, offset) => write!(f, "{} + {}", name, offset),
-        }
-    }
-}
-
-impl std::fmt::LowerHex for Imm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Imm::Lit(val) => write!(f, "0x{:04x}", val),
-            Imm::Label(name) => write!(f, "{}", name),
-            Imm::Const(name, val) => write!(f, "0x{:04x} ({})", val, name),
-            Imm::Symbol(name, offset) => write!(f, "{}.0x{:04x}", name, offset),
-        }
-    }
-}
-
-impl std::fmt::UpperHex for Imm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Imm::Lit(val) => write!(f, "0x{:04X}", val),
-            Imm::Label(name) => write!(f, "{}", name),
-            Imm::Const(name, val) => write!(f, "0x{:04X} ({})", val, name),
-            Imm::Symbol(name, offset) => write!(f, "{}.0x{:04X}", name, offset),
-        }
-    }
-}

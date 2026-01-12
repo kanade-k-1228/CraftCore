@@ -4,11 +4,11 @@ use crate::eval::global::Global;
 use arch::reg::Reg;
 use indexmap::IndexMap;
 
-pub fn resolve_symbols<'a>(
-    codes: &IndexMap<&'a str, Code>,
+pub fn resolve_symbols(
+    codes: &IndexMap<&str, Code>,
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-) -> IndexMap<&'a str, Vec<arch::inst::Inst<Reg, u16>>> {
+) -> IndexMap<&str, Vec<arch::inst::Inst<Reg, u16>>> {
     let mut resolved = IndexMap::new();
     for (&name, code) in codes {
         let mut resolved_insts = Vec::new();
@@ -32,8 +32,8 @@ pub fn resolve_symbols<'a>(
     resolved
 }
 
-pub fn genibin<'a>(
-    codes: &IndexMap<&'a str, Vec<arch::inst::Inst<Reg, u16>>>,
+pub fn genibin(
+    codes: &IndexMap<&str, Vec<arch::inst::Inst<Reg, u16>>>,
     pmmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, Error> {
     let max_addr = pmmap

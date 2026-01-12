@@ -5,37 +5,33 @@ use arch::reg::Reg;
 use color_print::{cformat, cprintln};
 use indexmap::IndexMap;
 
-/// Format an immediate value with resolved address for symbols
-fn format_imm(imm: &Imm, dmap: &IndexMap<String, usize>) -> String {
+fn fmt_imm(imm: &Imm, dmap: &IndexMap<String, usize>) -> String {
     match imm {
         Imm::Lit(val) => format!("0x{:04X}", val),
         Imm::Label(name) => name.clone(),
         Imm::Const(name, val) => format!("0x{:04X} ({})", val, name),
         Imm::Symbol(name, offset) => {
-            let resolved_addr = dmap.get(name).map_or(0, |&addr| addr + offset);
-            format!("0x{:04X} ({}.0x{:04X})", resolved_addr, name, offset)
+            let addr = dmap.get(name).map_or(0, |&addr| addr + offset);
+            match *offset {
+                0 => format!("0x{:04X} ({})", addr, name),
+                _ => format!("0x{:04X} ({}.0x{:04X})", addr, name, offset),
+            }
         }
     }
 }
 
-/// Format an instruction with resolved symbol addresses
-fn format_inst(inst: &Inst<Reg, Imm>, dmap: &IndexMap<String, usize>) -> String {
+fn fmt_inst(inst: &Inst<Reg, Imm>, dmap: &IndexMap<String, usize>) -> String {
     macro_rules! rrr {
-        ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {
-            cformat!("<r>{:<6}</><b>{:<2} {:<2} {:<2}</>", $name, $rd, $rs1, $rs2)
-        };
+        ($name:expr, $rd:expr, $rs1:expr, $rs2:expr) => {{
+            cformat!("<r>{:<8}</><b>{:<2} {:<2} {:<2}</>", $name, $rd, $rs1, $rs2)
+        }};
     }
 
     macro_rules! rri {
-        ($name:expr, $rd:expr, $rs1:expr, $imm:expr) => {
-            cformat!(
-                "<r>{:<6}</><b>{:<2} {:<2} <y>{}</>",
-                $name,
-                $rd,
-                $rs1,
-                format_imm($imm, dmap)
-            )
-        };
+        ($name:expr, $rd:expr, $rs1:expr, $imm:expr) => {{
+            let imm = fmt_imm($imm, dmap);
+            cformat!("<r>{:<8}</><b>{:<2} {:<2} <y>{}</>", $name, $rd, $rs1, imm)
+        }};
     }
 
     match inst {
@@ -68,8 +64,8 @@ fn format_inst(inst: &Inst<Reg, Imm>, dmap: &IndexMap<String, usize>) -> String 
         Inst::LOADI(rd, imm) => rri!("loadi", rd, "", imm),
         Inst::LOAD(rd, rs1, imm) => rri!("load", rd, rs1, imm),
         Inst::STORE(rs2, rs1, imm) => rri!("store", rs2, rs1, imm),
-        Inst::JUMPIF(rs2, imm) => rri!("jumpif", rs2, "", imm),
-        Inst::JUMPIFR(rs2, imm) => rri!("jumpifr", rs2, "", imm),
+        Inst::JUMPIF(rs2, imm) => rri!("jumpif", "", rs2, imm),
+        Inst::JUMPIFR(rs2, imm) => rri!("jumpifr", "", rs2, imm),
         Inst::JUMP(imm) => rri!("jump", "", "", imm),
         Inst::JUMPR(imm) => rri!("jumpr", "", "", imm),
         Inst::CALL(imm) => rri!("call", "", "", imm),
@@ -78,99 +74,75 @@ fn format_inst(inst: &Inst<Reg, Imm>, dmap: &IndexMap<String, usize>) -> String 
     }
 }
 
-pub fn binprint<'a>(
+fn resolve_imm(imm: Imm, dmap: &IndexMap<String, usize>) -> u16 {
+    match imm {
+        Imm::Lit(val) => val as u16,
+        Imm::Label(_) => 0,
+        Imm::Const(_, val) => val as u16,
+        Imm::Symbol(name, offset) => dmap.get(&name).map_or(0, |&a| (a + offset) as u16),
+    }
+}
+
+pub fn binprint(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
-    codes: &IndexMap<&'a str, Code>,
-    global: &Global<'a>,
+    codes: &IndexMap<&str, Code>,
+    global: &Global,
 ) {
-    // Program Memory Layout
+    let sep = format!("{} + {}", "-".repeat(18), "-".repeat(39));
+
+    // Program Memory
     let mut iblocks: Vec<_> = imap
         .iter()
-        .map(|(name, addr)| {
-            let code = codes.get(name.as_str());
-            let size = code.map_or(0, |c| c.0.len());
-            // Get type information
-            let (type_info, signature) = if global.get(name.as_str()).is_some() {
-                ("asm", String::new())
-            } else if let Some(norm_type) = global.get_func_resolved(name.as_str()) {
-                ("func", norm_type.fmt())
-            } else {
-                ("unknown", String::new())
-            };
-
-            (name.clone(), *addr, size, type_info, signature, code)
-        })
+        .map(|(name, &addr)| (addr, name.as_str(), codes.get(name.as_str())))
         .collect();
-    iblocks.sort_by_key(|(_, addr, _, _, _, _)| *addr);
+    iblocks.sort_by_key(|(addr, _, _)| *addr);
 
-    for (name, addr, size, kind, ty, code) in iblocks {
-        print!("{} + {}\r", "-".repeat(18), "-".repeat(39));
-        match kind {
-            "asm" => cprintln!("{} + <red>{}</red> ", "-".repeat(18), name),
-            "func" => cprintln!("{} + <green>{}</green> : {} ", "-".repeat(18), name, ty),
-            _ => unreachable!(),
-        }
+    for (mut addr, name, code) in iblocks {
+        print!("{sep}");
+        println!("{} + {}", "-".repeat(18), name);
 
         if let Some(code) = code {
-            let mut current_addr = addr;
             for inst in &code.0 {
-                let asm_text = format_inst(inst, dmap);
-                // Resolve Imm to u16 for now (placeholder - actual resolution would happen in linking)
-                let resolved_inst = inst.clone().resolve(|imm| match imm {
-                    Imm::Lit(val) => val as u16,
-                    Imm::Label(_) => 0, // Placeholder for unresolved labels
-                    Imm::Const(_, val) => val as u16,
-                    Imm::Symbol(name, offset) => {
-                        dmap.get(&name).map_or(0, |&addr| (addr + offset) as u16)
-                    }
-                });
-                let bin = resolved_inst.to_op().to_bin();
-                let bytes = bin.to_le_bytes();
+                let resolved = inst.clone().resolve(|imm| resolve_imm(imm, dmap));
+                let bytes = resolved.to_op().to_bin().to_le_bytes();
                 cprintln!(
-                    "[{:0>4X}] {:0>2X} {:0>2X} {:0>2X} {:0>2X} | {}",
-                    current_addr,
+                    "[{:04X}] {:02X} {:02X} {:02X} {:02X} | {}",
+                    addr,
                     bytes[0],
                     bytes[1],
                     bytes[2],
                     bytes[3],
-                    asm_text
+                    fmt_inst(inst, dmap)
                 );
-                current_addr += 1;
-            }
-        } else {
-            for a in addr..(addr + size) {
-                println!("| 0x{:04X} : ", a);
+                addr += 1;
             }
         }
     }
-    println!("{} + {}", "-".repeat(18), "-".repeat(39));
+    println!("{sep}");
 
-    // Data Memory Layout
+    // Data Memory
     let mut dblocks: Vec<_> = dmap
         .iter()
-        .map(|(name, addr)| {
-            let (size, ty, kind) =
-                if let Some((norm_type, _)) = global.get_static_resolved(name.as_str()) {
-                    (norm_type.sizeof(), norm_type.fmt(), "static")
-                } else if let Some((norm_type, _, _)) = global.get_const_resolved(name.as_str()) {
-                    (norm_type.sizeof(), norm_type.fmt(), "const")
-                } else {
-                    (0, "unknown".to_string(), "unknown")
-                };
-            (kind, name.clone(), *addr, size, ty)
+        .filter_map(|(name, &addr)| {
+            if let Some((ty, _)) = global.get_static_resolved(name) {
+                return Some((addr, name.as_str(), ty.sizeof(), ty.fmt(), "static"));
+            }
+            if let Some((ty, _, _)) = global.get_const_resolved(name) {
+                return Some((addr, name.as_str(), ty.sizeof(), ty.fmt(), "const"));
+            }
+            None
         })
         .collect();
-    dblocks.sort_by_key(|(_, _, addr, _, _)| *addr);
+    dblocks.sort_by_key(|(addr, _, _, _, _)| *addr);
 
-    for (kind, name, addr, size, ty) in dblocks {
+    for (addr, name, size, ty, kind) in dblocks {
         print!("[{:04X}:{:04X}] ", addr, addr + size);
         match kind {
             "static" => cprintln!("<cyan>{}</cyan> : {}", name, ty),
             "const" => cprintln!("<yellow>{}</yellow> : {}", name, ty),
-            _ => unreachable!(),
+            _ => {}
         }
     }
-
     println!("{}", "-".repeat(60));
 }

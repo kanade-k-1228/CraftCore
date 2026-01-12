@@ -91,7 +91,7 @@ fn parse_stmt<'a>(
     }
 }
 
-impl<'a> ast::Expr {
+impl ast::Expr {
     fn reg(&self) -> Result<Reg, Error> {
         match self {
             ast::Expr::Ident(name) => match Reg::parse(name) {
@@ -102,7 +102,7 @@ impl<'a> ast::Expr {
         }
     }
 
-    fn global(&'a self, global: &'a Global<'a>) -> Result<Imm, Error> {
+    fn global(&self, global: &Global) -> Result<Imm, Error> {
         match self {
             ast::Expr::Ident(label) => match global.get(label.as_str()) {
                 Some(ast::Def::Asm(..) | ast::Def::Func(..)) => Ok(Imm::Label(label.to_string())),
@@ -113,7 +113,7 @@ impl<'a> ast::Expr {
         }
     }
 
-    fn local(&'a self, local: &HashMap<&str, usize>, idx: usize) -> Result<Imm, Error> {
+    fn local(&self, local: &HashMap<&str, usize>, idx: usize) -> Result<Imm, Error> {
         match self {
             ast::Expr::Ident(label) => match local.get(label.as_str()) {
                 Some(&goto) => Ok(Imm::Lit((goto as i32 - idx as i32) as usize)),
@@ -123,7 +123,7 @@ impl<'a> ast::Expr {
         }
     }
 
-    fn imm(&'a self, global: &'a Global<'a>) -> Result<Imm, Error> {
+    fn imm<'a>(&'a self, global: &'a Global<'a>) -> Result<Imm, Error> {
         match self {
             ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
             ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
@@ -132,9 +132,7 @@ impl<'a> ast::Expr {
                     let value = global.constexpr(expr)?;
                     Ok(Imm::Const(name.clone(), value.to_usize()))
                 }
-                Some(ast::Def::Static(..)) => {
-                    Err(Error::StaticRequiresAddressOf(name.clone()))
-                }
+                Some(ast::Def::Static(..)) => Err(Error::StaticRequiresAddressOf(name.clone())),
                 Some(ast::Def::Asm(..) | ast::Def::Func(..) | ast::Def::Type(..)) => {
                     Err(Error::InvalidImmediateValue(name.clone()))
                 }
