@@ -28,9 +28,9 @@ impl<'a> Local<'a> {
             .unwrap_or(-1)
     }
 
-    pub fn args(&mut self, args: &'a [(String, ast::Type)]) -> Result<isize, Error> {
+    pub fn args(&mut self, args: &'a [(ast::Ident, ast::Type)]) -> Result<isize, Error> {
         let mut offset = 2isize;
-        for (name, ty) in args.iter().rev() {
+        for ((name, _), ty) in args.iter().rev() {
             let ty = self.global.normtype(ty)?;
             let size = ty.sizeof() as isize;
             self.stack.insert(name.as_str(), (ty, offset));
@@ -39,15 +39,16 @@ impl<'a> Local<'a> {
         Ok(offset)
     }
 
-    pub fn push(&mut self, name: &'a str, ty: &'a ast::Type) -> Result<isize, Error> {
-        if self.stack.contains_key(name) {
-            return Err(Error::DuplicateLocal(name.to_string()));
+    pub fn push(&mut self, ident: &'a ast::Ident, ty: &'a ast::Type) -> Result<isize, Error> {
+        let (name, pos) = ident;
+        if self.stack.contains_key(name.as_str()) {
+            return Err(Error::DuplicateLocal(name.clone(), pos.clone()));
         }
 
         let norm_ty = self.global.normtype(ty)?;
         let offset = self.next_offset();
 
-        self.stack.insert(name, (norm_ty, offset));
+        self.stack.insert(name.as_str(), (norm_ty, offset));
 
         Ok(offset)
     }
@@ -71,9 +72,9 @@ impl<'a> Local<'a> {
     /// Local variables are not constant expressions
     pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, Error> {
         // Local variables cannot be used in constant expressions
-        if let ast::Expr::Ident(name) = expr {
+        if let ast::Expr::Ident((name, pos)) = expr {
             if self.is_local(name) {
-                return Err(Error::NonConstantExpression);
+                return Err(Error::NonConstantExpression(pos.clone()));
             }
         }
         self.global.constexpr(expr)
@@ -82,7 +83,7 @@ impl<'a> Local<'a> {
     /// Infer the type of an expression with local context
     pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, Error> {
         match expr {
-            ast::Expr::Ident(name) => {
+            ast::Expr::Ident((name, _)) => {
                 // Check local scope first
                 if let Some(ty) = self.vartype(name) {
                     return Ok(ty.clone());
@@ -99,10 +100,10 @@ impl<'a> Local<'a> {
     /// Local variables cannot have static addresses
     pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
         match expr {
-            ast::Expr::Ident(name) => {
+            ast::Expr::Ident((name, pos)) => {
                 // Local variables don't have static addresses
                 if self.is_local(name) {
-                    return Err(Error::NotAddressable(name.to_string()));
+                    return Err(Error::NotAddressable(name.clone(), pos.clone()));
                 }
                 // Delegate to global for static/const/func
                 self.global.addrexpr(expr)
@@ -110,9 +111,12 @@ impl<'a> Local<'a> {
 
             // For member access, check if base is local
             ast::Expr::Member(base, _field) => {
-                if let ast::Expr::Ident(name) = base.as_ref() {
+                if let ast::Expr::Ident((name, pos)) = base.as_ref() {
                     if self.is_local(name) {
-                        return Err(Error::NotAddressable(format!("local variable {}", name)));
+                        return Err(Error::NotAddressable(
+                            format!("local variable {}", name),
+                            pos.clone(),
+                        ));
                     }
                 }
                 self.global.addrexpr(expr)
@@ -120,9 +124,12 @@ impl<'a> Local<'a> {
 
             // For index access, check if base is local
             ast::Expr::Index(base, _index) => {
-                if let ast::Expr::Ident(name) = base.as_ref() {
+                if let ast::Expr::Ident((name, pos)) = base.as_ref() {
                     if self.is_local(name) {
-                        return Err(Error::NotAddressable(format!("local variable {}", name)));
+                        return Err(Error::NotAddressable(
+                            format!("local variable {}", name),
+                            pos.clone(),
+                        ));
                     }
                 }
                 self.global.addrexpr(expr)

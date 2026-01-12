@@ -1,17 +1,17 @@
-use super::ast::{Asm, BinaryOp, Def, Expr, Stmt, Type, UnaryOp, AST};
+use super::ast::{Asm, BinaryOp, Def, Expr, Ident, Stmt, Type, UnaryOp, AST};
 use super::parsercore::Parser;
-use super::token::{Token, TokenKind::*};
+use super::token::{Pos, Token, TokenKind::*};
 use crate::error::Error;
 use crate::{check, expect, optional, repeat};
 
-impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
+impl<I: Iterator<Item = Token>> Parser<I> {
     pub fn parse(mut self) -> (AST, Vec<Error>) {
         let program = self.parse_program();
         return (program, self.geterrors());
     }
 }
 
-impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
+impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_program(&mut self) -> AST {
         let mut defs = Vec::new();
         while self.peek().is_some() {
@@ -86,16 +86,20 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => Err(Error::UnexpectedToken(token.into())),
+                _ => Err(Error::UnexpectedToken(
+                    token.clone().into(),
+                    token.pos.clone(),
+                )),
             }
         } else {
-            Err(Error::UnexpectedEOF)
+            Err(Error::UnexpectedEOF(Pos::default()))
         }
     }
 
     /// def = type-def | const-def | static-def | asm-def | func-def
     fn parse_def(&mut self) -> Result<Def, Error> {
         if let Some(token) = self.peek() {
+            let _pos = token.pos.clone();
             match token.kind {
                 // type-def = "type" ident "=" type ";"
                 KwType => {
@@ -153,36 +157,46 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     expect!(self, RCurly)?;
                     Ok(Def::Func(name, args, ret, stmts))
                 }
-                _ => Err(Error::UnexpectedToken(token.into())),
+                _ => Err(Error::UnexpectedToken(
+                    token.clone().into(),
+                    token.pos.clone(),
+                )),
             }
         } else {
-            Err(Error::UnexpectedEOF)
+            Err(Error::UnexpectedEOF(Pos::default()))
         }
     }
 
     /// asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
     fn parse_asm_stmt(&mut self) -> Result<Asm, Error> {
-        let mut labels = Vec::new();
+        let mut labels: Vec<Ident> = Vec::new();
+        let mut pos = Pos::default();
 
         // Parse labels (ident ":")
-        while let Some(Token { kind: Ident(s), .. }) = self.peek() {
-            let ident = s.clone();
-            self.next();
+        while let Some(token) = self.peek() {
+            if let Ident(s) = &token.kind {
+                let ident = s.clone();
+                let ident_pos = token.pos.clone();
+                pos = token.pos.clone();
+                self.next();
 
-            if check!(self, Colon) {
-                expect!(self, Colon)?;
-                labels.push(ident);
+                if check!(self, Colon) {
+                    expect!(self, Colon)?;
+                    labels.push((ident, ident_pos));
+                } else {
+                    // This is the instruction name
+                    expect!(self, LParen)?;
+                    let args = repeat!(self, self.parse_expr(), Comma, RParen);
+                    expect!(self, RParen)?;
+                    expect!(self, Semicolon)?;
+                    return Ok(Asm((ident, ident_pos), args, labels, pos));
+                }
             } else {
-                // This is the instruction name
-                expect!(self, LParen)?;
-                let args = repeat!(self, self.parse_expr(), Comma, RParen);
-                expect!(self, RParen)?;
-                expect!(self, Semicolon)?;
-                return Ok(Asm(ident, args, labels));
+                break;
             }
         }
 
-        Err(Error::UnexpectedEOF)
+        Err(Error::UnexpectedEOF(Pos::default()))
     }
 
     /// stmt = block | var-stmt | if-stmt | while-stmt | return-stmt | assign-stmt | expr-stmt
@@ -258,7 +272,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 }
             }
         }
-        return Err(Error::TODO);
+        Err(Error::UnexpectedEOF(Pos::default()))
     }
 
     /// expr = or-expr
@@ -356,7 +370,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(Error::UnexpectedEOF)
+            Err(Error::UnexpectedEOF(Pos::default()))
         }
     }
 
@@ -380,7 +394,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(Error::UnexpectedEOF)
+            Err(Error::UnexpectedEOF(Pos::default()))
         }
     }
 
@@ -557,7 +571,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                 // Identifier: ident
                 Ident(_) => {
                     let name = self.parse_ident()?;
-                    Ok(Expr::Ident(name.clone()))
+                    Ok(Expr::Ident(name))
                 }
 
                 // Number literal: num-lit
@@ -597,23 +611,33 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
                     return Ok(Expr::StringLit(s));
                 }
 
-                _ => Err(Error::UnexpectedToken(token.into())),
+                _ => Err(Error::UnexpectedToken(
+                    token.clone().into(),
+                    token.pos.clone(),
+                )),
             }
         } else {
-            Err(Error::UnexpectedEOF)
+            Err(Error::UnexpectedEOF(Pos::default()))
         }
     }
 
     /// ident = ( "A".."Z" | "a".."z" | "_" ) { "0".."9" | "A".."Z" | "a".."z" | "_" }
-    fn parse_ident(&mut self) -> Result<String, Error> {
-        match &self.next() {
-            Some(Token { kind: Ident(s), .. }) => Ok(s.clone()),
-            _ => Err(Error::TODO),
+    fn parse_ident(&mut self) -> Result<Ident, Error> {
+        match self.next() {
+            Some(Token {
+                kind: Ident(s),
+                pos,
+            }) => Ok((s, pos)),
+            Some(token) => Err(Error::UnexpectedToken(
+                token.clone().into(),
+                token.pos.clone(),
+            )),
+            None => Err(Error::UnexpectedEOF(Pos::default())),
         }
     }
 
     /// ident ":" type
-    fn parse_field_type(&mut self) -> Result<(String, Type), Error> {
+    fn parse_field_type(&mut self) -> Result<(Ident, Type), Error> {
         let name = self.parse_ident()?;
         expect!(self, Colon)?;
         let typ = self.parse_type()?;
@@ -621,7 +645,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// ident ":" expr
-    fn parse_field_expr(&mut self) -> Result<(String, Expr), Error> {
+    fn parse_field_expr(&mut self) -> Result<(Ident, Expr), Error> {
         let name = self.parse_ident()?;
         expect!(self, Colon)?;
         let expr = self.parse_expr()?;

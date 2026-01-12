@@ -1,21 +1,25 @@
 use super::token::{Pos, Token, TokenKind};
 use std::iter::Peekable;
+use std::rc::Rc;
 use std::str::CharIndices;
 
-pub struct Lexer<'a> {
-    file: &'a str,
-    code: &'a str,
+pub struct Lexer {
+    file: Rc<str>,
+    code: Rc<str>,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(file: &'a str, code: &'a str) -> Self {
-        Self { file, code }
+impl Lexer {
+    pub fn new(file: &str, code: &str) -> Self {
+        Self {
+            file: Rc::from(file),
+            code: Rc::from(code),
+        }
     }
 
-    pub fn parse(self) -> Vec<Token<'a>> {
+    pub fn parse(&self) -> Vec<Token> {
         let mut tokens = Vec::new();
         for (col, line) in self.code.lines().enumerate() {
-            let lexer = LineLexer::new(line, self.file, col);
+            let lexer = LineLexer::new(line, Rc::clone(&self.file), col);
             tokens.extend(lexer.parse());
         }
         tokens
@@ -24,12 +28,12 @@ impl<'a> Lexer<'a> {
 
 struct LineLexer<'a> {
     iter: Peekable<CharIndices<'a>>,
-    file: &'a str,
+    file: Rc<str>,
     col: usize,
 }
 
 impl<'a> LineLexer<'a> {
-    fn new(line: &'a str, file: &'a str, col: usize) -> Self {
+    fn new(line: &'a str, file: Rc<str>, col: usize) -> Self {
         Self {
             iter: line.char_indices().peekable(),
             file,
@@ -56,7 +60,7 @@ impl<'a> LineLexer<'a> {
 // ----------------------------------------------------------------------------
 
 impl<'a> LineLexer<'a> {
-    pub fn parse(mut self) -> Vec<Token<'a>> {
+    pub fn parse(mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         while let Some((idx, ch0)) = self.peek_nth(0) {
             // 0. Skip whitespaces
@@ -65,11 +69,7 @@ impl<'a> LineLexer<'a> {
                 continue;
             }
 
-            let pos = Pos {
-                file: self.file,
-                col: self.col,
-                row: idx,
-            };
+            let pos = Pos::new(Rc::clone(&self.file), idx, self.col);
 
             // 1. Double character token
             if let Some((_, ch1)) = self.peek_nth(1) {

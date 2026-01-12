@@ -1,13 +1,13 @@
-use super::token::{Token, TokenKind};
+use super::token::{Pos, Token, TokenKind};
 use crate::error::Error;
 use std::iter::Peekable;
 
-pub struct Parser<'a, I: Iterator<Item = Token<'a>>> {
+pub struct Parser<I: Iterator<Item = Token>> {
     tokens: Peekable<I>,
     errors: Vec<Error>,
 }
 
-impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
+impl<I: Iterator<Item = Token>> Parser<I> {
     pub fn new(tokens: I) -> Self {
         Parser {
             tokens: tokens.peekable(),
@@ -24,7 +24,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 }
 
-impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
+impl<I: Iterator<Item = Token>> Parser<I> {
     /// Skip all invalid tokens
     fn skip(&mut self) {
         while let Some(token) = self.tokens.peek() {
@@ -36,13 +36,13 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// Peek : Watch next token without consuming it
-    pub fn peek(&mut self) -> Option<&Token<'a>> {
+    pub fn peek(&mut self) -> Option<&Token> {
         self.skip();
         self.tokens.peek()
     }
 
     /// Next : Consume next token and return it
-    pub fn next(&mut self) -> Option<Token<'a>> {
+    pub fn next(&mut self) -> Option<Token> {
         self.skip();
         self.tokens.next()
     }
@@ -59,7 +59,7 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// Consume if next token is match with condition
-    pub fn consume_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Option<Token<'a>> {
+    pub fn consume_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Option<Token> {
         self.skip();
         self.tokens.next_if(|token| cond(token))
     }
@@ -75,17 +75,20 @@ impl<'a, I: Iterator<Item = Token<'a>>> Parser<'a, I> {
     }
 
     /// Next token must be match with condition (skipping comments)
-    pub fn expect_tobe<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Result<Token<'a>, Error> {
+    pub fn expect_tobe<F: Fn(&Token) -> bool>(&mut self, cond: F) -> Result<Token, Error> {
         self.skip();
         if let Some(token) = self.tokens.peek().cloned() {
             if cond(&token) {
                 self.tokens.next();
                 Ok(token)
             } else {
-                Err(Error::UnexpectedToken(token.into()))
+                Err(Error::UnexpectedToken(
+                    token.clone().into(),
+                    token.pos.clone(),
+                ))
             }
         } else {
-            Err(Error::UnexpectedEOF)
+            Err(Error::UnexpectedEOF(Pos::default()))
         }
     }
 }

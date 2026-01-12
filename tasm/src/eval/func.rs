@@ -1,4 +1,7 @@
-use crate::{error::Error, grammer::ast};
+use crate::{
+    error::Error,
+    grammer::{ast, token::Pos},
+};
 
 use super::{
     code::{Code, Imm},
@@ -12,12 +15,18 @@ use itertools::chain;
 impl<'a> Global<'a> {
     pub fn func2code(&'a self, name: &str) -> Result<Code, Error> {
         match self.get(name) {
-            Some(ast::Def::Func(_, args, ret, stmts)) => {
-                let context = Context::new(self, args)?;
-                context.compile(args, ret, stmts)
+            Some(ast::Def::Func((_, pos), args, ret, stmts)) => {
+                let loc = pos.clone();
+                let context = Context::new(self, args, &loc)?;
+                context.compile(args, ret, stmts, &loc)
             }
-            Some(_) => Err(Error::NotAFunction(name.to_string())),
-            None => Err(Error::UnknownIdentifier(name.to_string())),
+            Some(
+                ast::Def::Type((_, pos), _)
+                | ast::Def::Const((_, pos), _, _)
+                | ast::Def::Static((_, pos), _, _)
+                | ast::Def::Asm((_, pos), _, _),
+            ) => Err(Error::NotAFunction(name.to_string(), pos.clone())),
+            None => Err(Error::UnknownIdentifier(name.to_string(), Pos::default())),
         }
     }
 }
@@ -27,7 +36,11 @@ struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    fn new(global: &'a Global<'a>, args: &'a [(String, ast::Type)]) -> Result<Self, Error> {
+    fn new(
+        global: &'a Global<'a>,
+        args: &'a [(ast::Ident, ast::Type)],
+        _loc: &Pos,
+    ) -> Result<Self, Error> {
         let mut local = Local::fork(global);
         local.args(args)?;
         Ok(Self { local })
@@ -35,26 +48,27 @@ impl<'a> Context<'a> {
 
     fn compile(
         mut self,
-        args: &'a [(String, ast::Type)],
+        args: &'a [(ast::Ident, ast::Type)],
         ret: &'a ast::Type,
         stmts: &'a [ast::Stmt],
+        loc: &Pos,
     ) -> Result<Code, Error> {
         let mut insts = Vec::new();
 
         // Convert AST types to normalized types for prologue/epilogue
         let mut norm_args = Vec::new();
-        for (name, arg_type) in args {
+        for ((name, _), arg_type) in args {
             let norm_type = self
                 .local
                 .normtype(arg_type)
-                .map_err(|_| Error::TypeCollectionFailed(name.clone()))?;
+                .map_err(|_| Error::TypeCollectionFailed(name.clone(), loc.clone()))?;
             norm_args.push((name.clone(), norm_type));
         }
 
         let norm_ret_type = self
             .local
             .normtype(ret)
-            .map_err(|_| Error::TypeCollectionFailed("return type".to_string()))?;
+            .map_err(|_| Error::TypeCollectionFailed("return type".to_string(), loc.clone()))?;
 
         // Add prologue
         insts.extend(Self::prologue(&norm_args));
@@ -244,10 +258,14 @@ impl<'a> Context<'a> {
                 .collect())
             }
 
-            ast::Stmt::Var(name, ty, init) => {
+            ast::Stmt::Var(ident, ty, init) => {
+                let (name, pos) = ident;
                 // Allocate stack space for the variable
-                let offset = self.local.push(name, ty).map_err(|e| {
-                    Error::TypeCollectionFailed(format!("local variable {}: {}", name, e))
+                let offset = self.local.push(ident, ty).map_err(|e| {
+                    Error::TypeCollectionFailed(
+                        format!("local variable {}: {}", name, e),
+                        pos.clone(),
+                    )
                 })?;
 
                 // Initialize if provided
@@ -318,7 +336,7 @@ impl<'a> Context<'a> {
                 (insts, target)
             }
 
-            ast::Expr::Ident(name) => {
+            ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
                 // Check if it's a local variable
                 if let Some(offset) = self.local.offset(name) {
@@ -443,7 +461,7 @@ impl<'a> Context<'a> {
                 }
 
                 // Call the function
-                if let ast::Expr::Ident(func_name) = &**func_expr {
+                if let ast::Expr::Ident((func_name, _)) = &**func_expr {
                     insts.push(Inst::CALL(Imm::Label(func_name.clone())));
                 } else {
                     // Indirect call through register
@@ -512,10 +530,9 @@ impl<'a> Context<'a> {
             ast::Expr::SizeofType(typ) => {
                 let mut insts = Vec::new();
                 // Calculate size at compile time
-                let norm_type = self
-                    .local
-                    .normtype(typ)
-                    .map_err(|_| Error::TypeCollectionFailed("sizeof".to_string()))?;
+                let norm_type = self.local.normtype(typ).map_err(|_| {
+                    Error::TypeCollectionFailed("sizeof".to_string(), Pos::default())
+                })?;
                 let size = norm_type.sizeof() as u16;
                 insts.push(Inst::LOADI(target, Imm::Lit(size as usize)));
                 (insts, target)
@@ -538,7 +555,7 @@ impl<'a> Context<'a> {
         value_reg: Reg,
     ) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match lvalue {
-            ast::Expr::Ident(name) => {
+            ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
                     // Note: offset is negative (below FP), need to negate for STORE instruction
@@ -590,7 +607,10 @@ impl<'a> Context<'a> {
                 .collect())
             }
 
-            _ => Err(Error::InvalidLValue(format!("{:?}", lvalue))),
+            _ => Err(Error::InvalidLValue(
+                format!("{:?}", lvalue),
+                lvalue.pos_or_default(),
+            )),
         }
     }
 }

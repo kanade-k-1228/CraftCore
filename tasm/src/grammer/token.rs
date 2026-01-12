@@ -1,24 +1,21 @@
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
-pub struct Token<'a> {
+pub struct Token {
     pub kind: TokenKind,
-    pub pos: Pos<'a>,
+    pub pos: Pos,
 }
 
-impl<'a> Token<'a> {
-    pub fn new(kind: TokenKind, pos: Pos<'a>) -> Self {
+impl Token {
+    pub fn new(kind: TokenKind, pos: Pos) -> Self {
         Token { kind, pos }
     }
 }
 
-impl<'a> fmt::Display for Token<'a> {
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:?} at {}:{}:{}",
-            self.kind, self.pos.file, self.pos.row, self.pos.col
-        )
+        write!(f, "{:?} at {}", self.kind, self.pos)
     }
 }
 
@@ -90,9 +87,23 @@ pub enum TokenKind {
     Error(String),   // Error
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Pos<'a> {
-    pub file: &'a str,
-    pub col: usize,
-    pub row: usize,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Pos(Rc<str>, usize, usize);
+
+impl Pos {
+    pub fn new(file: Rc<str>, row: usize, col: usize) -> Self {
+        Pos(file, row, col)
+    }
+}
+
+impl Default for Pos {
+    fn default() -> Self {
+        Pos(Rc::from(""), 0, 0)
+    }
+}
+
+impl fmt::Display for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}:{}", self.0, self.1, self.2)
+    }
 }

@@ -4,7 +4,7 @@ mod grammer;
 mod linker;
 mod util;
 
-pub use error::{Error, Loc, ResultExt};
+pub use error::Error;
 pub use eval::{
     asm,
     code::{Code, Imm},

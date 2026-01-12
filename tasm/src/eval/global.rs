@@ -4,7 +4,10 @@ use std::sync::RwLock;
 
 use crate::{
     error::Error,
-    grammer::ast::{self, BinaryOp, UnaryOp},
+    grammer::{
+        ast::{self, BinaryOp, UnaryOp},
+        token::Pos,
+    },
 };
 
 use super::{code::Code, constexpr::ConstExpr, normtype::NormType};
@@ -21,16 +24,16 @@ impl<'a> Global<'a> {
     pub fn new(ast: &'a ast::AST) -> Result<Self, Error> {
         let mut defs = IndexMap::new();
         for def in &ast.0 {
-            let name = match def {
-                ast::Def::Type(name, _) => name.as_str(),
-                ast::Def::Const(name, _, _) => name.as_str(),
-                ast::Def::Static(name, _, _) => name.as_str(),
-                ast::Def::Asm(name, _, _) => name.as_str(),
-                ast::Def::Func(name, _, _, _) => name.as_str(),
+            let (name, pos) = match def {
+                ast::Def::Type((name, pos), _) => (name.as_str(), pos),
+                ast::Def::Const((name, pos), _, _) => (name.as_str(), pos),
+                ast::Def::Static((name, pos), _, _) => (name.as_str(), pos),
+                ast::Def::Asm((name, pos), _, _) => (name.as_str(), pos),
+                ast::Def::Func((name, pos), _, _, _) => (name.as_str(), pos),
             };
 
             if defs.contains_key(name) {
-                return Err(Error::Duplicate(name.to_string()));
+                return Err(Error::Duplicate(name.to_string(), pos.clone()));
             }
 
             defs.insert(name, def);
@@ -107,14 +110,19 @@ impl<'a> Global<'a> {
         let result = match ty {
             ast::Type::Int => Ok(NormType::Int),
             ast::Type::Void => Ok(NormType::Void),
-            ast::Type::Custom(name) => {
+            ast::Type::Custom((name, pos)) => {
                 if let Some(&def) = self.defs.get(name.as_str()) {
                     match def {
                         ast::Def::Type(_, type_def) => self.normtype(type_def),
-                        _ => Err(Error::NotAType(name.to_string())),
+                        ast::Def::Const((_, pos), _, _)
+                        | ast::Def::Static((_, pos), _, _)
+                        | ast::Def::Asm((_, pos), _, _)
+                        | ast::Def::Func((_, pos), _, _, _) => {
+                            Err(Error::NotAType(name.clone(), pos.clone()))
+                        }
                     }
                 } else {
-                    Err(Error::UnknownType(name.to_string()))
+                    Err(Error::UnknownType(name.clone(), pos.clone()))
                 }
             }
             ast::Type::Addr(inner) => {
@@ -124,14 +132,14 @@ impl<'a> Global<'a> {
             ast::Type::Array(len, ty) => {
                 let len = match self.constexpr(len) {
                     Ok(ConstExpr::Number(n)) => n,
-                    _ => return Err(Error::NonConstantArrayLength),
+                    _ => return Err(Error::NonConstantArrayLength(len.pos_or_default())),
                 };
                 let ty = self.normtype(ty)?;
                 Ok(NormType::Array(len, Box::new(ty)))
             }
             ast::Type::Struct(fields) => {
                 let mut norm_fields = Vec::new();
-                for (name, ty) in fields {
+                for ((name, _), ty) in fields {
                     let norm = self.normtype(ty)?;
                     norm_fields.push((name.clone(), norm));
                 }
@@ -139,7 +147,7 @@ impl<'a> Global<'a> {
             }
             ast::Type::Func(params, ret_ty) => {
                 let mut norm_params = Vec::new();
-                for (name, param_ty) in params {
+                for ((name, _), param_ty) in params {
                     let norm_ty = self.normtype(param_ty)?;
                     norm_params.push((name.clone(), norm_ty));
                 }
@@ -180,23 +188,26 @@ impl<'a> Global<'a> {
             }
             ast::Expr::StructLit(fields) => {
                 let mut const_fields = Vec::new();
-                for (name, field_expr) in fields {
+                for ((name, _), field_expr) in fields {
                     let const_val = self.constexpr(field_expr)?;
                     const_fields.push((name.clone(), const_val));
                 }
                 Ok(ConstExpr::Struct(const_fields))
             }
-            ast::Expr::Ident(name) => {
+            ast::Expr::Ident((name, pos)) => {
                 // Look up constant value
                 if let Some(&def) = self.defs.get(name.as_str()) {
-                    if let ast::Def::Const(_, _, const_expr) = def {
-                        // Recursively evaluate the constant
-                        self.constexpr(const_expr)
-                    } else {
-                        Err(Error::NotAConstant(name.to_string()))
+                    match def {
+                        ast::Def::Const(_, _, const_expr) => self.constexpr(const_expr),
+                        ast::Def::Type((_, pos), _)
+                        | ast::Def::Static((_, pos), _, _)
+                        | ast::Def::Asm((_, pos), _, _)
+                        | ast::Def::Func((_, pos), _, _, _) => {
+                            Err(Error::NotAConstant(name.clone(), pos.clone()))
+                        }
                     }
                 } else {
-                    Err(Error::UnknownConstant(name.to_string()))
+                    Err(Error::UnknownConstant(name.clone(), pos.clone()))
                 }
             }
             ast::Expr::Binary(op, left, right) => {
@@ -211,14 +222,14 @@ impl<'a> Global<'a> {
                         BinaryOp::Mul => Ok(ConstExpr::Number(l * r)),
                         BinaryOp::Div => {
                             if *r == 0 {
-                                Err(Error::DivisionByZero)
+                                Err(Error::DivisionByZero(right.pos_or_default()))
                             } else {
                                 Ok(ConstExpr::Number(l / r))
                             }
                         }
                         BinaryOp::Mod => {
                             if *r == 0 {
-                                Err(Error::ModuloByZero)
+                                Err(Error::ModuloByZero(right.pos_or_default()))
                             } else {
                                 Ok(ConstExpr::Number(l % r))
                             }
@@ -235,7 +246,7 @@ impl<'a> Global<'a> {
                         BinaryOp::Gt => Ok(ConstExpr::Number(if l > r { 1 } else { 0 })),
                         BinaryOp::Ge => Ok(ConstExpr::Number(if l >= r { 1 } else { 0 })),
                     },
-                    _ => Err(Error::NonNumericBinaryOperands),
+                    _ => Err(Error::NonNumericBinaryOperands(left.pos_or_default())),
                 }
             }
             ast::Expr::Unary(op, inner) => {
@@ -247,7 +258,7 @@ impl<'a> Global<'a> {
                         Ok(ConstExpr::Number((-((*n) as isize)) as usize))
                     }
                     (ConstExpr::Number(n), UnaryOp::Not) => Ok(ConstExpr::Number(!n)),
-                    _ => Err(Error::NonNumericUnaryOperand),
+                    _ => Err(Error::NonNumericUnaryOperand(inner.pos_or_default())),
                 }
             }
             ast::Expr::SizeofType(ty) => {
@@ -265,7 +276,7 @@ impl<'a> Global<'a> {
                 // Type checking happens elsewhere
                 self.constexpr(inner)
             }
-            _ => Err(Error::NonConstantExpression),
+            _ => Err(Error::NonConstantExpression(expr.pos_or_default())),
         };
 
         // Store with write lock if successful
@@ -295,45 +306,47 @@ impl<'a> Global<'a> {
             }
             ast::Expr::ArrayLit(elems) => {
                 if elems.is_empty() {
-                    return Err(Error::EmptyArrayTypeInference);
+                    return Err(Error::EmptyArrayTypeInference(expr.pos_or_default()));
                 }
                 let elem_ty = self.typeinfer(&elems[0])?;
                 Ok(NormType::Array(elems.len(), Box::new(elem_ty)))
             }
             ast::Expr::StructLit(fields) => {
                 let mut field_types = Vec::new();
-                for (name, field_expr) in fields {
+                for ((name, _), field_expr) in fields {
                     let field_ty = self.typeinfer(field_expr)?;
                     field_types.push((name.clone(), field_ty));
                 }
                 Ok(NormType::Struct(field_types))
             }
-            ast::Expr::Ident(name) => {
+            ast::Expr::Ident((name, pos)) => {
                 // Look up the identifier in definitions
                 if let Some(&def) = self.defs.get(name.as_str()) {
                     match def {
                         ast::Def::Static(_, _, ty) => self.normtype(ty),
-                        ast::Def::Const(_, _, expr) => {
+                        ast::Def::Const((_, pos), _, expr) => {
                             // Infer type from constant expression
                             let const_val = self.constexpr(expr)?;
                             const_val
                                 .typeinfer()
-                                .map_err(|_| Error::NotAValue(name.to_string()))
+                                .map_err(|_| Error::NotAValue(name.clone(), pos.clone()))
                         }
                         ast::Def::Func(_, params, ret_ty, _) => {
                             // Build function type
                             let mut norm_params = Vec::new();
-                            for (param_name, param_ty) in params {
+                            for ((param_name, _), param_ty) in params {
                                 let norm_ty = self.normtype(param_ty)?;
                                 norm_params.push((param_name.clone(), norm_ty));
                             }
                             let norm_ret = self.normtype(ret_ty)?;
                             Ok(NormType::Func(norm_params, Box::new(norm_ret)))
                         }
-                        _ => Err(Error::NotAValue(name.to_string())),
+                        ast::Def::Type((_, pos), _) | ast::Def::Asm((_, pos), _, _) => {
+                            Err(Error::NotAValue(name.clone(), pos.clone()))
+                        }
                     }
                 } else {
-                    Err(Error::UnknownIdentifier(name.to_string()))
+                    Err(Error::UnknownIdentifier(name.clone(), pos.clone()))
                 }
             }
             ast::Expr::Binary(op, left, right) => {
@@ -367,7 +380,7 @@ impl<'a> Global<'a> {
                 let func_ty = self.typeinfer(func_expr)?;
                 match func_ty {
                     NormType::Func(_, ret_ty) => Ok(*ret_ty),
-                    _ => Err(Error::NotCallable),
+                    _ => Err(Error::NotCallable(func_expr.pos_or_default())),
                 }
             }
             ast::Expr::Index(arr_expr, _idx) => {
@@ -375,34 +388,38 @@ impl<'a> Global<'a> {
                 match arr_ty {
                     NormType::Array(_, elem_ty) => Ok(*elem_ty),
                     NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(Error::NotIndexable),
+                    _ => Err(Error::NotIndexable(arr_expr.pos_or_default())),
                 }
             }
-            ast::Expr::Member(expr, field) => match self.typeinfer(expr)? {
+            ast::Expr::Member(base_expr, (field, field_pos)) => match self.typeinfer(base_expr)? {
                 NormType::Struct(fields) => match fields.iter().find(|(name, _)| name == field) {
                     Some((_, ty)) => return Ok(ty.clone()),
-                    None => return Err(Error::NoSuchField(field.to_string())),
+                    None => return Err(Error::NoSuchField(field.clone(), field_pos.clone())),
                 },
-                _ => Err(Error::NotAStruct),
+                _ => Err(Error::NotAStruct(base_expr.pos_or_default())),
             },
-            ast::Expr::Addr(expr) => {
-                let ty = self.typeinfer(expr)?;
+            ast::Expr::Addr(inner) => {
+                let ty = self.typeinfer(inner)?;
                 Ok(NormType::Addr(Box::new(ty)))
             }
-            ast::Expr::Deref(expr) => {
-                let ty = self.typeinfer(expr)?;
+            ast::Expr::Deref(inner) => {
+                let ty = self.typeinfer(inner)?;
                 match ty {
                     NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(Error::CannotDereferenceNonPointer),
+                    _ => Err(Error::CannotDereferenceNonPointer(inner.pos_or_default())),
                 }
             }
-            ast::Expr::Cast(expr, ty) => {
-                let base = self.typeinfer(expr)?;
+            ast::Expr::Cast(inner, ty) => {
+                let base = self.typeinfer(inner)?;
                 let cast = self.normtype(ty)?;
                 if base.sizeof() == cast.sizeof() {
                     Ok(cast)
                 } else {
-                    Err(Error::InvalidCastSize(base.sizeof(), cast.sizeof()))
+                    Err(Error::InvalidCastSize(
+                        base.sizeof(),
+                        cast.sizeof(),
+                        inner.pos_or_default(),
+                    ))
                 }
             }
             ast::Expr::SizeofType(_) | ast::Expr::SizeofExpr(_) => Ok(NormType::Int),
@@ -425,40 +442,51 @@ impl<'a> Global<'a> {
     /// Infer address of expr with unresolved symbol (symbol, offset)
     pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
         match expr {
-            ast::Expr::Ident(name) => match self.defs.get(name.as_str()) {
+            ast::Expr::Ident((name, pos)) => match self.defs.get(name.as_str()) {
                 Some(&def) => match def {
                     ast::Def::Static(_, _, _)
                     | ast::Def::Const(_, _, _)
                     | ast::Def::Func(_, _, _, _)
                     | ast::Def::Asm(_, _, _) => Ok((name.clone(), 0)),
-                    _ => Err(Error::NotAddressable(name.to_string())),
+                    ast::Def::Type((_, pos), _) => {
+                        Err(Error::NotAddressable(name.clone(), pos.clone()))
+                    }
                 },
-                None => Err(Error::UnknownIdentifier(name.to_string())),
+                None => Err(Error::UnknownIdentifier(name.clone(), pos.clone())),
             },
 
             ast::Expr::Index(base, index) => {
                 let (symbol, offset) = self.addrexpr(base)?;
-                let index = match self.constexpr(index) {
+                let idx = match self.constexpr(index) {
                     Ok(ConstExpr::Number(idx)) => idx,
-                    _ => return Err(Error::NonConstantArrayIndexInAddress),
+                    _ => {
+                        return Err(Error::NonConstantArrayIndexInAddress(
+                            index.pos_or_default(),
+                        ))
+                    }
                 };
                 let ty = self.typeinfer(base)?;
-                let ofs = ty.get_array_offset(index).ok_or(Error::NotIndexable)?;
+                let ofs = ty
+                    .get_array_offset(idx)
+                    .ok_or(Error::NotIndexable(base.pos_or_default()))?;
                 Ok((symbol, offset + ofs))
             }
 
-            ast::Expr::Member(base, field) => {
+            ast::Expr::Member(base, (field, field_pos)) => {
                 let (symbol, offset) = self.addrexpr(base)?;
                 let ty = self.typeinfer(base)?;
                 let ofs = ty
                     .get_field_offset(field)
-                    .ok_or(Error::NoSuchField(field.to_string()))?;
+                    .ok_or(Error::NoSuchField(field.clone(), field_pos.clone()))?;
                 Ok((symbol, offset + ofs))
             }
 
-            ast::Expr::Cast(expr, _) => self.addrexpr(expr),
+            ast::Expr::Cast(inner, _) => self.addrexpr(inner),
 
-            _ => Err(Error::NotAddressable(format!("{:?}", expr))),
+            _ => Err(Error::NotAddressable(
+                format!("{:?}", expr),
+                expr.pos_or_default(),
+            )),
         }
     }
 }
@@ -522,7 +550,7 @@ impl<'a> Global<'a> {
         let def = self.defs.get(name).copied()?;
         if let ast::Def::Func(_, params, ret_ty, _) = def {
             let mut norm_params = Vec::new();
-            for (param_name, param_ty) in params {
+            for ((param_name, _), param_ty) in params {
                 let norm_ty = self.normtype(param_ty).ok()?;
                 norm_params.push((param_name.clone(), norm_ty));
             }
@@ -544,12 +572,13 @@ impl<'a> Global<'a> {
                 ast::Def::Asm(_, addr, body) => {
                     let size = body.len();
                     match addr {
-                        Some(addr) => {
-                            let addr = match self.constexpr(addr)? {
+                        Some(addr_expr) => {
+                            let addr = match self.constexpr(addr_expr)? {
                                 ConstExpr::Number(n) => n,
                                 _ => {
                                     return Err(Error::InvalidImmediate(
                                         "address must be numeric".to_string(),
+                                        addr_expr.pos_or_default(),
                                     ))
                                 }
                             };
@@ -579,12 +608,13 @@ impl<'a> Global<'a> {
                     let ty = self.typeinfer(value)?;
                     let size = ty.sizeof();
                     match addr {
-                        Some(addr) => {
-                            let addr = match self.constexpr(addr)? {
+                        Some(addr_expr) => {
+                            let addr = match self.constexpr(addr_expr)? {
                                 ConstExpr::Number(n) => n,
                                 _ => {
                                     return Err(Error::InvalidImmediate(
                                         "address must be numeric".to_string(),
+                                        addr_expr.pos_or_default(),
                                     ))
                                 }
                             };
@@ -596,12 +626,13 @@ impl<'a> Global<'a> {
                 ast::Def::Static(_, addr, ty) => {
                     let size = self.normtype(ty)?.sizeof();
                     match addr {
-                        Some(addr) => {
-                            let addr = match self.constexpr(addr)? {
+                        Some(addr_expr) => {
+                            let addr = match self.constexpr(addr_expr)? {
                                 ConstExpr::Number(n) => n,
                                 _ => {
                                     return Err(Error::InvalidImmediate(
                                         "address must be numeric".to_string(),
+                                        addr_expr.pos_or_default(),
                                     ))
                                 }
                             };
@@ -633,8 +664,12 @@ impl<'a> Global<'a> {
         let result = match self.get(name) {
             Some(ast::Def::Asm(..)) => self.asm2code(name),
             Some(ast::Def::Func(..)) => self.func2code(name),
-            Some(_) => Err(Error::NotCodeGeneratable(name.to_string())),
-            None => Err(Error::UnknownIdentifier(name.to_string())),
+            Some(
+                ast::Def::Type((_, pos), _)
+                | ast::Def::Const((_, pos), _, _)
+                | ast::Def::Static((_, pos), _, _),
+            ) => Err(Error::NotCodeGeneratable(name.to_string(), pos.clone())),
+            None => Err(Error::UnknownIdentifier(name.to_string(), Pos::default())),
         };
 
         // Cache the result if successful

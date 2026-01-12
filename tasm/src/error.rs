@@ -1,88 +1,61 @@
-use crate::grammer::token::{Token, TokenKind};
+use crate::grammer::token::{Pos, Token, TokenKind};
 use std::fmt;
 use thiserror::Error;
-
-/// Source location information
-#[derive(Debug, Clone)]
-pub struct Loc {
-    pub file: String,
-    pub row: usize,
-    pub col: usize,
-}
-
-impl fmt::Display for Loc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}:{}", self.file, self.row, self.col)
-    }
-}
-
-impl<'a> From<&Token<'a>> for Loc {
-    fn from(token: &Token<'a>) -> Self {
-        Loc {
-            file: token.pos.file.to_string(),
-            row: token.pos.row,
-            col: token.pos.col,
-        }
-    }
-}
 
 /// Owned token information (for storing in errors)
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
     pub kind: TokenKind,
-    pub loc: Loc,
+    pub pos: Pos,
 }
 
 impl fmt::Display for TokenInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} at {}", self.kind, self.loc)
+        write!(f, "{:?} at {}", self.kind, self.pos)
     }
 }
 
-impl<'a> From<&Token<'a>> for TokenInfo {
-    fn from(token: &Token<'a>) -> Self {
+impl From<&Token> for TokenInfo {
+    fn from(token: &Token) -> Self {
         TokenInfo {
             kind: token.kind.clone(),
-            loc: Loc::from(token),
+            pos: token.pos.clone(),
         }
     }
 }
 
-impl<'a> From<Token<'a>> for TokenInfo {
-    fn from(token: Token<'a>) -> Self {
-        TokenInfo::from(&token)
+impl From<Token> for TokenInfo {
+    fn from(token: Token) -> Self {
+        TokenInfo {
+            kind: token.kind,
+            pos: token.pos,
+        }
     }
 }
 
 // Unified error type for TASM
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("{1}: {0}")]
-    At(Box<Error>, Loc),
-
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
     // Parse errors
-    #[error("TODO: not implemented yet")]
-    TODO,
+    #[error("{1}: Unexpected token: {0}")]
+    UnexpectedToken(TokenInfo, Pos),
 
-    #[error("Unexpected end of file")]
-    UnexpectedEOF,
+    #[error("{0}: Unexpected end of file")]
+    UnexpectedEOF(Pos),
 
-    #[error("Unexpected token: {0}")]
-    UnexpectedToken(TokenInfo),
+    #[error("{1}: Invalid type: {0:?}")]
+    InvalidType(String, Pos),
 
-    #[error("Invalid type: {0:?}")]
-    InvalidType(String),
+    #[error("{1}: Invalid function: {0:?}")]
+    InvalidFunction(String, Pos),
 
-    #[error("Invalid function: {0:?}")]
-    InvalidFunction(String),
+    #[error("{1}: Invalid variable: {0:?}")]
+    InvalidVariable(String, Pos),
 
-    #[error("Invalid variable: {0:?}")]
-    InvalidVariable(String),
-
-    // Link errors
+    // Link errors (no Loc - operate on symbols)
     #[error("Address conflict: {0} at 0x{1:04X} to 0x{2:04X}")]
     FixedAddressOverlapped(String, usize, usize),
 
@@ -101,11 +74,10 @@ pub enum Error {
     #[error("Memory section not found: {0}")]
     SectionNotFound(String),
 
-    // Allocation errors
     #[error("Address conflict: {0} at 0x{1:04X}-0x{2:04X} overlaps with existing allocation")]
     AddressConflict(String, u16, u16),
 
-    // Binary generation errors
+    // Binary generation errors (no Loc)
     #[error("Invalid instruction format")]
     InvalidInstructionFormat,
 
@@ -116,238 +88,215 @@ pub enum Error {
     InvalidBinaryData,
 
     // Assembly code generation errors
-    #[error("Invalid instruction: {0}")]
-    InvalidInstruction(String),
+    #[error("{1}: Invalid instruction: {0}")]
+    InvalidInstruction(String, Pos),
 
-    #[error("Invalid register: {0}")]
-    InvalidRegister(String),
+    #[error("{1}: Invalid register: {0}")]
+    InvalidRegister(String, Pos),
 
-    #[error("Invalid operand count for instruction {0}: expected {1}, got {2}")]
-    InvalidOperandCount(String, usize, usize),
+    #[error("{3}: Invalid operand count for instruction {0}: expected {1}, got {2}")]
+    InvalidOperandCount(String, usize, usize, Pos),
 
-    #[error("Invalid operand type for instruction {0}")]
-    InvalidOperandType(String),
+    #[error("{1}: Invalid operand type for instruction {0}")]
+    InvalidOperandType(String, Pos),
 
-    #[error("Undefined label: {0}")]
-    UndefinedLabel(String),
+    #[error("{1}: Undefined label: {0}")]
+    UndefinedLabel(String, Pos),
 
-    #[error("Invalid immediate value: {0}")]
-    InvalidImmediate(String),
+    #[error("{1}: Invalid immediate value: {0}")]
+    InvalidImmediate(String, Pos),
 
-    #[error("Label redefinition: {0}")]
-    LabelRedefinition(String),
+    #[error("{1}: Label redefinition: {0}")]
+    LabelRedefinition(String, Pos),
 
-    #[error("Cannot negate symbol")]
-    CannotNegateSymbol,
+    #[error("{0}: Cannot negate symbol")]
+    CannotNegateSymbol(Pos),
 
-    #[error("Dereference operations cannot be evaluated at assembly time")]
-    CannotDereferenceInAssembly,
+    #[error("{0}: Dereference operations cannot be evaluated at assembly time")]
+    CannotDereferenceInAssembly(Pos),
 
-    #[error("Unknown symbol: {0}")]
-    UnknownSymbol(String),
+    #[error("{1}: Unknown symbol: {0}")]
+    UnknownSymbol(String, Pos),
 
-    #[error("Cannot access field of immediate value")]
-    CannotAccessFieldOfImmediate,
+    #[error("{0}: Cannot access field of immediate value")]
+    CannotAccessFieldOfImmediate(Pos),
 
-    #[error("Cannot access field '{0}' of symbol '{1}'")]
-    CannotAccessFieldOfSymbol(String, String),
+    #[error("{2}: Cannot access field '{0}' of symbol '{1}'")]
+    CannotAccessFieldOfSymbol(String, String, Pos),
 
-    #[error("Array index must be a constant in assembly")]
-    NonConstantArrayIndex,
+    #[error("{0}: Array index must be a constant in assembly")]
+    NonConstantArrayIndex(Pos),
 
-    #[error("Cannot index immediate value")]
-    CannotIndexImmediate,
+    #[error("{0}: Cannot index immediate value")]
+    CannotIndexImmediate(Pos),
 
-    #[error("Cannot index label")]
-    CannotIndexLabel,
+    #[error("{0}: Cannot index label")]
+    CannotIndexLabel(Pos),
 
-    #[error("Cannot access field of label")]
-    CannotAccessFieldOfLabel,
+    #[error("{0}: Cannot access field of label")]
+    CannotAccessFieldOfLabel(Pos),
 
-    #[error("Cannot perform arithmetic operations on labels")]
-    CannotPerformArithmeticOnLabel,
+    #[error("{0}: Cannot perform arithmetic operations on labels")]
+    CannotPerformArithmeticOnLabel(Pos),
 
-    #[error("Cannot add two symbols")]
-    CannotAddSymbols,
+    #[error("{0}: Cannot add two symbols")]
+    CannotAddSymbols(Pos),
 
-    #[error("Invalid subtraction in address expression")]
-    InvalidSubtractionInAddress,
+    #[error("{0}: Invalid subtraction in address expression")]
+    InvalidSubtractionInAddress(Pos),
 
-    #[error("Unsupported operation in address expression")]
-    UnsupportedOperationInAddress,
+    #[error("{0}: Unsupported operation in address expression")]
+    UnsupportedOperationInAddress(Pos),
 
-    #[error("Cannot evaluate sizeof type: {0}")]
-    CannotEvaluateSizeofType(String),
+    #[error("{1}: Cannot evaluate sizeof type: {0}")]
+    CannotEvaluateSizeofType(String, Pos),
 
-    #[error("Cannot evaluate sizeof expression: {0}")]
-    CannotEvaluateSizeofExpr(String),
+    #[error("{1}: Cannot evaluate sizeof expression: {0}")]
+    CannotEvaluateSizeofExpr(String, Pos),
 
-    #[error("Unsupported expression type in assembly: {0}")]
-    UnsupportedExprType(String),
+    #[error("{1}: Unsupported expression type in assembly: {0}")]
+    UnsupportedExprType(String, Pos),
 
-    #[error("Field '{0}' not found in struct")]
-    FieldNotFoundInStruct(String),
+    #[error("{1}: Field '{0}' not found in struct")]
+    FieldNotFoundInStruct(String, Pos),
 
-    #[error("Type is not a struct")]
-    TypeIsNotStruct,
+    #[error("{0}: Type is not a struct")]
+    TypeIsNotStruct(Pos),
 
-    #[error("Type is not an array")]
-    TypeIsNotArray,
+    #[error("{0}: Type is not an array")]
+    TypeIsNotArray(Pos),
 
     // Function code generation errors
-    #[error("Type collection failed for: {0}")]
-    TypeCollectionFailed(String),
+    #[error("{1}: Type collection failed for: {0}")]
+    TypeCollectionFailed(String, Pos),
 
-    #[error("Invalid lvalue in assignment: {0}")]
-    InvalidLValue(String),
+    #[error("{1}: Invalid lvalue in assignment: {0}")]
+    InvalidLValue(String, Pos),
 
-    #[error("Unsupported expression type: {0}")]
-    UnsupportedExpression(String),
+    #[error("{1}: Unsupported expression type: {0}")]
+    UnsupportedExpression(String, Pos),
 
-    #[error("Unsupported statement type: {0}")]
-    UnsupportedStatement(String),
+    #[error("{1}: Unsupported statement type: {0}")]
+    UnsupportedStatement(String, Pos),
 
-    #[error("Undefined variable: {0}")]
-    UndefinedVariable(String),
+    #[error("{1}: Undefined variable: {0}")]
+    UndefinedVariable(String, Pos),
 
-    #[error("Invalid function call: {0}")]
-    InvalidFunctionCall(String),
+    #[error("{1}: Invalid function call: {0}")]
+    InvalidFunctionCall(String, Pos),
 
     // Evaluation errors
-    #[error("Duplicate definition: {0}")]
-    Duplicate(String),
+    #[error("{1}: Duplicate definition: {0}")]
+    Duplicate(String, Pos),
 
-    #[error("Missing type annotation for: {0}")]
-    MissingTypeAnnotation(String),
+    #[error("{1}: Missing type annotation for: {0}")]
+    MissingTypeAnnotation(String, Pos),
 
-    #[error("Unsupported const expression: {0:?}")]
-    UnsupportedConstExpr(String),
+    #[error("{1}: Unsupported const expression: {0:?}")]
+    UnsupportedConstExpr(String, Pos),
 
-    #[error("{0} is not a type")]
-    NotAType(String),
+    #[error("{1}: {0} is not a type")]
+    NotAType(String, Pos),
 
-    #[error("Unknown type: {0}")]
-    UnknownType(String),
+    #[error("{1}: Unknown type: {0}")]
+    UnknownType(String, Pos),
 
-    #[error("Array length must be a constant integer")]
-    NonConstantArrayLength,
+    #[error("{0}: Array length must be a constant integer")]
+    NonConstantArrayLength(Pos),
 
-    #[error("{0} is not a constant")]
-    NotAConstant(String),
+    #[error("{1}: {0} is not a constant")]
+    NotAConstant(String, Pos),
 
-    #[error("Unknown constant: {0}")]
-    UnknownConstant(String),
+    #[error("{1}: Unknown constant: {0}")]
+    UnknownConstant(String, Pos),
 
-    #[error("Division by zero")]
-    DivisionByZero,
+    #[error("{0}: Division by zero")]
+    DivisionByZero(Pos),
 
-    #[error("Modulo by zero")]
-    ModuloByZero,
+    #[error("{0}: Modulo by zero")]
+    ModuloByZero(Pos),
 
-    #[error("Binary operation requires numeric operands")]
-    NonNumericBinaryOperands,
+    #[error("{0}: Binary operation requires numeric operands")]
+    NonNumericBinaryOperands(Pos),
 
-    #[error("Unary operation requires numeric operand")]
-    NonNumericUnaryOperand,
+    #[error("{0}: Unary operation requires numeric operand")]
+    NonNumericUnaryOperand(Pos),
 
-    #[error("Expression cannot be evaluated at compile time")]
-    NonConstantExpression,
+    #[error("{0}: Expression cannot be evaluated at compile time")]
+    NonConstantExpression(Pos),
 
-    #[error("Cannot infer type of empty array")]
-    EmptyArrayTypeInference,
+    #[error("{0}: Cannot infer type of empty array")]
+    EmptyArrayTypeInference(Pos),
 
-    #[error("{0} is not a value")]
-    NotAValue(String),
+    #[error("{1}: {0} is not a value")]
+    NotAValue(String, Pos),
 
-    #[error("Unknown identifier: {0}")]
-    UnknownIdentifier(String),
+    #[error("{1}: Unknown identifier: {0}")]
+    UnknownIdentifier(String, Pos),
 
-    #[error("Expression is not callable")]
-    NotCallable,
+    #[error("{0}: Expression is not callable")]
+    NotCallable(Pos),
 
-    #[error("Expression is not indexable")]
-    NotIndexable,
+    #[error("{0}: Expression is not indexable")]
+    NotIndexable(Pos),
 
-    #[error("Struct has no field: {0}")]
-    NoSuchField(String),
+    #[error("{1}: Struct has no field: {0}")]
+    NoSuchField(String, Pos),
 
-    #[error("Expression is not a struct")]
-    NotAStruct,
+    #[error("{0}: Expression is not a struct")]
+    NotAStruct(Pos),
 
-    #[error("Cannot dereference non-pointer type")]
-    CannotDereferenceNonPointer,
+    #[error("{0}: Cannot dereference non-pointer type")]
+    CannotDereferenceNonPointer(Pos),
 
-    #[error("Cannot cast between types of different sizes: {0} bytes to {1} bytes")]
-    InvalidCastSize(usize, usize),
+    #[error("{2}: Cannot cast between types of different sizes: {0} bytes to {1} bytes")]
+    InvalidCastSize(usize, usize, Pos),
 
-    #[error("Expression is not addressable: {0}")]
-    NotAddressable(String),
+    #[error("{1}: Expression is not addressable: {0}")]
+    NotAddressable(String, Pos),
 
-    #[error("Cannot dereference in static context")]
-    CannotDereferenceInStaticContext,
+    #[error("{0}: Cannot dereference in static context")]
+    CannotDereferenceInStaticContext(Pos),
 
-    #[error("Invalid address operation")]
-    InvalidAddressOperation,
+    #[error("{0}: Invalid address operation")]
+    InvalidAddressOperation(Pos),
 
-    #[error("Address offset must be a constant")]
-    NonConstantAddressOffset,
+    #[error("{0}: Address offset must be a constant")]
+    NonConstantAddressOffset(Pos),
 
-    #[error("Array index in address expression must be a constant")]
-    NonConstantArrayIndexInAddress,
+    #[error("{0}: Array index in address expression must be a constant")]
+    NonConstantArrayIndexInAddress(Pos),
 
-    #[error("Duplicate local variable: {0}")]
-    DuplicateLocal(String),
+    #[error("{1}: Duplicate local variable: {0}")]
+    DuplicateLocal(String, Pos),
 
-    #[error("{0} is not an asm block")]
-    NotAnAsm(String),
+    #[error("{1}: {0} is not an asm block")]
+    NotAnAsm(String, Pos),
 
-    #[error("{0} is not a function")]
-    NotAFunction(String),
+    #[error("{1}: {0} is not a function")]
+    NotAFunction(String, Pos),
 
-    #[error("{0} is not code generatable (not asm or func)")]
-    NotCodeGeneratable(String),
+    #[error("{1}: {0} is not code generatable (not asm or func)")]
+    NotCodeGeneratable(String, Pos),
 
-    #[error("{0} is not a global label")]
-    NotGlobalLabel(String),
+    #[error("{1}: {0} is not a global label")]
+    NotGlobalLabel(String, Pos),
 
-    #[error("Undefined global label: {0}")]
-    UndefinedGlobalLabel(String),
+    #[error("{1}: Undefined global label: {0}")]
+    UndefinedGlobalLabel(String, Pos),
 
-    #[error("Expected a global label")]
-    GlobalLabelExpected,
+    #[error("{0}: Expected a global label")]
+    GlobalLabelExpected(Pos),
 
-    #[error("Undefined local label: {0}")]
-    UndefinedLocalLabel(String),
+    #[error("{1}: Undefined local label: {0}")]
+    UndefinedLocalLabel(String, Pos),
 
-    #[error("Expected a local label")]
-    LocalLabelExpected,
+    #[error("{0}: Expected a local label")]
+    LocalLabelExpected(Pos),
 
-    #[error("Static variable '{0}' cannot be used as immediate value directly. Use '{0}@' to get its address")]
-    StaticRequiresAddressOf(String),
+    #[error("{1}: Static variable '{0}' cannot be used as immediate value directly. Use '{0}@' to get its address")]
+    StaticRequiresAddressOf(String, Pos),
 
-    #[error("'{0}' is not a valid immediate value")]
-    InvalidImmediateValue(String),
-}
-
-impl Error {
-    /// Attach location information to this error
-    pub fn at(self, loc: Loc) -> Self {
-        Error::At(Box::new(self), loc)
-    }
-}
-
-/// Trait for attaching location to Results
-pub trait ResultExt<T> {
-    fn at(self, loc: Loc) -> Result<T, Error>;
-    fn at_token(self, token: &Token) -> Result<T, Error>;
-}
-
-impl<T> ResultExt<T> for Result<T, Error> {
-    fn at(self, loc: Loc) -> Result<T, Error> {
-        self.map_err(|e| e.at(loc))
-    }
-
-    fn at_token(self, token: &Token) -> Result<T, Error> {
-        self.map_err(|e| e.at(Loc::from(token)))
-    }
+    #[error("{1}: '{0}' is not a valid immediate value")]
+    InvalidImmediateValue(String, Pos),
 }
