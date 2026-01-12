@@ -9,6 +9,7 @@ pub struct Code(pub Vec<Inst<Reg, Imm>>);
 pub enum Imm {
     Lit(usize),            // Literal value (value)
     Label(String),         // Address of code (name)
+    Const(String, usize),  // Named constant (name, value)
     Symbol(String, usize), // Address of data (name, offset)
 }
 
@@ -17,6 +18,7 @@ impl std::fmt::Display for Imm {
         match self {
             Imm::Lit(val) => write!(f, "{}", val),
             Imm::Label(name) => write!(f, "{}", name),
+            Imm::Const(name, val) => write!(f, "{} ({})", val, name),
             Imm::Symbol(name, offset) => write!(f, "{} + {}", name, offset),
         }
     }
@@ -27,7 +29,8 @@ impl std::fmt::LowerHex for Imm {
         match self {
             Imm::Lit(val) => write!(f, "0x{:04x}", val),
             Imm::Label(name) => write!(f, "{}", name),
-            Imm::Symbol(name, offset) => write!(f, "{} + 0x{:04x}", name, offset),
+            Imm::Const(name, val) => write!(f, "0x{:04x} ({})", val, name),
+            Imm::Symbol(name, offset) => write!(f, "{}.0x{:04x}", name, offset),
         }
     }
 }
@@ -37,7 +40,8 @@ impl std::fmt::UpperHex for Imm {
         match self {
             Imm::Lit(val) => write!(f, "0x{:04X}", val),
             Imm::Label(name) => write!(f, "{}", name),
-            Imm::Symbol(name, offset) => write!(f, "{} + 0x{:04X}", name, offset),
+            Imm::Const(name, val) => write!(f, "0x{:04X} ({})", val, name),
+            Imm::Symbol(name, offset) => write!(f, "{}.0x{:04X}", name, offset),
         }
     }
 }

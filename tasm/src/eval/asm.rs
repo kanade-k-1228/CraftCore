@@ -130,9 +130,15 @@ impl<'a> ast::Expr {
             ast::Expr::Ident(name) => match global.get(name.as_str()) {
                 Some(ast::Def::Const(_, _, expr)) => {
                     let value = global.constexpr(expr)?;
-                    Ok(Imm::Lit(value.to_usize()))
+                    Ok(Imm::Const(name.clone(), value.to_usize()))
                 }
-                _ => Ok(Imm::Symbol(name.clone(), 0)),
+                Some(ast::Def::Static(..)) => {
+                    Err(Error::StaticRequiresAddressOf(name.clone()))
+                }
+                Some(ast::Def::Asm(..) | ast::Def::Func(..) | ast::Def::Type(..)) => {
+                    Err(Error::InvalidImmediateValue(name.clone()))
+                }
+                None => Err(Error::UnknownIdentifier(name.clone())),
             },
             ast::Expr::Unary(op, inner) => match op {
                 ast::UnaryOp::Pos => inner.imm(global),
@@ -142,7 +148,14 @@ impl<'a> ast::Expr {
                 },
                 ast::UnaryOp::Not => todo!(),
             },
-            ast::Expr::Addr(inner) => inner.imm(global),
+            ast::Expr::Addr(inner) => match inner.as_ref() {
+                ast::Expr::Ident(name) => match global.get(name.as_str()) {
+                    Some(ast::Def::Static(..)) => Ok(Imm::Symbol(name.clone(), 0)),
+                    Some(ast::Def::Const(..)) => Ok(Imm::Symbol(name.clone(), 0)),
+                    _ => Err(Error::InvalidImmediateValue(format!("{}*", name))),
+                },
+                _ => inner.imm(global),
+            },
             ast::Expr::Deref(_) => Err(Error::CannotDereferenceInAssembly),
             ast::Expr::Member(expr, field) => match expr.imm(global)? {
                 Imm::Symbol(ident, base) => {
@@ -162,7 +175,7 @@ impl<'a> ast::Expr {
                     };
                     Ok(Imm::Symbol(ident, base + offset))
                 }
-                Imm::Lit(_) => Err(Error::CannotAccessFieldOfImmediate),
+                Imm::Lit(_) | Imm::Const(_, _) => Err(Error::CannotAccessFieldOfImmediate),
                 Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel),
             },
 
@@ -190,35 +203,52 @@ impl<'a> ast::Expr {
                         Err(Error::NonConstantArrayIndex)
                     }
                 }
-                Imm::Lit(_) => Err(Error::CannotIndexImmediate),
+                Imm::Lit(_) | Imm::Const(_, _) => Err(Error::CannotIndexImmediate),
                 Imm::Label(_) => Err(Error::CannotIndexLabel),
             },
 
             ast::Expr::Binary(op, left, right) => {
                 let lhs = left.imm(global)?;
                 let rhs = right.imm(global)?;
-                match (lhs, rhs) {
-                    (Imm::Symbol(ident, left_offset), Imm::Lit(right_val)) => match op {
-                        ast::BinaryOp::Add => {
-                            Ok(Imm::Symbol(ident, left_offset + right_val as usize))
+                // Helper to extract value from Lit or Const
+                let get_val = |imm: &Imm| -> Option<usize> {
+                    match imm {
+                        Imm::Lit(v) | Imm::Const(_, v) => Some(*v),
+                        _ => None,
+                    }
+                };
+                match (&lhs, &rhs) {
+                    (Imm::Symbol(ident, left_offset), _) if get_val(&rhs).is_some() => {
+                        let right_val = get_val(&rhs).unwrap();
+                        match op {
+                            ast::BinaryOp::Add => {
+                                Ok(Imm::Symbol(ident.clone(), left_offset + right_val))
+                            }
+                            ast::BinaryOp::Sub => Ok(Imm::Symbol(
+                                ident.clone(),
+                                left_offset.wrapping_sub(right_val),
+                            )),
+                            _ => Err(Error::UnsupportedOperationInAddress),
                         }
-                        ast::BinaryOp::Sub => Ok(Imm::Symbol(
-                            ident,
-                            left_offset.wrapping_sub(right_val as usize),
-                        )),
-                        _ => Err(Error::UnsupportedOperationInAddress),
-                    },
-                    (Imm::Lit(left_val), Imm::Symbol(ident, right_offset)) => match op {
-                        ast::BinaryOp::Add => {
-                            Ok(Imm::Symbol(ident, left_val as usize + right_offset))
+                    }
+                    (_, Imm::Symbol(ident, right_offset)) if get_val(&lhs).is_some() => {
+                        let left_val = get_val(&lhs).unwrap();
+                        match op {
+                            ast::BinaryOp::Add => {
+                                Ok(Imm::Symbol(ident.clone(), left_val + *right_offset))
+                            }
+                            _ => Err(Error::InvalidSubtractionInAddress),
                         }
-                        _ => Err(Error::InvalidSubtractionInAddress),
-                    },
-                    (Imm::Lit(left_val), Imm::Lit(right_val)) => match op {
-                        ast::BinaryOp::Add => Ok(Imm::Lit(left_val.wrapping_add(right_val))),
-                        ast::BinaryOp::Sub => Ok(Imm::Lit(left_val.wrapping_sub(right_val))),
-                        _ => Err(Error::UnsupportedOperationInAddress),
-                    },
+                    }
+                    _ if get_val(&lhs).is_some() && get_val(&rhs).is_some() => {
+                        let left_val = get_val(&lhs).unwrap();
+                        let right_val = get_val(&rhs).unwrap();
+                        match op {
+                            ast::BinaryOp::Add => Ok(Imm::Lit(left_val.wrapping_add(right_val))),
+                            ast::BinaryOp::Sub => Ok(Imm::Lit(left_val.wrapping_sub(right_val))),
+                            _ => Err(Error::UnsupportedOperationInAddress),
+                        }
+                    }
                     (Imm::Symbol(_, _), Imm::Symbol(_, _)) => match op {
                         ast::BinaryOp::Add => Err(Error::CannotAddSymbols),
                         _ => Err(Error::InvalidSubtractionInAddress),
@@ -226,6 +256,7 @@ impl<'a> ast::Expr {
                     (Imm::Label(_), _) | (_, Imm::Label(_)) => {
                         Err(Error::CannotPerformArithmeticOnLabel)
                     }
+                    _ => Err(Error::UnsupportedOperationInAddress),
                 }
             }
 

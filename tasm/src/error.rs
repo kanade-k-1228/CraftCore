@@ -304,4 +304,10 @@ pub enum Error {
 
     #[error("Expected a local label")]
     LocalLabelExpected,
+
+    #[error("Static variable '{0}' cannot be used as immediate value directly. Use '{0}@' to get its address")]
+    StaticRequiresAddressOf(String),
+
+    #[error("'{0}' is not a valid immediate value")]
+    InvalidImmediateValue(String),
 }

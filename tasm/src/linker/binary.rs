@@ -14,15 +14,16 @@ pub fn resolve_symbols<'a>(
         let mut resolved_insts = Vec::new();
         for inst in &code.0 {
             let resolved_inst = inst.clone().resolve(|imm| match imm {
-                Imm::Symbol(s, offset) => match dmap.get(&s) {
-                    Some(addr) => (addr + offset) as u16,
-                    None => todo!("Failed to find symbol: {}", s),
-                },
+                Imm::Lit(val) => val as u16,
                 Imm::Label(label) => match imap.get(&label) {
                     Some(&addr) => addr as u16,
                     None => todo!("Failed to find label: {}", label),
                 },
-                Imm::Lit(val) => val as u16,
+                Imm::Const(_, val) => val as u16,
+                Imm::Symbol(s, offset) => match dmap.get(&s) {
+                    Some(addr) => (addr + offset) as u16,
+                    None => todo!("Failed to find symbol: {}", s),
+                },
             });
             resolved_insts.push(resolved_inst);
         }

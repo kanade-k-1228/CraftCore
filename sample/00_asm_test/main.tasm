@@ -31,8 +31,8 @@ asm @ 0x0008 reset {
     mov(s0, s1);
 
     addi(t2, t0, cst);
-    subi(t2, t0, hoge);
-    andi(t2, t0, fuga);
+    subi(t2, t0, hoge@);
+    andi(t2, t0, fuga@);
     ori(t2, t0, 0x0000);
     xori(t2, t0, 0x0110);
 
@@ -44,8 +44,8 @@ asm @ 0x0008 reset {
     not(t2, t0);
     loadi(t0, 0x0123);
 
-    load(t2, t0, hoge);
-    store(t2, t0, fuga);
+    load(t2, t0, hoge@);
+    store(t2, t0, fuga@);
 
   a:
     jumpif(t1, reset);
