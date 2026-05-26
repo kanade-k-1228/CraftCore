@@ -11,4 +11,6 @@ pub enum Imm {
     Label(String),         // Address of code (name)
     Const(String, usize),  // Named constant (name, value)
     Symbol(String, usize), // Address of data (name, offset)
+    ScopeExit(usize),      // Placeholder: jump past labeled scope with given id (break)
+    ScopeEntry(usize),     // Placeholder: jump to start of labeled scope with given id (continue)
 }

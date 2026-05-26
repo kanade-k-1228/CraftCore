@@ -351,22 +351,58 @@ impl<'a> Global<'a> {
             }
             ast::Expr::Binary(op, left, right) => {
                 let left_ty = self.typeinfer(left)?;
-                let _right_ty = self.typeinfer(right)?;
+                let right_ty = self.typeinfer(right)?;
+
+                let is_addr = |t: &NormType| matches!(t, NormType::Addr(_));
+                let is_int = |t: &NormType| matches!(t, NormType::Int);
 
                 match op {
+                    // Comparison operators always return int (as boolean).
+                    // Both sides must have matching word size.
                     BinaryOp::Eq
                     | BinaryOp::Ne
                     | BinaryOp::Lt
                     | BinaryOp::Le
                     | BinaryOp::Gt
                     | BinaryOp::Ge => {
-                        // Comparison operations return int (boolean as int)
+                        if left_ty.sizeof() != right_ty.sizeof() {
+                            return Err(Error::InvalidCastSize(
+                                left.pos_or_default(),
+                                left_ty.sizeof(),
+                                right_ty.sizeof(),
+                            ));
+                        }
                         Ok(NormType::Int)
                     }
-                    _ => {
-                        // Arithmetic and bitwise operations return the type of operands
-                        // For now, assume they preserve the left operand type
-                        Ok(left_ty)
+
+                    // Pointer arithmetic: ptr +/- int → ptr; int + ptr → ptr;
+                    // ptr - ptr → int. Otherwise both must be int.
+                    BinaryOp::Add => match (&left_ty, &right_ty) {
+                        (NormType::Addr(_), r) if is_int(r) => Ok(left_ty),
+                        (l, NormType::Addr(_)) if is_int(l) => Ok(right_ty),
+                        (l, r) if is_int(l) && is_int(r) => Ok(NormType::Int),
+                        _ => Err(Error::NonNumericBinaryOperands(left.pos_or_default())),
+                    },
+                    BinaryOp::Sub => match (&left_ty, &right_ty) {
+                        (NormType::Addr(_), r) if is_int(r) => Ok(left_ty),
+                        (l, r) if is_addr(l) && is_addr(r) => Ok(NormType::Int),
+                        (l, r) if is_int(l) && is_int(r) => Ok(NormType::Int),
+                        _ => Err(Error::NonNumericBinaryOperands(left.pos_or_default())),
+                    },
+
+                    // Pure arithmetic / bitwise / shift: both sides must be int.
+                    BinaryOp::Mul
+                    | BinaryOp::Div
+                    | BinaryOp::Mod
+                    | BinaryOp::And
+                    | BinaryOp::Or
+                    | BinaryOp::Xor
+                    | BinaryOp::Shl
+                    | BinaryOp::Shr => {
+                        if !(is_int(&left_ty) && is_int(&right_ty)) {
+                            return Err(Error::NonNumericBinaryOperands(left.pos_or_default()));
+                        }
+                        Ok(NormType::Int)
                     }
                 }
             }
@@ -544,6 +580,48 @@ impl<'a> Global<'a> {
         } else {
             None
         }
+    }
+
+    /// Walk a function body and produce a map of (local var name → FP-relative
+    /// offset). Args get positive offsets (FP+2, FP+3, …) and locals get
+    /// negative offsets (FP-1, FP-2, …) reflecting the runtime layout.
+    pub fn get_func_locals(&'a self, name: &str) -> Option<IndexMap<String, isize>> {
+        let def = self.defs.get(name).copied()?;
+        let (params, body) = match def {
+            ast::Def::Func(_, params, _, body) => (params, body),
+            _ => return None,
+        };
+        let mut local = super::local::Local::fork(self);
+        local.args(params).ok()?;
+        // Walk statements to collect every Var declaration in source order.
+        fn walk<'a>(
+            local: &mut super::local::Local<'a>,
+            stmt: &'a ast::Stmt,
+        ) -> Result<(), crate::error::Error> {
+            match stmt {
+                ast::Stmt::Block(_, stmts) => {
+                    for s in stmts {
+                        walk(local, s)?;
+                    }
+                }
+                ast::Stmt::Cond(_, t, f) => {
+                    walk(local, t)?;
+                    if let Some(e) = f {
+                        walk(local, e)?;
+                    }
+                }
+                ast::Stmt::Loop(_, body) => walk(local, body)?,
+                ast::Stmt::Var(ident, ty, _) => {
+                    let _ = local.push(ident, ty);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+        for s in body {
+            walk(&mut local, s).ok()?;
+        }
+        Some(local.entries())
     }
 
     pub fn get_func_resolved(&self, name: &str) -> Option<NormType> {

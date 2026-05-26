@@ -197,12 +197,24 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_stmt(&mut self) -> Result<Stmt, Error> {
         if let Some(token) = &self.peek() {
             match &token.kind {
+                // Named scope block: "'" ident ":" "{" { stmt } "}"
+                Scope(_) => {
+                    let name = self
+                        .parse_optional_scope()?
+                        .expect("Scope token was peeked");
+                    expect!(self, Colon)?;
+                    expect!(self, LCurly)?;
+                    let stmts = repeat!(self, self.parse_stmt(), RCurly);
+                    expect!(self, RCurly)?;
+                    return Ok(Stmt::Block(Some(name), stmts));
+                }
+
                 // Block statement: "{" { stmt } "}"
                 LCurly => {
                     expect!(self, LCurly)?;
                     let stmts = repeat!(self, self.parse_stmt(), RCurly);
                     expect!(self, RCurly)?;
-                    return Ok(Stmt::Block(stmts));
+                    return Ok(Stmt::Block(None, stmts));
                 }
 
                 // Variable statement: "var" ident ":" type [ "=" expr ] ";"
@@ -235,6 +247,26 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     expect!(self, RParen)?;
                     let body = Box::new(self.parse_stmt()?);
                     return Ok(Stmt::Loop(cond, body));
+                }
+
+                // Break statement: "break" "'" scope ";"
+                KwBreak => {
+                    let tok = expect!(self, KwBreak)?;
+                    let scope = self
+                        .parse_optional_scope()?
+                        .ok_or_else(|| Error::ScopeRequired(tok.pos.clone(), "break".into()))?;
+                    expect!(self, Semicolon)?;
+                    return Ok(Stmt::Break(scope, tok.pos.clone()));
+                }
+
+                // Continue statement: "continue" "'" scope ";"
+                KwContinue => {
+                    let tok = expect!(self, KwContinue)?;
+                    let scope = self
+                        .parse_optional_scope()?
+                        .ok_or_else(|| Error::ScopeRequired(tok.pos.clone(), "continue".into()))?;
+                    expect!(self, Semicolon)?;
+                    return Ok(Stmt::Continue(scope, tok.pos.clone()));
                 }
 
                 // Return statement: "return" [ expr ] ";"
@@ -445,7 +477,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    /// unary-expr = ( "+" | "-" | "!" ) unary-expr | postfix-expr
+    /// unary-expr = ( "+" | "-" | "!" | "@" ) unary-expr | postfix-expr
     fn parse_unary_expr(&mut self) -> Result<Expr, Error> {
         if let Some(token) = self.peek() {
             match token.kind {
@@ -467,6 +499,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     let expr = self.parse_unary_expr()?;
                     return Ok(Expr::Unary(UnaryOp::Not, Box::new(expr)));
                 }
+                // Dereference (prefix): "@" unary-expr
+                Atmark => {
+                    expect!(self, Atmark)?;
+                    let expr = self.parse_unary_expr()?;
+                    return Ok(Expr::Deref(Box::new(expr)));
+                }
                 _ => {}
             }
         }
@@ -475,7 +513,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// postfix-expr = prim-expr { postfix-op }
-    /// postfix-op = "(" [ expr { "," expr } ] ")" | "[" expr "]" | "." ident | "*" | "@" | "as" type
+    /// postfix-op = "(" [ expr { "," expr } ] ")" | "[" expr "]" | "." ident | "@" | "as" type
     fn parse_postfix_expr(&mut self) -> Result<Expr, Error> {
         let mut expr = self.parse_prim_expr()?;
         loop {
@@ -502,13 +540,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 expect!(self, Period)?;
                 let field = self.parse_ident()?;
                 expr = Expr::Member(Box::new(expr), field);
-                continue;
-            }
-
-            // Dereference (postfix): expr "*"
-            if check!(self, Star) {
-                expect!(self, Star)?;
-                expr = Expr::Deref(Box::new(expr));
                 continue;
             }
 
@@ -610,6 +641,19 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         } else {
             Err(Error::UnexpectedEOF(Pos::default()))
         }
+    }
+
+    /// Optional scope reference: [ "'" ident ]
+    fn parse_optional_scope(&mut self) -> Result<Option<Ident>, Error> {
+        if let Some(token) = self.peek() {
+            if let Scope(name) = &token.kind {
+                let name = name.clone();
+                let pos = token.pos.clone();
+                self.next();
+                return Ok(Some((name, pos)));
+            }
+        }
+        Ok(None)
     }
 
     /// ident = ( "A".."Z" | "a".."z" | "_" ) { "0".."9" | "A".."Z" | "a".."z" | "_" }

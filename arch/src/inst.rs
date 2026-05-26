@@ -44,6 +44,7 @@ pub enum Inst<R, I> {
     JUMPIF(R, I),
     JUMPIFR(R, I),
     CALL(I),
+    CALLR(R),
     RET(),
     IRET(),
 }
@@ -112,6 +113,7 @@ impl<R: Clone, I> Inst<R, I> {
             Inst::JUMPIF(rd, imm) => Inst::JUMPIF(rd, f(imm)),
             Inst::JUMPIFR(rd, imm) => Inst::JUMPIFR(rd, f(imm)),
             Inst::CALL(imm) => Inst::CALL(f(imm)),
+            Inst::CALLR(reg) => Inst::CALLR(reg),
             Inst::RET() => Inst::RET(),
             Inst::IRET() => Inst::IRET(),
         }
@@ -160,6 +162,7 @@ impl Inst<Reg, u16> {
             Inst::JUMPIF(rs, imm) => Op::CTRL(Reg::Z, Reg::Z, rs, imm),
             Inst::JUMPIFR(rs, imm) => Op::CTRL(Reg::Z, Reg::PC, rs, imm),
             Inst::CALL(imm) => Op::CTRL(Reg::RA, Reg::Z, Reg::Z, imm),
+            Inst::CALLR(reg) => Op::CTRL(Reg::RA, reg, Reg::Z, 0),
             Inst::RET() => Op::CTRL(Reg::Z, Reg::RA, Reg::Z, 0),
             Inst::IRET() => Op::CTRL(Reg::Z, Reg::IRA, Reg::Z, 0),
         }
@@ -216,6 +219,8 @@ impl Inst<Reg, u16> {
                 (Reg::Z, Reg::PC, Reg::Z) => Inst::JUMPR(imm),
                 (Reg::Z, Reg::Z, rs2) => Inst::JUMPIF(rs2, imm),
                 (Reg::Z, Reg::PC, rs2) => Inst::JUMPIFR(rs2, imm),
+                (Reg::RA, Reg::Z, Reg::Z) => Inst::CALL(imm),
+                (Reg::RA, reg, Reg::Z) => Inst::CALLR(reg),
                 (Reg::RA, _, _) => Inst::CALL(imm),
                 (Reg::Z, Reg::RA, Reg::Z) => Inst::RET(),
                 (Reg::Z, Reg::IRA, Reg::Z) => Inst::IRET(),
@@ -280,6 +285,7 @@ impl<R: Display, I: Display + std::fmt::LowerHex + std::fmt::UpperHex> Inst<R, I
             Inst::JUMP(imm) => rri!("jump", "", "", imm),
             Inst::JUMPR(imm) => rri!("jumpr", "", "", imm),
             Inst::CALL(imm) => rri!("call", "", "", imm),
+            Inst::CALLR(reg) => rrr!("callr", "", reg, ""),
             Inst::RET() => rrr!("ret", "", "", ""),
             Inst::IRET() => rrr!("iret", "", "", ""),
         }

@@ -153,6 +153,12 @@ pub enum Error {
     #[error("{0}: Invalid function call: {1}")]
     InvalidFunctionCall(Pos, String),
 
+    #[error("{0}: Unknown scope: '{1}")]
+    UnknownScope(Pos, String),
+
+    #[error("{0}: Expected a scope name after '{1}'")]
+    ScopeRequired(Pos, String),
+
     // Evaluation errors
     #[error("{0}: Duplicate definition: {1}")]
     Duplicate(Pos, String),

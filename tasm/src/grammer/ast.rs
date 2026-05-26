@@ -28,13 +28,15 @@ pub enum Def {
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Stmt {
-    Block(Vec<Stmt>),                         // "{" { stmt } "}"
-    Expr(Expr),                               // expr ";"
-    Assign(Expr, Expr),                       // expr "=" expr ";"
+    Block(Option<Ident>, Vec<Stmt>), // [ "'" ident ":" ] "{" { stmt } "}"
+    Expr(Expr),                      // expr ";"
+    Assign(Expr, Expr),              // expr "=" expr ";"
     Cond(Expr, Box<Stmt>, Option<Box<Stmt>>), // "if" "(" expr ")" stmt [ "else" stmt ]
-    Loop(Expr, Box<Stmt>),                    // "while" "(" expr ")" stmt
-    Return(Option<Expr>),                     // "return" [ expr ] ";"
-    Var(Ident, Type, Option<Expr>),           // "var" ident ":" type [ "=" expr ] ";"
+    Loop(Expr, Box<Stmt>),           // "while" "(" expr ")" stmt
+    Break(Ident, Pos),               // "break" "'" scope ";"  (target scope name)
+    Continue(Ident, Pos),            // "continue" "'" scope ";"
+    Return(Option<Expr>),            // "return" [ expr ] ";"
+    Var(Ident, Type, Option<Expr>),  // "var" ident ":" type [ "=" expr ] ";"
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -48,8 +50,8 @@ pub enum Expr {
     Call(Box<Expr>, Vec<Expr>),            // expr "(" [ expr { "," expr } ] ")"
     Index(Box<Expr>, Box<Expr>),           // expr "[" expr "]"
     Member(Box<Expr>, Ident),              // expr "." ident
-    Addr(Box<Expr>),                       // expr "*"
-    Deref(Box<Expr>),                      // expr "@"
+    Addr(Box<Expr>),                       // expr "@"        (postfix, address-of)
+    Deref(Box<Expr>),                      // "@" expr        (prefix, dereference)
     Cast(Box<Expr>, Box<Type>),            // expr "as" type
     Ident(Ident),                          // ident
     NumberLit(usize),                      // num-lit

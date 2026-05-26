@@ -17,6 +17,8 @@ fn fmt_imm(imm: &Imm, dmap: &IndexMap<String, usize>) -> String {
                 _ => format!("0x{:04X} ({}.0x{:04X})", addr, name, offset),
             }
         }
+        Imm::ScopeExit(id) => format!("<exit scope#{}>", id),
+        Imm::ScopeEntry(id) => format!("<entry scope#{}>", id),
     }
 }
 
@@ -69,6 +71,7 @@ fn fmt_inst(inst: &Inst<Reg, Imm>, dmap: &IndexMap<String, usize>) -> String {
         Inst::JUMP(imm) => rri!("jump", "", "", imm),
         Inst::JUMPR(imm) => rri!("jumpr", "", "", imm),
         Inst::CALL(imm) => rri!("call", "", "", imm),
+        Inst::CALLR(reg) => rrr!("callr", "", reg, ""),
         Inst::RET() => rrr!("ret", "", "", ""),
         Inst::IRET() => rrr!("iret", "", "", ""),
     }
@@ -80,6 +83,7 @@ fn resolve_imm(imm: Imm, dmap: &IndexMap<String, usize>) -> u16 {
         Imm::Label(_) => 0,
         Imm::Const(_, val) => val as u16,
         Imm::Symbol(name, offset) => dmap.get(&name).map_or(0, |&a| (a + offset) as u16),
+        Imm::ScopeExit(_) | Imm::ScopeEntry(_) => 0,
     }
 }
 

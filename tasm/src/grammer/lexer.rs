@@ -104,30 +104,56 @@ impl<'a> LineLexer<'a> {
                 continue;
             }
 
-            // 4. Char literal
+            // 4. Char literal or scope name
             if ch0 == '\'' {
+                // Disambiguate between char literal ('X' / '\n') and scope name ('ident).
+                // - Char literal with escape: peek_nth(1) == '\\'
+                // - Plain char literal: peek_nth(2) == '\''
+                // - Otherwise: scope name (e.g. 'outer)
+                let is_escape = matches!(self.peek_nth(1), Some((_, '\\')));
+                let is_plain_char = matches!(self.peek_nth(2), Some((_, '\'')));
+
+                if is_escape || is_plain_char {
+                    self.consume(); // consume opening '
+                    let (_, ch1) = self.consume().unwrap();
+
+                    let ch_value = if ch1 == '\\' {
+                        // Handle escape sequences
+                        let (_, ch2) = self.consume().unwrap();
+                        match ch2 {
+                            'n' => '\n',
+                            't' => '\t',
+                            'r' => '\r',
+                            '\\' => '\\',
+                            '\'' => '\'',
+                            '0' => '\0',
+                            _ => panic!("Invalid escape sequence: \\{}", ch2),
+                        }
+                    } else {
+                        ch1
+                    };
+
+                    let (_, ch_close) = self.consume().unwrap();
+                    assert!(ch_close == '\'', "Expected closing ' but got {}", ch_close);
+                    tokens.push(Token::new(TokenKind::Char(ch_value), pos));
+                    continue;
+                }
+
+                // Scope name: 'ident
                 self.consume(); // consume opening '
-                let (_, ch1) = self.consume().unwrap();
-
-                let ch_value = if ch1 == '\\' {
-                    // Handle escape sequences
-                    let (_, ch2) = self.consume().unwrap();
-                    match ch2 {
-                        'n' => '\n',
-                        't' => '\t',
-                        'r' => '\r',
-                        '\\' => '\\',
-                        '\'' => '\'',
-                        '0' => '\0',
-                        _ => panic!("Invalid escape sequence: \\{}", ch2),
-                    }
+                let mut lexeme = Vec::new();
+                while let Some((_, ch)) = self
+                    .iter
+                    .next_if(|(_, ch)| matches!(ch, '_' | '0'..='9' | 'a'..='z' | 'A'..='Z'))
+                {
+                    lexeme.push(ch);
+                }
+                let lexeme: String = lexeme.into_iter().collect();
+                if lexeme.is_empty() {
+                    tokens.push(Token::new(TokenKind::Error("'".to_string()), pos));
                 } else {
-                    ch1
-                };
-
-                let (_, ch_close) = self.consume().unwrap();
-                assert!(ch_close == '\'', "Expected closing ' but got {}", ch_close);
-                tokens.push(Token::new(TokenKind::Char(ch_value), pos));
+                    tokens.push(Token::new(TokenKind::Scope(lexeme), pos));
+                }
                 continue;
             }
 

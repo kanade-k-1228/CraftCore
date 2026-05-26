@@ -22,8 +22,8 @@ pub struct DataEntry {
 }
 
 impl SymbolMap {
-    pub fn generate(
-        evaluator: &Global,
+    pub fn generate<'a>(
+        evaluator: &'a Global<'a>,
         imap: &IndexMap<String, usize>,
         dmap: &IndexMap<String, usize>,
     ) -> Self {
@@ -32,24 +32,29 @@ impl SymbolMap {
 
         // Add all code entries from imap
         for (name, addr) in imap.iter() {
-            // Get size from the code if available
-            let size = if evaluator.get_asm_resolved(name.as_str()).is_some() {
-                // For asm blocks, we'd need to get the actual code size
-                // For now, use a placeholder
-                0
-            } else if evaluator.get_func_resolved(name.as_str()).is_some() {
-                // For functions and seq blocks, we'd need to get the actual code size
-                0
-            } else {
-                0
-            };
+            // Actual code length comes from the cached compiled code.
+            let size = evaluator
+                .code(name.as_str())
+                .map(|c| c.0.len())
+                .unwrap_or(0);
+
+            // For functions, surface each local's FP-relative offset.
+            let stacks: IndexMap<String, usize> = evaluator
+                .get_func_locals(name.as_str())
+                .map(|locals| {
+                    locals
+                        .into_iter()
+                        .map(|(n, off)| (n, (off as i16) as u16 as usize))
+                        .collect()
+                })
+                .unwrap_or_default();
 
             code_map.insert(
                 name.clone(),
                 CodeEntry {
                     addr: *addr,
                     size,
-                    stacks: IndexMap::new(), // TODO: Local variable stack positions would go here
+                    stacks,
                 },
             );
         }

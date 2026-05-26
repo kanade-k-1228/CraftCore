@@ -245,7 +245,11 @@ impl ast::Expr {
                     Ok(Imm::Lit(val)) => Ok(Imm::Lit((-(val as isize)) as usize)),
                     _ => Err(Error::CannotNegateSymbol(loc.clone())),
                 },
-                ast::UnaryOp::Not => todo!(),
+                ast::UnaryOp::Not => match inner.imm(global, loc)? {
+                    Imm::Lit(val) => Ok(Imm::Lit((!(val as u16)) as usize)),
+                    Imm::Const(_, val) => Ok(Imm::Lit((!(val as u16)) as usize)),
+                    _ => Err(Error::CannotNegateSymbol(loc.clone())),
+                },
             },
             ast::Expr::Addr(inner) => match inner.as_ref() {
                 ast::Expr::Ident((name, _)) => match global.get(name.as_str()) {
@@ -283,6 +287,9 @@ impl ast::Expr {
                     Err(Error::CannotAccessFieldOfImmediate(loc.clone()))
                 }
                 Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel(loc.clone())),
+                Imm::ScopeExit(_) | Imm::ScopeEntry(_) => {
+                    unreachable!("scope placeholders are only produced inside fn bodies")
+                }
             },
 
             ast::Expr::Index(expr, index) => match expr.imm(global, loc)? {
@@ -313,6 +320,9 @@ impl ast::Expr {
                 }
                 Imm::Lit(_) | Imm::Const(_, _) => Err(Error::CannotIndexImmediate(loc.clone())),
                 Imm::Label(_) => Err(Error::CannotIndexLabel(loc.clone())),
+                Imm::ScopeExit(_) | Imm::ScopeEntry(_) => {
+                    unreachable!("scope placeholders are only produced inside fn bodies")
+                }
             },
 
             ast::Expr::Binary(op, left, right) => {

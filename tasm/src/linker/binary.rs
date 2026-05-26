@@ -27,6 +27,9 @@ pub fn genibin<'a>(
                 Imm::Label(label) => imap.get(&label).map_or(0, |&a| a as u16),
                 Imm::Const(_, val) => val as u16,
                 Imm::Symbol(s, ofs) => dmap.get(&s).map_or(0, |&a| (a + ofs) as u16),
+                Imm::ScopeExit(id) | Imm::ScopeEntry(id) => {
+                    panic!("internal error: unpatched scope placeholder (id={})", id)
+                }
             });
             let bytes = resolved.to_op().to_bin().to_le_bytes();
             if offset + 4 <= binary.len() {

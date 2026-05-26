@@ -19,18 +19,26 @@ impl<'a> Local<'a> {
         }
     }
 
-    fn next_offset(&self) -> isize {
-        self.stack
+    /// Returns the base offset (lowest address relative to FP) for a new local
+    /// of the given size. Locals live below FP, so this is negative.
+    fn next_offset(&self, size: isize) -> isize {
+        let lowest = self
+            .stack
             .values()
             .filter(|(_, offset)| *offset < 0)
-            .map(|(ty, offset)| offset - ty.sizeof() as isize)
+            .map(|(_, offset)| *offset)
             .min()
-            .unwrap_or(-1)
+            .unwrap_or(0);
+        lowest - size
     }
 
     pub fn args(&mut self, args: &'a [(ast::Ident, ast::Type)]) -> Result<isize, Error> {
+        // Args are stored above FP, immediately after the saved RA (FP+0) and
+        // saved FP (FP+1) slots. The first declared argument gets the lowest
+        // offset (FP+2), matching the prologue which copies args in declaration
+        // order.
         let mut offset = 2isize;
-        for ((name, _), ty) in args.iter().rev() {
+        for ((name, _), ty) in args.iter() {
             let ty = self.global.normtype(ty)?;
             let size = ty.sizeof() as isize;
             self.stack.insert(name.as_str(), (ty, offset));
@@ -46,7 +54,8 @@ impl<'a> Local<'a> {
         }
 
         let norm_ty = self.global.normtype(ty)?;
-        let offset = self.next_offset();
+        let size = norm_ty.sizeof() as isize;
+        let offset = self.next_offset(size);
 
         self.stack.insert(name.as_str(), (norm_ty, offset));
 
@@ -144,7 +153,26 @@ impl<'a> Local<'a> {
         self.stack.contains_key(name)
     }
 
+    /// Look up a global definition by name (delegates to Global).
+    pub fn global_def(&self, name: &str) -> Option<&'a ast::Def> {
+        self.global.get(name)
+    }
+
+    /// All (name → FP-relative offset) entries, preserving insertion order.
+    pub fn entries(&self) -> IndexMap<String, isize> {
+        self.stack
+            .iter()
+            .map(|(name, (_, offset))| (name.to_string(), *offset))
+            .collect()
+    }
+
+    /// Total stack space used by locals (positive; in 16-bit words).
     pub fn stack_size(&self) -> usize {
-        (-self.next_offset() - 1) as usize
+        self.stack
+            .values()
+            .filter(|(_, offset)| *offset < 0)
+            .map(|(_, offset)| (-offset) as usize)
+            .max()
+            .unwrap_or(0)
     }
 }

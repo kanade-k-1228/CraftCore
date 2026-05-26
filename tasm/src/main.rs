@@ -74,6 +74,7 @@ fn main() -> Result<(), tasm::Error> {
         .section("code", 0x0008, 0x10000)
         .allocator();
 
+    // Pass 1: fixed-address `asm` blocks.
     for name in labels.iter() {
         let code = global.code(name)?;
         if let Some(Some(addr)) = global.get_asm_resolved(name) {
@@ -81,9 +82,10 @@ fn main() -> Result<(), tasm::Error> {
         }
     }
 
+    // Pass 2: auto-allocate the rest (`asm` without `@`, and any `fn`).
     for name in labels.iter() {
         let code = global.code(name)?;
-        if let Some(None) = global.get_asm_resolved(name) {
+        if !matches!(global.get_asm_resolved(name), Some(Some(_))) {
             ialoc.section("code", code.0.len(), name)?;
         }
     }

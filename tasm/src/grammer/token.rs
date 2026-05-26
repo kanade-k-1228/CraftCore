@@ -77,6 +77,9 @@ pub enum TokenKind {
     // Identifier
     Ident(String),
 
+    // Scope name ('ident) — used to label a `{}` scope
+    Scope(String),
+
     // Literals
     Number(String, usize),
     Text(String),

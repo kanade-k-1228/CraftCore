@@ -20,14 +20,16 @@ def = "type" ident "=" type ";"
     | "asm" [ "@" expr ] ident "{" { asm-stmt } "}"
     | "fn" ident "(" [ ident ":" type { "," ident ":" type } ] ")" [ "->" type ] "{" { stmt } "}" ;
 
-asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" ";" ;
+asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" [ ";" ] ;
 
 (* Statements -------------------------------------------------------------- *)
 
-stmt = "{" { stmt } "}" 
-     | "var" ident ":" type [ "=" expr ] ";" 
+stmt = [ "'" ident ":" ] "{" { stmt } "}"
+     | "var" ident ":" type [ "=" expr ] ";"
      | "if" "(" expr ")" stmt [ "else" stmt ]
      | "while" "(" expr ")" stmt
+     | "break" "'" ident ";"
+     | "continue" "'" ident ";"
      | "return" [ expr ] ";"
      | expr "=" expr ";"
      | expr ";" ;
@@ -45,13 +47,12 @@ shift-expr = add-expr [ ( "<<" | ">>" ) add-expr ] ;
 add-expr = mul-expr { ( "+" | "-" ) mul-expr } ;
 mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ] ;
 
-unary-expr = ( "+" | "-" | "!" ) unary-expr | postfix-expr ;
+unary-expr = ( "+" | "-" | "!" | "@" ) unary-expr | postfix-expr ;
 
 postfix-expr = prim-expr { postfix-op } ;
 postfix-op = "(" [ expr { "," expr } ] ")"
            | "[" expr "]"
            | "." ident
-           | "*"
            | "@"
            | "as" type ;
 
