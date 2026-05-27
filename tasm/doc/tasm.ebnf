@@ -9,8 +9,8 @@ type = "int"
      | ident
      | "*" type
      | "[" expr "]" type
-     | "{" [ ident ":" type { "," ident ":" type } ] "}"
-     | "(" [ ident ":" type { "," ident ":" type } ] ")" "->" type ;
+     | "{" [ ident ":" type { "," ident ":" type } [ "," ] ] "}"
+     | "(" [ ident ":" type { "," ident ":" type } [ "," ] ] ")" "->" type ;
 
 (* Definitions ------------------------------------------------------------- *)
 
@@ -18,9 +18,9 @@ def = "type" ident "=" type ";"
     | "const" [ "@" expr ] ident "=" expr ";"
     | "static" [ "@" expr ] ident ":" type ";"
     | "asm" [ "@" expr ] ident "{" { asm-stmt } "}"
-    | "fn" ident "(" [ ident ":" type { "," ident ":" type } ] ")" [ "->" type ] "{" { stmt } "}" ;
+    | "fn" ident "(" [ ident ":" type { "," ident ":" type } [ "," ] ] ")" [ "->" type ] "{" { stmt } "}" ;
 
-asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" [ ";" ] ;
+asm-stmt = { ident ":" } ident "(" [ expr { "," expr } [ "," ] ] ")" [ ";" ] ;
 
 (* Statements -------------------------------------------------------------- *)
 
@@ -61,8 +61,8 @@ prim-expr = "(" expr ")"
           | num-lit
           | char-lit
           | string-lit
-          | "[" [ expr { "," expr } ] "]"
-          | "{" [ ident ":" expr { "," ident ":" expr } ] "}"
+          | "[" [ expr { "," expr } [ "," ] ] "]"
+          | "{" [ ident ":" expr { "," ident ":" expr } [ "," ] ] "}"
           | "sizeof" "<" type ">"
           | "sizeof" "(" expr ")" ;
 

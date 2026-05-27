@@ -15,20 +15,24 @@ VSCode extension for TASM (Typed Assembly) language syntax highlighting and lang
 The extension provides highlighting for:
 
 ### Keywords
-- Control flow: `if`, `else`, `while`, `return`, `break`, `continue`
+- Control flow: `if`, `else`, `while`, `return`, `break 'label`, `continue 'label`
 - Declarations: `fn`, `var`, `type`, `const`, `static`, `asm`
-- Types: `int`
+- Types: `int`, `void`
+- Operators (word): `as`, `sizeof`
+
+### Scope Labels
+- Labeled blocks: `'name: { ... }` — used as targets for `break`/`continue`
 
 ### Assembly
-- Instructions: `nop`, `mov`, `add`, `sub`, `load`, `store`, `jump`, `call`, `ret`, etc.
+- Instructions: `nop`, `mov`, `add`, `sub`, `load`, `store`, `jump`, `call`, `callr`, `ret`, etc.
 - Registers: `z`, `sp`, `ra`, `fp`, `a0`, `a1`, `t0`-`t3`, `s0`-`s3`
 - Labels: `label_name:`
 
 ### Other
-- Numbers: Decimal and hexadecimal (`0x1234`)
-- Strings: Double and single quoted
+- Numbers: Decimal, hex (`0x1234`), octal (`0o777`), binary (`0b1010`)
+- Strings: Double-quoted (`"..."`) and char literals (`'a'`, `'\n'`)
 - Comments: `// comment`
-- Operators: Arithmetic, bitwise, comparison, logical
+- Operators: Arithmetic, bitwise, shift (`<<`, `>>`), comparison, logical, address-of (postfix `@`), deref (prefix `@`)
 - Type names and identifiers
 
 ## Installation

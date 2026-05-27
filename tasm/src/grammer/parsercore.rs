@@ -133,13 +133,16 @@ macro_rules! repeat {
         items
     }};
 
-    // With delimiter: [ element { delimiter element } ] terminal
+    // With delimiter: [ element { delimiter element } [ delimiter ] ] terminal
     ($parser:expr, $elem:expr, $delimiter:pat, $terminal:pat) => {{
         let mut items = Vec::new();
         if !check!($parser, $terminal) {
             items.push($elem?);
             while check!($parser, $delimiter) {
                 expect!($parser, $delimiter)?;
+                if check!($parser, $terminal) {
+                    break;
+                }
                 items.push($elem?);
             }
         }

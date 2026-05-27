@@ -3,15 +3,19 @@ static @ 0x1000 serial_tx : int;
 const msg = "Hello, World!\n";
 
 asm @ 0x0000 reset {
+    jump(main);
+}
+
+asm main {
     loadi(t0, msg);          // t0: Addr
     loadi(t1, sizeof(msg));  // t1: Size
-    loadi(t2, serial_tx);    // t2: Serial TX address
+    loadi(t2, serial_tx@);   // t2: Serial TX address
     loadi(s0, 0);            // s0: Counter
 
   loop:
     lt(s1, s0, t1);
     eqi(s2, s1, 0);
-    jumpif(s2, done);
+    jumpifr(s2, exit);
 
     // Load char
     add(s1, t0, s0);
@@ -20,8 +24,8 @@ asm @ 0x0000 reset {
 
     // Increment
     addi(s0, s0, 1);
-    jump(loop);
+    jumpr(loop);
 
-  done:
-    jump(done);
+  exit:
+    jumpr(exit);
 }

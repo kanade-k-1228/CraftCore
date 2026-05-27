@@ -5,15 +5,13 @@
 		{ "open": "{", "close": "}" },
 		{ "open": "[", "close": "]" },
 		{ "open": "(", "close": ")" },
-		{ "open": "\"", "close": "\"", "notIn": ["string"] },
-		{ "open": "'", "close": "'", "notIn": ["string", "comment"] }
+		{ "open": "\"", "close": "\"", "notIn": ["string"] }
 	],
 	"surroundingPairs": [
 		["{", "}"],
 		["[", "]"],
 		["(", ")"],
-		["\"", "\""],
-		["'", "'"]
+		["\"", "\""]
 	],
 	"folding": {
 		"markers": {
@@ -23,7 +21,7 @@
 	},
 	"wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\%\\^\\&\\*\\(\\)\\-\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)",
 	"indentationRules": {
-		"increaseIndentPattern": "^\\s*(fn|asm|if|else|while|type|const|static|var).*\\{\\s*$",
+		"increaseIndentPattern": "^\\s*((fn|asm|if|else|while|type|const|static|var)\\b.*|'[a-zA-Z_][a-zA-Z0-9_]*\\s*:.*)?\\{\\s*$",
 		"decreaseIndentPattern": "^\\s*\\}"
 	}
 }

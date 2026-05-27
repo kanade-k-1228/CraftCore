@@ -2,42 +2,20 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "TASM",
   "patterns": [
-    {
-      "include": "#comments"
-    },
-    {
-      "include": "#keywords"
-    },
-    {
-      "include": "#types"
-    },
-    {
-      "include": "#strings"
-    },
-    {
-      "include": "#numbers"
-    },
-    {
-      "include": "#operators"
-    },
-    {
-      "include": "#functions"
-    },
-    {
-      "include": "#assembly"
-    },
-    {
-      "include": "#registers"
-    },
-    {
-      "include": "#labels"
-    },
-    {
-      "include": "#declarations"
-    },
-    {
-      "include": "#identifiers"
-    }
+    { "include": "#comments" },
+    { "include": "#scope-labels" },
+    { "include": "#break-continue" },
+    { "include": "#asm-block" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#strings" },
+    { "include": "#char-literals" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#functions" },
+    { "include": "#labels" },
+    { "include": "#declarations" },
+    { "include": "#identifiers" }
   ],
   "repository": {
     "comments": {
@@ -45,6 +23,30 @@
         {
           "name": "comment.line.double-slash.tasm",
           "match": "//.*$"
+        }
+      ]
+    },
+    "scope-labels": {
+      "patterns": [
+        {
+          "name": "meta.scope-label.tasm",
+          "match": "(')([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=:)",
+          "captures": {
+            "1": { "name": "punctuation.definition.scope-label.tasm" },
+            "2": { "name": "entity.name.label.scope.tasm" }
+          }
+        }
+      ]
+    },
+    "break-continue": {
+      "patterns": [
+        {
+          "match": "\\b(break|continue)\\s+(')([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.tasm" },
+            "2": { "name": "punctuation.definition.scope-label.tasm" },
+            "3": { "name": "entity.name.label.scope.tasm" }
+          }
         }
       ]
     },
@@ -56,14 +58,14 @@
         },
         {
           "name": "keyword.declaration.tasm",
-          "match": "\\b(fn|var|type|const|static|asm)\\b"
+          "match": "\\b(fn|var|type|const|static)\\b"
         },
         {
           "name": "keyword.type.primitive.tasm",
           "match": "\\b(int|void)\\b"
         },
         {
-          "name": "keyword.operator.tasm",
+          "name": "keyword.operator.word.tasm",
           "match": "\\b(as|sizeof)\\b"
         }
       ]
@@ -92,17 +94,14 @@
               "match": "\\\\[\\\\\"nrt0]"
             }
           ]
-        },
+        }
+      ]
+    },
+    "char-literals": {
+      "patterns": [
         {
           "name": "string.quoted.single.tasm",
-          "begin": "'",
-          "end": "'",
-          "patterns": [
-            {
-              "name": "constant.character.escape.tasm",
-              "match": "\\\\[\\\\nrt'0]"
-            }
-          ]
+          "match": "'(\\\\[\\\\nrt'\"0]|[^\\\\'])'"
         }
       ]
     },
@@ -111,6 +110,14 @@
         {
           "name": "constant.numeric.hex.tasm",
           "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.tasm",
+          "match": "\\b0[oO][0-7_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.tasm",
+          "match": "\\b0[bB][01_]+\\b"
         },
         {
           "name": "constant.numeric.decimal.tasm",
@@ -125,8 +132,12 @@
           "match": "[+\\-*/%]"
         },
         {
+          "name": "keyword.operator.shift.tasm",
+          "match": "<<|>>"
+        },
+        {
           "name": "keyword.operator.bitwise.tasm",
-          "match": "[&|^]|<<|>>"
+          "match": "[&|^]"
         },
         {
           "name": "keyword.operator.comparison.tasm",
@@ -156,42 +167,48 @@
           "name": "entity.name.function.tasm",
           "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
           "captures": {
-            "1": {
-              "name": "keyword.declaration.function.tasm"
-            },
-            "2": {
-              "name": "entity.name.function.tasm"
-            }
+            "1": { "name": "keyword.declaration.function.tasm" },
+            "2": { "name": "entity.name.function.tasm" }
           }
         },
         {
           "name": "entity.name.function.call.tasm",
           "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
           "captures": {
-            "1": {
-              "name": "entity.name.function.call.tasm"
-            }
+            "1": { "name": "entity.name.function.call.tasm" }
           }
         }
       ]
     },
-    "assembly": {
+    "asm-block": {
+      "begin": "\\b(asm)\\b\\s+(?:(@)\\s*(0[xX][0-9a-fA-F_]+|[0-9][0-9_]*)\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.assembly.tasm" },
+        "2": { "name": "keyword.operator.address.tasm" },
+        "3": { "name": "constant.numeric.tasm" },
+        "4": { "name": "entity.name.function.tasm" },
+        "5": { "name": "punctuation.section.block.begin.tasm" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.block.end.tasm" }
+      },
+      "name": "meta.asm-block.tasm",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#assembly-instructions" },
+        { "include": "#registers" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#labels" },
+        { "include": "#identifiers" }
+      ]
+    },
+    "assembly-instructions": {
       "patterns": [
         {
-          "name": "entity.name.function.assembly.tasm",
-          "match": "\\b(asm)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-          "captures": {
-            "1": {
-              "name": "keyword.declaration.assembly.tasm"
-            },
-            "2": {
-              "name": "entity.name.function.tasm"
-            }
-          }
-        },
-        {
           "name": "keyword.control.assembly.tasm",
-          "match": "\\b(nop|mov|add|addi|sub|subi|load|loadi|store|jump|jumpr|jumpif|jumpifr|call|ret|iret|not|and|andi|or|ori|xor|xori|eq|eqi|neq|neqi|lt|lti|lts|ltsi|sl|slr|sr|srs|srr)\\b"
+          "match": "\\b(nop|mov|add|addi|sub|subi|load|loadi|store|jump|jumpr|jumpif|jumpifr|call|callr|ret|iret|not|and|andi|or|ori|xor|xori|eq|eqi|neq|neqi|lt|lti|lts|ltsi|sl|slr|sr|srs|srr)\\b"
         }
       ]
     },
@@ -209,9 +226,7 @@
           "name": "entity.name.label.tasm",
           "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
           "captures": {
-            "1": {
-              "name": "entity.name.function.tasm"
-            }
+            "1": { "name": "entity.name.function.tasm" }
           }
         }
       ]
@@ -221,45 +236,29 @@
         {
           "match": "\\b(static)\\s+(@\\s*[^\\s]+\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
           "captures": {
-            "1": {
-              "name": "keyword.declaration.tasm"
-            },
-            "3": {
-              "name": "variable.other.readwrite.tasm"
-            }
+            "1": { "name": "keyword.declaration.tasm" },
+            "3": { "name": "variable.other.readwrite.tasm" }
           }
         },
         {
           "match": "\\b(const)\\s+(@\\s*[^\\s]+\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*=",
           "captures": {
-            "1": {
-              "name": "keyword.declaration.tasm"
-            },
-            "3": {
-              "name": "variable.other.readwrite.tasm"
-            }
+            "1": { "name": "keyword.declaration.tasm" },
+            "3": { "name": "variable.other.readwrite.tasm" }
           }
         },
         {
           "match": "\\b(type)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*=",
           "captures": {
-            "1": {
-              "name": "keyword.declaration.tasm"
-            },
-            "2": {
-              "name": "entity.name.type.tasm"
-            }
+            "1": { "name": "keyword.declaration.tasm" },
+            "2": { "name": "entity.name.type.tasm" }
           }
         },
         {
           "match": "\\b(var)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*:",
           "captures": {
-            "1": {
-              "name": "keyword.declaration.tasm"
-            },
-            "2": {
-              "name": "variable.other.readwrite.tasm"
-            }
+            "1": { "name": "keyword.declaration.tasm" },
+            "2": { "name": "variable.other.readwrite.tasm" }
           }
         }
       ]
