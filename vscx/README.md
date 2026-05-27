@@ -34,6 +34,7 @@ The extension provides highlighting for:
 - Comments: `// comment`
 - Operators: Arithmetic, bitwise, shift (`<<`, `>>`), comparison, logical, address-of (postfix `@`), deref (prefix `@`)
 - Type names and identifiers
+- Trailing commas in struct/array literals, struct/function types, and function parameter lists are accepted (e.g. `{ a: 1, b: 2, }`, `fn f(x: int, y: int,) { ... }`)
 
 ## Installation
 

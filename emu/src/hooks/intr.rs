@@ -50,9 +50,14 @@ impl Hook for Intr {
         state
     }
     fn exec(&mut self, time: u64, _: u16, _: u32, mut cpu: State) -> State {
-        if let Some(intr) = self.get(time as u16) {
-            println!("\x1b[1A\x1b[{}C!{}", INDENT, intr);
-            cpu.interrupt();
+        if let Some(&intr_no) = self.get(time as u16) {
+            println!("\x1b[1A\x1b[{}C!{}", INDENT, intr_no);
+            // CSR の対応する intr フラグビット (= Reg::CSR の bit 8+n) を立ててから
+            // 割り込みベクタへ。ENABLE が落ちていてもフラグは立てる (pending 動作)。
+            cpu.csr_set_flag(intr_no as u32);
+            if cpu.intr_enabled() {
+                cpu.interrupt();
+            }
         }
         cpu
     }

@@ -22,19 +22,19 @@ pub enum Reg {
     Z,
     IRA,
     PC,
-    SP,
+    CSR,
     RA,
     FP,
-    A0,
-    A1,
     T0,
     T1,
     T2,
     T3,
-    S0,
-    S1,
-    S2,
-    S3,
+    T4,
+    T5,
+    T6,
+    T7,
+    T8,
+    T9,
 }
 
 impl Reg {
@@ -55,18 +55,21 @@ fn test() {
     assert_eq!(Some(Reg::Z), Reg::parse("Z"));
     assert_eq!(Some(Reg::IRA), Reg::parse("ira"));
     assert_eq!(Some(Reg::PC), Reg::parse("pc"));
-    assert_eq!(Some(Reg::SP), Reg::parse("sp"));
+    assert_eq!(Some(Reg::CSR), Reg::parse("csr"));
+    assert_eq!(None, Reg::parse("sp"));
     assert_eq!(Some(Reg::RA), Reg::parse("ra"));
     assert_eq!(Some(Reg::FP), Reg::parse("fp"));
-    assert_eq!(Some(Reg::A0), Reg::parse("a0"));
-    assert_eq!(Some(Reg::A1), Reg::parse("a1"));
     assert_eq!(Some(Reg::T0), Reg::parse("t0"));
     assert_eq!(Some(Reg::T1), Reg::parse("t1"));
     assert_eq!(Some(Reg::T2), Reg::parse("t2"));
     assert_eq!(Some(Reg::T3), Reg::parse("t3"));
-    assert_eq!(Some(Reg::S0), Reg::parse("s0"));
-    assert_eq!(Some(Reg::S1), Reg::parse("s1"));
-    assert_eq!(Some(Reg::S2), Reg::parse("s2"));
-    assert_eq!(Some(Reg::S3), Reg::parse("s3"));
+    assert_eq!(Some(Reg::T4), Reg::parse("t4"));
+    assert_eq!(Some(Reg::T5), Reg::parse("t5"));
+    assert_eq!(Some(Reg::T6), Reg::parse("t6"));
+    assert_eq!(Some(Reg::T7), Reg::parse("t7"));
+    assert_eq!(Some(Reg::T8), Reg::parse("t8"));
+    assert_eq!(Some(Reg::T9), Reg::parse("t9"));
+    assert_eq!(None, Reg::parse("a0"));
+    assert_eq!(None, Reg::parse("s0"));
     assert_eq!(None, Reg::parse("hoge"));
 }

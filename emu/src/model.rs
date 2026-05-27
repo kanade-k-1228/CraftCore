@@ -35,9 +35,30 @@ impl State {
 
 // Interrupt
 impl State {
-    const INTR_ADDR: u16 = 0x0001;
+    // 割り込みベクタは PC=4 (TASM 側の `asm @ 0x0004 irq` と整合)
+    const INTR_ADDR: u16 = 0x0004;
+    // CSR の ENABLE ビット (bit 0)
+    pub const CSR_ENABLE: u16 = 0x0001;
     pub fn interrupt(&mut self) {
+        // ハードウェアと同じく、割り込み受理時は atomic に:
+        //   1. 現在 PC を IRA に退避
+        //   2. CSR.ENABLE を落とす (多重割り込み防止)
+        //   3. PC を割り込みベクタに設定
+        let pc = self.dmem[Reg::PC as usize];
+        self.dmem[Reg::IRA as usize] = pc;
+        let csr = self.dmem[Reg::CSR as usize];
+        self.dmem[Reg::CSR as usize] = csr & !Self::CSR_ENABLE;
         self.dmem[Reg::PC as usize] = Self::INTR_ADDR;
+    }
+
+    pub fn intr_enabled(&self) -> bool {
+        (self.dmem[Reg::CSR as usize] & Self::CSR_ENABLE) != 0
+    }
+
+    pub fn csr_set_flag(&mut self, intr_no: u32) {
+        let flag = 1u16 << (8 + intr_no);
+        let csr = self.dmem[Reg::CSR as usize];
+        self.dmem[Reg::CSR as usize] = csr | flag;
     }
 }
 
@@ -116,18 +137,26 @@ impl State {
     }
 
     fn load(&mut self, rd: Reg, rs1: Reg, imm: u16) {
-        self.set(rd, self.get(self.get(rs1) + imm));
+        // imm は 2's complement の符号付きオフセットとして扱うため wrapping_add
+        self.set(rd, self.get(self.get(rs1).wrapping_add(imm)));
         self.inc_pc();
     }
 
     fn store(&mut self, rs2: Reg, rs1: Reg, imm: u16) {
-        self.set(self.get(rs1) + imm, self.get(rs2));
+        self.set(self.get(rs1).wrapping_add(imm), self.get(rs2));
         self.inc_pc();
     }
 
     fn ctrl(&mut self, rd: Reg, rs1: Reg, rs2: Reg, imm: u16) {
-        self.set(rd, self.get(Reg::PC) + 1);
-        if self.get(rs2) == 0 {
+        self.set(rd, self.get(Reg::PC).wrapping_add(1));
+        // 命令エンコーディング上 rs2 = Z は無条件 (JUMP / JUMPR / CALL / CALLR / RET / IRET)。
+        // それ以外は JUMPIF / JUMPIFR で、「rs2 が非ゼロなら飛ぶ」(natural 条件分岐)。
+        let take_jump = if rs2 == Reg::Z {
+            true
+        } else {
+            self.get(rs2) != 0
+        };
+        if take_jump {
             self.set_pc(self.get(rs1).wrapping_add(imm));
         } else {
             self.inc_pc();

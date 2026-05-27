@@ -17,8 +17,8 @@ impl<'a> Global<'a> {
         match self.get(name) {
             Some(ast::Def::Func((_, pos), args, ret, stmts)) => {
                 let loc = pos.clone();
-                let context = Context::new(self, args, &loc)?;
-                context.compile(args, ret, stmts, &loc)
+                let context = Context::new(self, args, ret, &loc)?;
+                context.compile(args, stmts, &loc)
             }
             Some(
                 ast::Def::Type((_, pos), _)
@@ -36,52 +36,75 @@ struct ScopeFrame {
     name: String,
 }
 
+/// 関数 1 つ分のコンパイル状態。
+/// 新 ABI (FP 下向き) では事前 AST 走査が不要なので、フレームは動的に伸びる。
 struct Context<'a> {
     local: Local<'a>,
     scope_stack: Vec<ScopeFrame>,
     scope_counter: usize,
-    /// Total stack size reserved by the prologue (saved RA + saved FP + args).
-    /// Used to emit a matching epilogue at every `return`.
-    prologue_stack_alloc: usize,
+    /// 自関数の戻り値サイズ (signature から)
+    ret_size: usize,
+    /// 現在使用中のフレーム深度 (= 1 + locals_total + active_spills + 一時 call-outgoing)
+    /// saved_old_FP (FP-1) の 1 を含む。
+    current_bottom: usize,
+    /// 次に置くローカル変数の FP+offset (負方向に伸びる、最初は -2)
+    next_local_offset: i32,
+}
+
+/// FP+offset の符号付き値を Imm にエンコード (負は 16bit 二の補数)。
+fn fp_off(off: i32) -> Imm {
+    Imm::Lit((off as u16) as usize)
 }
 
 impl<'a> Context<'a> {
     fn new(
         global: &'a Global<'a>,
         args: &'a [(ast::Ident, ast::Type)],
+        ret: &'a ast::Type,
         _loc: &Pos,
     ) -> Result<Self, Error> {
         let mut local = Local::fork(global);
-        local.args(args)?;
-        let saved_regs_size: usize = 2;
-        let args_stack_size: usize = args
-            .iter()
-            .map(|(_, ty)| global.normtype(ty).map(|t| t.sizeof()).unwrap_or(0))
-            .sum();
+        let ret_size = global.normtype(ret)?.sizeof();
+        local.insert_args(ret_size, args)?;
         Ok(Self {
             local,
             scope_stack: Vec::new(),
             scope_counter: 0,
-            prologue_stack_alloc: saved_regs_size + args_stack_size,
+            ret_size,
+            current_bottom: 1, // saved old FP の 1 word を最初から計上
+            next_local_offset: -2,
         })
     }
 
-    /// The epilogue: tear the frame down and RET.
+    /// 新 ABI prologue: saved RA を FP+0 に書くだけ。
+    /// (saved old FP は caller が new_FP-1 にあらかじめ書いている。)
+    fn prologue(&self) -> Vec<Inst<Reg, Imm>> {
+        vec![Inst::STORE(Reg::RA, Reg::FP, Imm::Lit(0))]
+    }
+
+    /// 新 ABI epilogue:
+    ///   LOAD T0, FP, -1     ; saved old FP
+    ///   LOAD RA, FP, 0
+    ///   MOV  FP, T0
+    ///   RET
     fn epilogue_insts(&self) -> Vec<Inst<Reg, Imm>> {
-        let mut v = vec![
-            Inst::MOV(Reg::SP, Reg::FP),
-            Inst::LOAD(Reg::FP, Reg::SP, Imm::Lit(1)),
-            Inst::LOAD(Reg::RA, Reg::SP, Imm::Lit(0)),
-        ];
-        if self.prologue_stack_alloc > 0 {
-            v.push(Inst::ADDI(
-                Reg::SP,
-                Reg::SP,
-                Imm::Lit(self.prologue_stack_alloc),
-            ));
-        }
-        v.push(Inst::RET());
-        v
+        vec![
+            Inst::LOAD(Reg::T0, Reg::FP, Imm::neg(1)),
+            Inst::LOAD(Reg::RA, Reg::FP, Imm::Lit(0)),
+            Inst::MOV(Reg::FP, Reg::T0),
+            Inst::RET(),
+        ]
+    }
+
+    /// 一時 spill スロットを取り、FP+offset (負) を返す。
+    fn alloc_spill_slot(&mut self) -> i32 {
+        self.current_bottom += 1;
+        -(self.current_bottom as i32)
+    }
+
+    fn free_spill_slot(&mut self) {
+        debug_assert!(self.current_bottom > 0);
+        self.current_bottom -= 1;
     }
 
     fn fresh_scope_id(&mut self) -> usize {
@@ -90,7 +113,6 @@ impl<'a> Context<'a> {
         id
     }
 
-    /// Find the innermost enclosing scope with the given name.
     fn find_scope(&self, name: &str) -> Option<usize> {
         self.scope_stack
             .iter()
@@ -102,17 +124,10 @@ impl<'a> Context<'a> {
     fn compile(
         mut self,
         args: &'a [(ast::Ident, ast::Type)],
-        ret: &'a ast::Type,
         stmts: &'a [ast::Stmt],
         loc: &Pos,
     ) -> Result<Code, Error> {
-        let mut insts = Vec::new();
-
-        // Convert AST types to normalized types for prologue/epilogue.
-        // We currently only handle 1-word arguments — multi-word (arrays /
-        // structs by value) need either struct-copy-on-call or pointer-passing
-        // conventions that aren't implemented yet.
-        let mut norm_args = Vec::new();
+        // 多 word 引数は未サポート
         for ((name, _), arg_type) in args {
             let norm_type = self
                 .local
@@ -129,101 +144,24 @@ impl<'a> Context<'a> {
                     ),
                 ));
             }
-            norm_args.push((name.clone(), norm_type));
         }
 
-        let norm_ret_type = self
-            .local
-            .normtype(ret)
-            .map_err(|_| Error::TypeCollectionFailed(loc.clone(), "return type".to_string()))?;
+        let mut insts = Vec::new();
+        insts.extend(self.prologue());
 
-        // Add prologue
-        insts.extend(Self::prologue(&norm_args));
-
-        // Compile function body - process all statements
         for stmt in stmts {
-            let stmt_insts = self.compile_stmt(stmt)?;
-            insts.extend(stmt_insts);
+            insts.extend(self.compile_stmt(stmt)?);
         }
 
-        // Fall-through epilogue (for void functions and functions whose body
-        // doesn't end with an explicit `return`). Explicit `return` statements
-        // inline their own copy.
+        // void 関数や明示的 return がない関数のための fall-through epilogue。
         insts.extend(self.epilogue_insts());
 
         Ok(Code(insts))
     }
 
-    fn prologue(args: &[(String, NormType)]) -> Vec<Inst<Reg, Imm>> {
-        let mut insts = Vec::new();
-
-        // Calculate total size needed for saved registers (RA + FP)
-        let saved_regs_size = 2u16;
-
-        // Calculate size needed for arguments on stack
-        let mut args_stack_size = 0u16;
-        for (_name, arg_type) in args {
-            args_stack_size += arg_type.sizeof() as u16;
-        }
-
-        // Total stack allocation for prologue
-        let stack_alloc = saved_regs_size + args_stack_size;
-
-        // 1. Allocate stack space
-        if stack_alloc > 0 {
-            insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(stack_alloc as usize)));
-        }
-
-        // 2. Save return address and frame pointer
-        insts.push(Inst::STORE(Reg::RA, Reg::SP, Imm::Lit(0)));
-        insts.push(Inst::STORE(Reg::FP, Reg::SP, Imm::Lit(1)));
-
-        // 3. Set new frame pointer
-        insts.push(Inst::MOV(Reg::FP, Reg::SP));
-
-        // 4. Save arguments to stack
-        // First 2 arguments come in A0, A1 registers
-        // Additional arguments are already on the stack (passed by caller)
-        let mut offset = saved_regs_size;
-        for (i, (_name, arg_type)) in args.iter().enumerate() {
-            let arg_size = arg_type.sizeof() as u16;
-
-            if i < 2 {
-                // Arguments in registers - save them to stack
-                let arg_reg = match i {
-                    0 => Reg::A0,
-                    1 => Reg::A1,
-                    _ => unreachable!(),
-                };
-
-                // Store each word of the argument
-                for j in 0..arg_size {
-                    if j == 0 {
-                        insts.push(Inst::STORE(
-                            arg_reg,
-                            Reg::FP,
-                            Imm::Lit((offset + j) as usize),
-                        ));
-                    } else {
-                        // For multi-word arguments, would need to handle appropriately
-                        // For now, assume single-word arguments
-                    }
-                }
-            }
-            // Arguments beyond the first 2 are already on the stack (caller pushed them)
-
-            offset += arg_size;
-        }
-
-        insts
-    }
-
-
     fn compile_stmt(&mut self, stmt: &'a ast::Stmt) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match stmt {
             ast::Stmt::Block(scope_name, stmts) => {
-                // If the block names a scope, push a frame so that break/continue
-                // inside can resolve to this scope's id.
                 let scope_id = scope_name.as_ref().map(|(name, _)| {
                     let id = self.fresh_scope_id();
                     self.scope_stack.push(ScopeFrame {
@@ -240,11 +178,6 @@ impl<'a> Context<'a> {
 
                 if let Some(id) = scope_id {
                     self.scope_stack.pop();
-
-                    // Layout: block_insts[0..B]. For a placeholder at index i:
-                    //   PC = block_start + i,  next_PC = block_start + i + 1
-                    //   break  target = block_start + B          → offset = B - i - 1
-                    //   continue target = block_start            → offset = -(i + 1)
                     let block_len = block_insts.len();
                     block_insts = block_insts
                         .into_iter()
@@ -280,23 +213,18 @@ impl<'a> Context<'a> {
             }
 
             ast::Stmt::Cond(cond, then_stmt, else_stmt) => {
-                // Compile condition
                 let (cond_insts, cond_reg) = self.compile_expr(cond, Reg::T0)?;
-
-                // Compile then branch
                 let then_insts = self.compile_stmt(then_stmt)?;
 
                 if let Some(else_stmt) = else_stmt {
-                    // Compile else branch
                     let else_insts = self.compile_stmt(else_stmt)?;
 
-                    // Calculate jump offsets
-                    let else_jump_offset = (then_insts.len() + 1) as u16; // +1 for the end jump
-                    let end_jump_offset = else_insts.len() as u16;
+                    let else_jump_offset = (then_insts.len() + 2) as u16;
+                    let end_jump_offset = (else_insts.len() + 1) as u16;
 
                     Ok(chain!(
                         cond_insts,
-                        vec![Inst::NOT(Reg::T1, cond_reg)],
+                        vec![Inst::EQI(Reg::T1, cond_reg, Imm::Lit(0))],
                         vec![Inst::JUMPIFR(Reg::T1, Imm::Lit(else_jump_offset as usize))],
                         then_insts,
                         vec![Inst::JUMPR(Imm::Lit(end_jump_offset as usize))],
@@ -304,12 +232,11 @@ impl<'a> Context<'a> {
                     )
                     .collect())
                 } else {
-                    // No else branch - just jump over then if false
-                    let jump_offset = then_insts.len() as u16;
+                    let jump_offset = (then_insts.len() + 1) as u16;
 
                     Ok(chain!(
                         cond_insts,
-                        vec![Inst::NOT(Reg::T1, cond_reg)],
+                        vec![Inst::EQI(Reg::T1, cond_reg, Imm::Lit(0))],
                         vec![Inst::JUMPIFR(Reg::T1, Imm::Lit(jump_offset as usize))],
                         then_insts
                     )
@@ -321,12 +248,12 @@ impl<'a> Context<'a> {
                 let (cond_insts, cond_reg) = self.compile_expr(cond, Reg::T0)?;
                 let body_insts = self.compile_stmt(body)?;
 
-                let exit_offset = (body_insts.len() + 1) as u16; // skip body + final JUMPR
-                let loop_offset = -((cond_insts.len() + 2 + body_insts.len() + 1) as i32) as u16;
+                let exit_offset = (body_insts.len() + 2) as u16;
+                let loop_offset = -((cond_insts.len() + 2 + body_insts.len()) as i32) as u16;
 
                 Ok(chain!(
                     cond_insts.clone(),
-                    vec![Inst::NOT(Reg::T1, cond_reg)],
+                    vec![Inst::EQI(Reg::T1, cond_reg, Imm::Lit(0))],
                     vec![Inst::JUMPIFR(Reg::T1, Imm::Lit(exit_offset as usize))],
                     body_insts,
                     vec![Inst::JUMPR(Imm::Lit(loop_offset as usize))]
@@ -350,42 +277,41 @@ impl<'a> Context<'a> {
 
             ast::Stmt::Var(ident, ty, init) => {
                 let (name, pos) = ident;
-                // Register the variable and get its base FP-offset (negative).
-                let offset = self.local.push(ident, ty).map_err(|e| {
+                let norm_ty = self.local.normtype(ty).map_err(|e| {
                     Error::TypeCollectionFailed(
                         pos.clone(),
                         format!("local variable {}: {}", name, e),
                     )
                 })?;
-                let size = self.local.normtype(ty)?.sizeof();
+                let size = norm_ty.sizeof();
+                // 先頭 word の offset (例: size=1 なら FP-2, size=2 なら FP-3 から始まる)
+                let head_offset = self.next_local_offset - (size as i32) + 1;
+                self.next_local_offset -= size as i32;
+                self.current_bottom += size;
+                self.local.insert(ident, norm_ty, head_offset).map_err(|e| {
+                    Error::TypeCollectionFailed(
+                        pos.clone(),
+                        format!("local variable {}: {}", name, e),
+                    )
+                })?;
 
-                // Reserve stack space below FP for this variable.
                 let mut insts: Vec<Inst<Reg, Imm>> = Vec::new();
-                if size > 0 {
-                    insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(size)));
-                }
-
-                // Optionally initialize the first slot from the init expression.
                 if let Some(init_expr) = init {
                     let (init_insts, init_reg) = self.compile_expr(init_expr, Reg::T0)?;
-                    let store_offset = (offset as i16) as u16 as usize;
                     insts.extend(init_insts);
-                    insts.push(Inst::STORE(init_reg, Reg::FP, Imm::Lit(store_offset)));
+                    insts.push(Inst::STORE(init_reg, Reg::FP, fp_off(head_offset)));
                 }
                 Ok(insts)
             }
 
             ast::Stmt::Return(expr) => {
-                // Emit the return value (if any) into A0, then inline the full
-                // epilogue. This ensures every `return` restores SP / FP / RA
-                // before the actual RET — otherwise a return inside a function
-                // body would leak its stack frame.
                 let mut insts = Vec::new();
                 if let Some(expr) = expr {
-                    let (expr_insts, expr_reg) = self.compile_expr(expr, Reg::A0)?;
+                    let (expr_insts, expr_reg) = self.compile_expr(expr, Reg::T0)?;
                     insts.extend(expr_insts);
-                    if expr_reg != Reg::A0 {
-                        insts.push(Inst::MOV(Reg::A0, expr_reg));
+                    if self.ret_size > 0 {
+                        // 戻り値は FP + 1 に書く
+                        insts.push(Inst::STORE(expr_reg, Reg::FP, Imm::Lit(1)));
                     }
                 }
                 insts.extend(self.epilogue_insts());
@@ -413,50 +339,30 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::StringLit(_s) => {
-                // Inline string literals as runtime values would need automatic
-                // const synthesis (each "..." materialized in the const section
-                // with a generated name). For now, point the user at the
-                // `const name = "..."; ... name ...;` pattern instead.
                 return Err(Error::UnsupportedExpression(
                     expr.pos_or_default(),
-                    "string literal as runtime value; use a named const instead"
-                        .to_string(),
+                    "string literal as runtime value; use a named const instead".to_string(),
                 ));
             }
 
             ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
-                // Multi-word types (arrays, structs) cannot fit in a register;
-                // an identifier of such a type yields its address (C-style array
-                // decay). Scalar types load the value.
                 let ty = self.local.typeinfer(expr).ok();
                 let multi_word = ty.as_ref().map(|t| t.sizeof() > 1).unwrap_or(false);
 
                 if let Some(offset) = self.local.offset(name) {
                     if multi_word {
-                        // Address of local/arg.
-                        if offset >= 0 {
-                            insts.push(Inst::ADDI(target, Reg::FP, Imm::Lit(offset as usize)));
-                        } else {
-                            insts.push(Inst::SUBI(
-                                target,
-                                Reg::FP,
-                                Imm::Lit((-offset) as usize),
-                            ));
-                        }
+                        insts.push(Inst::ADDI(target, Reg::FP, fp_off(offset)));
                     } else {
-                        let load_offset = (offset as i16) as u16 as usize;
-                        insts.push(Inst::LOAD(target, Reg::FP, Imm::Lit(load_offset)));
+                        insts.push(Inst::LOAD(target, Reg::FP, fp_off(offset)));
                     }
+                } else if name == "csr" {
+                    insts.push(Inst::MOV(target, Reg::CSR));
                 } else {
                     match self.local.global_def(name) {
                         Some(ast::Def::Static(..)) | Some(ast::Def::Const(..)) => {
                             if multi_word {
-                                // Array/struct identifier → its address.
-                                insts.push(Inst::LOADI(
-                                    target,
-                                    Imm::Symbol(name.clone(), 0),
-                                ));
+                                insts.push(Inst::LOADI(target, Imm::Symbol(name.clone(), 0)));
                             } else {
                                 insts.push(Inst::LOAD(
                                     target,
@@ -465,16 +371,11 @@ impl<'a> Context<'a> {
                                 ));
                             }
                         }
-                        // For code globals, the identifier denotes the code address.
                         Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)) => {
                             insts.push(Inst::LOADI(target, Imm::Label(name.clone())));
                         }
                         _ => {
-                            insts.push(Inst::LOAD(
-                                target,
-                                Reg::Z,
-                                Imm::Symbol(name.clone(), 0),
-                            ));
+                            insts.push(Inst::LOAD(target, Reg::Z, Imm::Symbol(name.clone(), 0)));
                         }
                     }
                 }
@@ -482,11 +383,26 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Binary(op, lhs, rhs) => {
-                // Compile operands
-                let (lhs_insts, lhs_reg) = self.compile_expr(lhs, Reg::T0)?;
-                let (rhs_insts, rhs_reg) = self.compile_expr(rhs, Reg::T1)?;
+                let mut prelude: Vec<Inst<Reg, Imm>> = Vec::new();
+                let (lhs_insts, lhs_inner_reg) = self.compile_expr(lhs, Reg::T0)?;
+                prelude.extend(lhs_insts);
+                if lhs_inner_reg != Reg::T0 {
+                    prelude.push(Inst::MOV(Reg::T0, lhs_inner_reg));
+                }
+                let spill = self.alloc_spill_slot();
+                prelude.push(Inst::STORE(Reg::T0, Reg::FP, fp_off(spill)));
+                let (rhs_insts, rhs_inner_reg) = self.compile_expr(rhs, Reg::T1)?;
+                prelude.extend(rhs_insts);
+                if rhs_inner_reg != Reg::T1 {
+                    prelude.push(Inst::MOV(Reg::T1, rhs_inner_reg));
+                }
+                prelude.push(Inst::LOAD(Reg::T0, Reg::FP, fp_off(spill)));
+                self.free_spill_slot();
+                let lhs_insts = prelude;
+                let rhs_insts: Vec<Inst<Reg, Imm>> = Vec::new();
+                let lhs_reg = Reg::T0;
+                let rhs_reg = Reg::T1;
 
-                // Generate operation
                 let op_insts = match op {
                     ast::BinaryOp::Add => vec![Inst::ADD(target, lhs_reg, rhs_reg)],
                     ast::BinaryOp::Sub => vec![Inst::SUB(target, lhs_reg, rhs_reg)],
@@ -498,25 +414,14 @@ impl<'a> Context<'a> {
                     ast::BinaryOp::Lt => vec![Inst::LT(target, lhs_reg, rhs_reg)],
                     ast::BinaryOp::Le => vec![
                         Inst::LT(Reg::T2, rhs_reg, lhs_reg),
-                        Inst::NOT(target, Reg::T2),
+                        Inst::EQI(target, Reg::T2, Imm::Lit(0)),
                     ],
                     ast::BinaryOp::Gt => vec![Inst::LT(target, rhs_reg, lhs_reg)],
                     ast::BinaryOp::Ge => vec![
                         Inst::LT(Reg::T2, lhs_reg, rhs_reg),
-                        Inst::NOT(target, Reg::T2),
+                        Inst::EQI(target, Reg::T2, Imm::Lit(0)),
                     ],
                     ast::BinaryOp::Shl | ast::BinaryOp::Shr => {
-                        // Repeat 1-bit shift `count` times. Convention:
-                        //   T0 = value (= lhs_reg), T1 = count (= rhs_reg, trashed)
-                        //   T2 = scratch for the count==0 check
-                        //
-                        //   loop:                        relative position
-                        //     EQI T2, T1, 0                0
-                        //     JUMPIFR T2, +3               1   (skip body when count==0)
-                        //     SL/SR T0, T0                 2
-                        //     SUBI T1, T1, 1               3
-                        //     JUMPR -5                     4   (back to loop)
-                        //   exit:
                         let shift = match op {
                             ast::BinaryOp::Shl => Inst::SL(Reg::T0, Reg::T0),
                             ast::BinaryOp::Shr => Inst::SR(Reg::T0, Reg::T0),
@@ -524,10 +429,10 @@ impl<'a> Context<'a> {
                         };
                         let mut v = vec![
                             Inst::EQI(Reg::T2, Reg::T1, Imm::Lit(0)),
-                            Inst::JUMPIFR(Reg::T2, Imm::Lit(3)),
+                            Inst::JUMPIFR(Reg::T2, Imm::Lit(4)),
                             shift,
                             Inst::SUBI(Reg::T1, Reg::T1, Imm::Lit(1)),
-                            Inst::JUMPR(Imm::Lit((-5i32) as u16 as usize)),
+                            Inst::JUMPR(Imm::Lit((-4i32) as u16 as usize)),
                         ];
                         if target != Reg::T0 {
                             v.push(Inst::MOV(target, Reg::T0));
@@ -536,39 +441,18 @@ impl<'a> Context<'a> {
                     }
 
                     ast::BinaryOp::Mul => {
-                        // Shift-and-add multiplication.
-                        //   T0 = multiplicand (= lhs_reg, moved to T2)
-                        //   T1 = multiplier (= rhs_reg, shifted right each iter)
-                        //   T2 = multiplicand copy (shifted left each iter)
-                        //   T3 = scratch (low-bit / zero check)
-                        // Result accumulates in T0.
-                        //
-                        //   MOV   T2, T0                ; T2 = original lhs
-                        //   LOADI T0, 0                 ; result = 0
-                        //   loop:                              relative pos
-                        //     EQI     T3, T1, 0                 0
-                        //     JUMPIFR T3, +7  (exit)            1
-                        //     ANDI    T3, T1, 1                 2
-                        //     EQI     T3, T3, 0                 3
-                        //     JUMPIFR T3, +1  (skip add)        4
-                        //     ADD     T0, T0, T2                5
-                        //     SL      T2, T2                    6
-                        //     SR      T1, T1                    7
-                        //     JUMPR   -9                        8
-                        //   exit:                               9
                         let mut v = vec![
                             Inst::MOV(Reg::T2, Reg::T0),
                             Inst::LOADI(Reg::T0, Imm::Lit(0)),
-                            // loop body
                             Inst::EQI(Reg::T3, Reg::T1, Imm::Lit(0)),
-                            Inst::JUMPIFR(Reg::T3, Imm::Lit(7)),
+                            Inst::JUMPIFR(Reg::T3, Imm::Lit(8)),
                             Inst::ANDI(Reg::T3, Reg::T1, Imm::Lit(1)),
                             Inst::EQI(Reg::T3, Reg::T3, Imm::Lit(0)),
-                            Inst::JUMPIFR(Reg::T3, Imm::Lit(1)),
+                            Inst::JUMPIFR(Reg::T3, Imm::Lit(2)),
                             Inst::ADD(Reg::T0, Reg::T0, Reg::T2),
                             Inst::SL(Reg::T2, Reg::T2),
                             Inst::SR(Reg::T1, Reg::T1),
-                            Inst::JUMPR(Imm::Lit((-9i32) as u16 as usize)),
+                            Inst::JUMPR(Imm::Lit((-8i32) as u16 as usize)),
                         ];
                         if target != Reg::T0 {
                             v.push(Inst::MOV(target, Reg::T0));
@@ -576,72 +460,51 @@ impl<'a> Context<'a> {
                         v
                     }
 
-                    ast::BinaryOp::Div | ast::BinaryOp::Mod => {
-                        // Restoring shift-subtract division (unsigned, 16-bit).
-                        //   Q = 0; R = 0; N = dividend
-                        //   for i = 0..16:
-                        //     R = (R << 1) | MSB(N)
-                        //     N <<= 1
-                        //     Q <<= 1
-                        //     if R >= D: R -= D; Q |= 1
-                        //
-                        // Register usage:
-                        //   T0 = R   (final remainder)
-                        //   T1 = D   (divisor, = rhs_reg)
-                        //   T2 = N→Q (combined: high bits of N shift out, Q bits OR in at LSB)
-                        //   T3 = scratch
-                        //   S0 = iteration counter (saved to stack)
-                        let want_q = matches!(op, ast::BinaryOp::Div);
-                        // Setup: 5 insts
+                    ast::BinaryOp::Div => {
                         let mut v = vec![
-                            Inst::MOV(Reg::T2, Reg::T0),                       // T2 = N
-                            Inst::LOADI(Reg::T0, Imm::Lit(0)),                 // R = 0
-                            Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(1)),         // spill S0
-                            Inst::STORE(Reg::S0, Reg::SP, Imm::Lit(0)),
-                            Inst::LOADI(Reg::S0, Imm::Lit(16)),                // counter = 16
+                            Inst::MOV(Reg::T2, Reg::T0),
+                            Inst::LOADI(Reg::T0, Imm::Lit(0)),
+                            Inst::LOADI(Reg::T4, Imm::Lit(16)),
+                            Inst::EQI(Reg::T3, Reg::T4, Imm::Lit(0)),
+                            Inst::JUMPIFR(Reg::T3, Imm::Lit(11)),
+                            Inst::ANDI(Reg::T3, Reg::T2, Imm::Lit(0x8000)),
+                            Inst::NEQI(Reg::T3, Reg::T3, Imm::Lit(0)),
+                            Inst::SL(Reg::T2, Reg::T2),
+                            Inst::SL(Reg::T0, Reg::T0),
+                            Inst::ADD(Reg::T0, Reg::T0, Reg::T3),
+                            Inst::LT(Reg::T3, Reg::T0, Reg::T1),
+                            Inst::JUMPIFR(Reg::T3, Imm::Lit(3)),
+                            Inst::SUB(Reg::T0, Reg::T0, Reg::T1),
+                            Inst::ORI(Reg::T2, Reg::T2, Imm::Lit(1)),
+                            Inst::SUBI(Reg::T4, Reg::T4, Imm::Lit(1)),
+                            Inst::JUMPR(Imm::Lit((-12i32) as u16 as usize)),
                         ];
-                        // Loop body. Positions are relative to the EQI at the top.
-                        // Layout (with want_q):
-                        //   pos  0: EQI T3, S0, 0
-                        //   pos  1: JUMPIFR T3, +exit
-                        //   pos  2: ANDI T3, T2, 0x8000   ; T3 = MSB bit
-                        //   pos  3: NEQI T3, T3, 0        ; T3 = boolean MSB
-                        //   pos  4: SL T2, T2             ; N <<= 1   (Q's new LSB = 0)
-                        //   pos  5: SL T0, T0             ; R <<= 1
-                        //   pos  6: ADD T0, T0, T3        ; R |= MSB(N)
-                        //   pos  7: LT T3, T0, T1         ; T3 = (R < D)
-                        //   pos  8: JUMPIFR T3, +skip     ; skip subtract if R < D
-                        //   pos  9: SUB T0, T0, T1
-                        //   pos 10: ORI T2, T2, 1         ; (only when want_q)
-                        //   pos 11/10: SUBI S0, S0, 1
-                        //   pos 12/11: JUMPR -back
-                        //   pos 13/12: exit
-                        let body_len = if want_q { 13 } else { 12 };
-                        let exit_off = body_len - 2; // JUMPIFR at pos 1: target = body_len, next_PC = 2
-                        let skip_off = if want_q { 2 } else { 1 };
-                        let back_off = -(body_len as i32);
-                        v.push(Inst::EQI(Reg::T3, Reg::S0, Imm::Lit(0)));
-                        v.push(Inst::JUMPIFR(Reg::T3, Imm::Lit(exit_off as usize)));
-                        v.push(Inst::ANDI(Reg::T3, Reg::T2, Imm::Lit(0x8000)));
-                        v.push(Inst::NEQI(Reg::T3, Reg::T3, Imm::Lit(0)));
-                        v.push(Inst::SL(Reg::T2, Reg::T2));
-                        v.push(Inst::SL(Reg::T0, Reg::T0));
-                        v.push(Inst::ADD(Reg::T0, Reg::T0, Reg::T3));
-                        v.push(Inst::LT(Reg::T3, Reg::T0, Reg::T1));
-                        v.push(Inst::JUMPIFR(Reg::T3, Imm::Lit(skip_off as usize)));
-                        v.push(Inst::SUB(Reg::T0, Reg::T0, Reg::T1));
-                        if want_q {
-                            v.push(Inst::ORI(Reg::T2, Reg::T2, Imm::Lit(1)));
+                        if target != Reg::T2 {
+                            v.push(Inst::MOV(target, Reg::T2));
                         }
-                        v.push(Inst::SUBI(Reg::S0, Reg::S0, Imm::Lit(1)));
-                        v.push(Inst::JUMPR(Imm::Lit(back_off as u16 as usize)));
-                        // Restore S0
-                        v.push(Inst::LOAD(Reg::S0, Reg::SP, Imm::Lit(0)));
-                        v.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Lit(1)));
-                        // Result: remainder in T0, quotient in T2
-                        let result_reg = if want_q { Reg::T2 } else { Reg::T0 };
-                        if target != result_reg {
-                            v.push(Inst::MOV(target, result_reg));
+                        v
+                    }
+
+                    ast::BinaryOp::Mod => {
+                        let mut v = vec![
+                            Inst::MOV(Reg::T2, Reg::T0),
+                            Inst::LOADI(Reg::T0, Imm::Lit(0)),
+                            Inst::LOADI(Reg::T4, Imm::Lit(16)),
+                            Inst::EQI(Reg::T3, Reg::T4, Imm::Lit(0)),
+                            Inst::JUMPIFR(Reg::T3, Imm::Lit(10)),
+                            Inst::ANDI(Reg::T3, Reg::T2, Imm::Lit(0x8000)),
+                            Inst::NEQI(Reg::T3, Reg::T3, Imm::Lit(0)),
+                            Inst::SL(Reg::T2, Reg::T2),
+                            Inst::SL(Reg::T0, Reg::T0),
+                            Inst::ADD(Reg::T0, Reg::T0, Reg::T3),
+                            Inst::LT(Reg::T3, Reg::T0, Reg::T1),
+                            Inst::JUMPIFR(Reg::T3, Imm::Lit(2)),
+                            Inst::SUB(Reg::T0, Reg::T0, Reg::T1),
+                            Inst::SUBI(Reg::T4, Reg::T4, Imm::Lit(1)),
+                            Inst::JUMPR(Imm::Lit((-11i32) as u16 as usize)),
+                        ];
+                        if target != Reg::T0 {
+                            v.push(Inst::MOV(target, Reg::T0));
                         }
                         v
                     }
@@ -655,7 +518,6 @@ impl<'a> Context<'a> {
 
                 let op_insts = match op {
                     ast::UnaryOp::Pos => {
-                        // Positive is a no-op, just move the value
                         if operand_reg != target {
                             vec![Inst::MOV(target, operand_reg)]
                         } else {
@@ -663,11 +525,9 @@ impl<'a> Context<'a> {
                         }
                     }
                     ast::UnaryOp::Neg => {
-                        // -x == 0 - x, using Z (the always-zero register).
                         vec![Inst::SUB(target, Reg::Z, operand_reg)]
                     }
                     ast::UnaryOp::Not => {
-                        // ~x — hardware NOT (equivalent to x XOR 0xFFFF).
                         vec![Inst::NOT(target, operand_reg)]
                     }
                 };
@@ -677,7 +537,6 @@ impl<'a> Context<'a> {
 
             ast::Expr::Deref(operand) => {
                 let (operand_insts, operand_reg) = self.compile_expr(operand, Reg::T0)?;
-
                 let insts = chain!(
                     operand_insts,
                     vec![Inst::LOAD(target, operand_reg, Imm::Lit(0))]
@@ -687,120 +546,46 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Addr(operand) => {
-                // Address-of: compute the operand's address into target.
                 let addr_insts = self.compile_addr(operand, target)?;
                 (addr_insts, target)
             }
 
             ast::Expr::Index(..) | ast::Expr::Member(..) => {
-                // Compute the element address into target, then LOAD from it.
                 let addr_insts = self.compile_addr(expr, target)?;
-                let insts = chain!(
-                    addr_insts,
-                    vec![Inst::LOAD(target, target, Imm::Lit(0))]
-                )
-                .collect();
+                let insts =
+                    chain!(addr_insts, vec![Inst::LOAD(target, target, Imm::Lit(0))]).collect();
                 (insts, target)
             }
 
             ast::Expr::Call(func_expr, args) => {
-                let mut insts = Vec::new();
-
-                // Evaluate arguments and push onto stack or registers
-                for (i, arg) in args.iter().enumerate() {
-                    let (arg_insts, arg_reg) = self.compile_expr(arg, Reg::T0)?;
-                    insts.extend(arg_insts);
-
-                    // For simplicity, pass first 2 args in A0-A1
-                    if i < 2 {
-                        let dest_reg = match i {
-                            0 => Reg::A0,
-                            1 => Reg::A1,
-                            _ => unreachable!(),
-                        };
-                        if arg_reg != dest_reg {
-                            insts.push(Inst::MOV(dest_reg, arg_reg));
-                        }
-                    } else {
-                        // Additional args go on stack
-                        insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(1)));
-                        insts.push(Inst::STORE(arg_reg, Reg::SP, Imm::Lit(0)));
-                    }
-                }
-
-                // Call the function. A bare identifier referring to a func/asm
-                // is a direct call; anything else is treated as a function
-                // pointer expression and dispatched through CALLR.
-                let direct = if let ast::Expr::Ident((name, _)) = &**func_expr {
-                    matches!(
-                        self.local.global_def(name),
-                        Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)),
-                    )
-                } else {
-                    false
-                };
-                if direct {
-                    let name = if let ast::Expr::Ident((n, _)) = &**func_expr {
-                        n.clone()
-                    } else {
-                        unreachable!()
-                    };
-                    insts.push(Inst::CALL(Imm::Label(name)));
-                } else {
-                    // Indirect call: evaluate the function-pointer expression
-                    // into a temp register and jump through it.
-                    let (func_insts, func_reg) = self.compile_expr(func_expr, Reg::T2)?;
-                    insts.extend(func_insts);
-                    insts.push(Inst::CALLR(func_reg));
-                }
-
-                // Clean up stack if we pushed arguments
-                let stack_args = if args.len() > 2 { args.len() - 2 } else { 0 };
-                if stack_args > 0 {
-                    insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Lit(stack_args)));
-                }
-
-                // Result is in A0, move to target if needed
-                if target != Reg::A0 {
-                    insts.push(Inst::MOV(target, Reg::A0));
-                }
-                (insts, target)
+                self.compile_call(expr, func_expr, args, target)?
             }
 
             ast::Expr::Cond(cond, then_expr, else_expr) => {
                 let mut insts = Vec::new();
 
-                // Ternary conditional expression
                 let (cond_insts, cond_reg) = self.compile_expr(cond, Reg::T0)?;
                 insts.extend(cond_insts);
+                insts.push(Inst::EQI(Reg::T1, cond_reg, Imm::Lit(0)));
 
-                // Jump to else if false
-                insts.push(Inst::NOT(Reg::T1, cond_reg));
-
-                // Compile both branches
                 let (then_insts, then_reg) = self.compile_expr(then_expr, target)?;
                 let (else_insts, else_reg) = self.compile_expr(else_expr, target)?;
 
-                // Jump to else if condition is false
-                let else_jump_offset = (then_insts.len() + 1) as u16; // +1 for the end jump
+                let else_jump_offset = (then_insts.len() + 1) as u16;
                 insts.push(Inst::JUMPIFR(Reg::T1, Imm::Lit(else_jump_offset as usize)));
 
-                // Then expression
                 insts.extend(then_insts);
                 if then_reg != target {
                     insts.push(Inst::MOV(target, then_reg));
                 }
 
-                // Jump over else
                 let end_jump_offset = else_insts.len() as u16;
                 if else_reg != target {
-                    // +1 for the MOV instruction
                     insts.push(Inst::JUMPR(Imm::Lit((end_jump_offset + 1) as usize)));
                 } else {
                     insts.push(Inst::JUMPR(Imm::Lit(end_jump_offset as usize)));
                 }
 
-                // Else expression
                 insts.extend(else_insts);
                 if else_reg != target {
                     insts.push(Inst::MOV(target, else_reg));
@@ -811,7 +596,6 @@ impl<'a> Context<'a> {
 
             ast::Expr::SizeofType(typ) => {
                 let mut insts = Vec::new();
-                // Calculate size at compile time
                 let norm_type = self.local.normtype(typ).map_err(|_| {
                     Error::TypeCollectionFailed(Pos::default(), "sizeof".to_string())
                 })?;
@@ -820,9 +604,13 @@ impl<'a> Context<'a> {
                 (insts, target)
             }
 
+            ast::Expr::Cast(inner, _) => {
+                let (insts, reg) = self.compile_expr(inner, target)?;
+                (insts, reg)
+            }
+
             _ => {
                 let mut insts = Vec::new();
-                // Other expression types not yet implemented
                 insts.push(Inst::LOADI(target, Imm::Lit(0)));
                 (insts, target)
             }
@@ -831,9 +619,148 @@ impl<'a> Context<'a> {
         Ok((insts, result_reg))
     }
 
-    /// Compile the *address* of an lvalue expression into the given target register.
-    /// Honors the existing local-variable convention: locals at FP + abs(offset).
-    /// The Index case spills `target` to the stack while computing the index.
+    /// 新 ABI の関数呼び出し:
+    ///   1. (CALLR の場合のみ) func ptr を T0 へ評価 → caller の spill 1 個に退避
+    ///   2. T1 := FP - (current_bottom + 1 + R + N)  (= new_FP)
+    ///   3. STORE FP, T1, -1   (= 新フレームの saved old FP に caller_FP を保存)
+    ///   4. 各 arg を T0 へ評価 → STORE T0, T1, R + 1 + i_cum
+    ///        ※ 引数評価中に内側 call が起きると T1 が破壊されるため、
+    ///          arg STORE 直前に毎回 T1 を再構築する。
+    ///   5. MOV FP, T1
+    ///   6. CALL(Label) または CALLR(T0)
+    ///   7. 戻り値を LOAD T0, FP, -(B+1)  (caller_FP 相対)
+    fn compile_call(
+        &mut self,
+        expr: &'a ast::Expr,
+        func_expr: &'a ast::Expr,
+        args: &'a [ast::Expr],
+        target: Reg,
+    ) -> Result<(Vec<Inst<Reg, Imm>>, Reg), Error> {
+        let (ret_size, arg_sizes) = self.local.callee_signature(func_expr, args)?;
+        if args.len() != arg_sizes.len() {
+            return Err(Error::UnsupportedExpression(
+                expr.pos_or_default(),
+                format!(
+                    "argument count mismatch: callee expects {}, given {}",
+                    arg_sizes.len(),
+                    args.len()
+                ),
+            ));
+        }
+        if ret_size > 1 {
+            return Err(Error::UnsupportedExpression(
+                expr.pos_or_default(),
+                format!("multi-word return value (size {}) not supported", ret_size),
+            ));
+        }
+        for (i, &sz) in arg_sizes.iter().enumerate() {
+            if sz > 1 {
+                return Err(Error::UnsupportedExpression(
+                    args[i].pos_or_default(),
+                    format!("multi-word argument (size {}) not supported", sz),
+                ));
+            }
+        }
+
+        let direct = if let ast::Expr::Ident((name, _)) = func_expr {
+            matches!(
+                self.local.global_def(name),
+                Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)),
+            )
+        } else {
+            false
+        };
+
+        let args_total: usize = arg_sizes.iter().sum();
+        let call_frame = 1 + ret_size + args_total; // saved old FP + ret slot + args
+        let mut insts: Vec<Inst<Reg, Imm>> = Vec::new();
+
+        // 間接呼びの場合は事前に func ptr を T0 で評価して caller の spill へ退避
+        let func_ptr_spill: Option<i32> = if !direct {
+            let (func_insts, func_reg) = self.compile_expr(func_expr, Reg::T0)?;
+            insts.extend(func_insts);
+            if func_reg != Reg::T0 {
+                insts.push(Inst::MOV(Reg::T0, func_reg));
+            }
+            let s = self.alloc_spill_slot();
+            insts.push(Inst::STORE(Reg::T0, Reg::FP, fp_off(s)));
+            Some(s)
+        } else {
+            None
+        };
+
+        // 内側 call から見ても call frame 領域が「使用中」になるよう current_bottom に加算
+        self.current_bottom += call_frame;
+        let outer_bottom = self.current_bottom; // = B + call_frame
+
+        // (2)(3) new_FP を T1 で構築し、saved old FP に caller_FP を書く
+        // new_FP = FP - outer_bottom
+        let build_new_fp = |insts: &mut Vec<Inst<Reg, Imm>>, bottom: usize| {
+            insts.push(Inst::LOADI(Reg::T1, Imm::Lit(bottom)));
+            insts.push(Inst::SUB(Reg::T1, Reg::FP, Reg::T1));
+        };
+        build_new_fp(&mut insts, outer_bottom);
+        insts.push(Inst::STORE(Reg::FP, Reg::T1, Imm::neg(1)));
+
+        // (4) 各引数を評価して new_FP+ret_size+1+i_cum に STORE
+        // 引数評価中の内側 call が T1 を破壊する可能性があるため、
+        // STORE 直前に T1 を再構築する (build_new_fp を再呼出し)。
+        let mut cum: usize = 0;
+        for (i, arg) in args.iter().enumerate() {
+            let (arg_insts, arg_reg) = self.compile_expr(arg, Reg::T0)?;
+            insts.extend(arg_insts);
+            if arg_reg != Reg::T0 {
+                insts.push(Inst::MOV(Reg::T0, arg_reg));
+            }
+            // T1 を再構築 (arg 評価で破壊された可能性)
+            build_new_fp(&mut insts, outer_bottom);
+            insts.push(Inst::STORE(
+                Reg::T0,
+                Reg::T1,
+                Imm::Lit(ret_size + 1 + cum),
+            ));
+            cum += arg_sizes[i];
+            let _ = i;
+        }
+
+        // (5)(6) FP 切替 + CALL
+        if direct {
+            let name = if let ast::Expr::Ident((n, _)) = func_expr {
+                n.clone()
+            } else {
+                unreachable!()
+            };
+            // T1 を最新に
+            build_new_fp(&mut insts, outer_bottom);
+            insts.push(Inst::MOV(Reg::FP, Reg::T1));
+            insts.push(Inst::CALL(Imm::Label(name)));
+        } else {
+            // func ptr を T0 にロード (この時点ではまだ FP は caller)
+            let s = func_ptr_spill.unwrap();
+            insts.push(Inst::LOAD(Reg::T0, Reg::FP, fp_off(s)));
+            build_new_fp(&mut insts, outer_bottom);
+            insts.push(Inst::MOV(Reg::FP, Reg::T1));
+            insts.push(Inst::CALLR(Reg::T0));
+        }
+
+        // 内側 call 用に増やしていた current_bottom を戻す
+        self.current_bottom -= call_frame;
+
+        // (7) 戻り値ロード: caller_FP 相対で -(B + call_frame) + 1 = -(B + ret_size + args_total)
+        // ret slot 先頭 = new_FP + 1 = caller_FP - outer_bottom + 1
+        if ret_size > 0 {
+            let ret_off = -((outer_bottom as i32) - 1); // = -(B + call_frame - 1)
+            insts.push(Inst::LOAD(target, Reg::FP, fp_off(ret_off)));
+        }
+
+        // func_ptr 用 spill を解放
+        if func_ptr_spill.is_some() {
+            self.free_spill_slot();
+        }
+
+        Ok((insts, target))
+    }
+
     fn compile_addr(
         &mut self,
         expr: &'a ast::Expr,
@@ -843,20 +770,8 @@ impl<'a> Context<'a> {
             ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
-                    if offset >= 0 {
-                        // Arg above FP: addr = FP + offset.
-                        insts.push(Inst::ADDI(target, Reg::FP, Imm::Lit(offset as usize)));
-                    } else {
-                        // Local below FP: addr = FP - |offset|.
-                        insts.push(Inst::SUBI(
-                            target,
-                            Reg::FP,
-                            Imm::Lit((-offset) as usize),
-                        ));
-                    }
+                    insts.push(Inst::ADDI(target, Reg::FP, fp_off(offset)));
                 } else {
-                    // Global: data globals get a data-symbol address, code
-                    // globals (asm/func) get a code-label address.
                     match self.local.global_def(name) {
                         Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)) => {
                             insts.push(Inst::LOADI(target, Imm::Label(name.clone())));
@@ -882,25 +797,33 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Index(base, idx) => {
-                let mut insts = self.compile_addr(base, target)?;
                 let base_ty = self.local.typeinfer(base)?;
-                let elem_size = match &base_ty {
-                    NormType::Array(_, elem) => elem.sizeof(),
+                let (mut insts, elem_size) = match &base_ty {
+                    NormType::Array(_, elem) => {
+                        let elem_size = elem.sizeof();
+                        (self.compile_addr(base, target)?, elem_size)
+                    }
+                    NormType::Addr(elem) => {
+                        let elem_size = elem.sizeof();
+                        let (load_insts, reg) = self.compile_expr(base, target)?;
+                        let mut v = load_insts;
+                        if reg != target {
+                            v.push(Inst::MOV(target, reg));
+                        }
+                        (v, elem_size)
+                    }
                     _ => return Err(Error::NotIndexable(base.pos_or_default())),
                 };
 
-                // Pick a scratch reg for idx that differs from `target`.
                 let idx_target = if target == Reg::T0 { Reg::T1 } else { Reg::T0 };
 
-                // Spill `target` to stack while we evaluate idx (which may clobber it).
-                insts.push(Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(1)));
-                insts.push(Inst::STORE(target, Reg::SP, Imm::Lit(0)));
+                let spill = self.alloc_spill_slot();
+                insts.push(Inst::STORE(target, Reg::FP, fp_off(spill)));
                 let (idx_insts, idx_reg) = self.compile_expr(idx, idx_target)?;
                 insts.extend(idx_insts);
-                insts.push(Inst::LOAD(target, Reg::SP, Imm::Lit(0)));
-                insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Lit(1)));
+                insts.push(Inst::LOAD(target, Reg::FP, fp_off(spill)));
+                self.free_spill_slot();
 
-                // addr += idx * elem_size, via elem_size repeated ADDs.
                 for _ in 0..elem_size {
                     insts.push(Inst::ADD(target, target, idx_reg));
                 }
@@ -908,7 +831,6 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Deref(inner) => {
-                // &(@p) == p — the value of the pointer IS the address.
                 let (mut insts, reg) = self.compile_expr(inner, target)?;
                 if reg != target {
                     insts.push(Inst::MOV(target, reg));
@@ -929,14 +851,12 @@ impl<'a> Context<'a> {
         value_reg: Reg,
     ) -> Result<Vec<Inst<Reg, Imm>>, Error> {
         match lvalue {
-            // Direct path for plain identifiers (avoids the ADDI/SUBI + STORE 0
-            // pattern in favor of a single STORE with FP-relative immediate).
             ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
-                    // FP-relative store (signed offset; 2's-complement wraps).
-                    let store_offset = (offset as i16) as u16 as usize;
-                    insts.push(Inst::STORE(value_reg, Reg::FP, Imm::Lit(store_offset)));
+                    insts.push(Inst::STORE(value_reg, Reg::FP, fp_off(offset)));
+                } else if name == "csr" {
+                    insts.push(Inst::MOV(Reg::CSR, value_reg));
                 } else {
                     insts.push(Inst::STORE(value_reg, Reg::Z, Imm::Symbol(name.clone(), 0)));
                 }
@@ -944,8 +864,6 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Deref(addr_expr) => {
-                // Store through pointer: addr_expr's value is the destination address.
-                // Use T1 so we don't clobber value_reg if it happens to be T0.
                 let (addr_insts, addr_reg) = self.compile_expr(addr_expr, Reg::T1)?;
                 Ok(chain!(
                     addr_insts,
@@ -955,18 +873,13 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Member(..) | ast::Expr::Index(..) => {
-                // compile_addr may need to clobber T0/T1/T2 to evaluate indices, so
-                // spill the rhs value to stack and reload it after the address is ready.
                 let addr_reg = Reg::T1;
-                let mut insts = vec![
-                    Inst::SUBI(Reg::SP, Reg::SP, Imm::Lit(1)),
-                    Inst::STORE(value_reg, Reg::SP, Imm::Lit(0)),
-                ];
+                let spill = self.alloc_spill_slot();
+                let mut insts = vec![Inst::STORE(value_reg, Reg::FP, fp_off(spill))];
                 insts.extend(self.compile_addr(lvalue, addr_reg)?);
-                // Reload value into a register distinct from addr_reg.
                 let val_reg = if addr_reg == Reg::T0 { Reg::T2 } else { Reg::T0 };
-                insts.push(Inst::LOAD(val_reg, Reg::SP, Imm::Lit(0)));
-                insts.push(Inst::ADDI(Reg::SP, Reg::SP, Imm::Lit(1)));
+                insts.push(Inst::LOAD(val_reg, Reg::FP, fp_off(spill)));
+                self.free_spill_slot();
                 insts.push(Inst::STORE(val_reg, addr_reg, Imm::Lit(0)));
                 Ok(insts)
             }

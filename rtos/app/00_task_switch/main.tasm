@@ -1,0 +1,59 @@
+// 00_task_switch — A/B/C 3 つのタスクを wait/ready で受け渡し
+//
+// 流れ:
+//   A: "Start A\n" → wait → (resume) "Resume A\n" → ready(B) → exit
+//   B: "Start B\n" → wait → (resume) "Resume B\n" → exit
+//   C: "Start C\n" → ready(A) → "Resume C\n" → exit
+//
+//   3 タスクとも最初は ready 状態で登録される。
+//   scheduler は list 先頭から ready を探すので A→B→C の順で動き始める。
+//   A は wait に入って B にバトン、B も wait で C に。
+//   C は A を ready 化 (これで scheduler 復帰時 A が優先)、自身は "Resume C" を経て exit。
+//   その後 A が "Resume A" → ready(B) で B 復帰、B は "Resume B" → exit。
+
+const user_global_size = 3;
+
+static @ 0x0044 task_id_a : *TCB;
+static @ 0x0045 task_id_b : *TCB;
+static @ 0x0046 task_id_c : *TCB;
+
+const s_start_a  = "Start A\n";
+const s_start_b  = "Start B\n";
+const s_start_c  = "Start C\n";
+const s_resume_a = "Resume A\n";
+const s_resume_b = "Resume B\n";
+const s_resume_c = "Resume C\n";
+
+// 本サンプルでは割り込みは使わない
+fn intr0() { return; }
+fn intr1() { return; }
+fn intr2() { return; }
+fn intr3() { return; }
+
+fn task_a() {
+    print_str(s_start_a@ as *int);
+    os_task_wait();
+    print_str(s_resume_a@ as *int);
+    os_task_ready(task_id_b);
+    os_task_exit();
+}
+
+fn task_b() {
+    print_str(s_start_b@ as *int);
+    os_task_wait();
+    print_str(s_resume_b@ as *int);
+    os_task_exit();
+}
+
+fn task_c() {
+    print_str(s_start_c@ as *int);
+    os_task_ready(task_id_a);
+    print_str(s_resume_c@ as *int);
+    os_task_exit();
+}
+
+fn init_tasks() {
+    task_id_a = os_task_setup(task_state_ready, 0x100, task_a as int);
+    task_id_b = os_task_setup(task_state_ready, 0x100, task_b as int);
+    task_id_c = os_task_setup(task_state_ready, 0x100, task_c as int);
+}

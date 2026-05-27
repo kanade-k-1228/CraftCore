@@ -78,45 +78,52 @@ impl Dump {
     fn print_reg(&self, cpu: &State) {
         println!(" +------------+----------+----------+----------+");
         println!(
-            " | zero: {:0>4X} | ra: {:0>4X} | t0: {:0>4X} | s0: {:0>4X} |",
+            " | zero: {:0>4X} | ra: {:0>4X} | t0: {:0>4X} | t5: {:0>4X} |",
             cpu.get(Reg::Z),
             cpu.get(Reg::RA),
             cpu.get(Reg::T0),
-            cpu.get(Reg::S0)
+            cpu.get(Reg::T5)
         );
         println!(
-            " |  ira: {:0>4X} | fp: {:0>4X} | t1: {:0>4X} | s1: {:0>4X} |",
+            " |  ira: {:0>4X} | fp: {:0>4X} | t1: {:0>4X} | t6: {:0>4X} |",
             cpu.get(Reg::IRA),
             cpu.get(Reg::FP),
             cpu.get(Reg::T1),
-            cpu.get(Reg::S1)
+            cpu.get(Reg::T6)
         );
         println!(
-            " |   pc: {:0>4X} | a0: {:0>4X} | t2: {:0>4X} | s2: {:0>4X} |",
+            " |   pc: {:0>4X} | t2: {:0>4X} | t3: {:0>4X} | t7: {:0>4X} |",
             cpu.get(Reg::PC),
-            cpu.get(Reg::A0),
             cpu.get(Reg::T2),
-            cpu.get(Reg::S2)
+            cpu.get(Reg::T3),
+            cpu.get(Reg::T7)
         );
         println!(
-            " |   sp: {:0>4X} | a1: {:0>4X} | t3: {:0>4X} | s3: {:0>4X} |",
-            cpu.get(Reg::SP),
-            cpu.get(Reg::A1),
-            cpu.get(Reg::T3),
-            cpu.get(Reg::S3)
+            " |  csr: {:0>4X} | t4: {:0>4X} | t8: {:0>4X} | t9: {:0>4X} |",
+            cpu.get(Reg::CSR),
+            cpu.get(Reg::T4),
+            cpu.get(Reg::T8),
+            cpu.get(Reg::T9)
         );
         println!(" +------------+----------+----------+----------+");
     }
 
     fn print_stack(&self, cpu: &State) {
-        let sp = cpu.get(Reg::SP);
+        // FP 下向き ABI: FP+0=saved RA, FP+1..=ret/args, FP-1=saved old FP, FP-2..=locals/spills
+        // FP の上下両側を表示する。
         let fp = cpu.get(Reg::FP);
-        for sp in sp..fp {
+        let lo = fp.wrapping_sub(0x18);
+        let hi = fp.wrapping_add(0x08);
+        let mut sp = lo;
+        while sp != hi {
+            let marker = if sp == fp { " <- FP" } else { "      " };
             println!(
-                " | {:0>4X} : {:0>4X}                                 |",
+                " | {:0>4X} : {:0>4X}{}                            |",
                 sp,
-                cpu.get(sp)
+                cpu.get(sp),
+                marker
             );
+            sp = sp.wrapping_add(1);
         }
         println!(" +---------------------------------------------+");
     }

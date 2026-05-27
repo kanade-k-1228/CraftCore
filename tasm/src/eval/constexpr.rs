@@ -42,12 +42,12 @@ impl ConstExpr {
         })
     }
 
-    /// Serialize a ConstExpr to bytes for binary output
-    pub fn bin(&self) -> Vec<u8> {
+    /// Serialize a ConstExpr to word (u16) array.
+    pub fn bin(&self) -> Vec<u16> {
         match self {
-            ConstExpr::Number(n) => (*n as u16).to_le_bytes().to_vec(),
-            ConstExpr::Char(c) => vec![*c as u8],
-            ConstExpr::String(s) => s.as_bytes().to_vec(),
+            ConstExpr::Number(n) => vec![*n as u16],
+            ConstExpr::Char(c) => vec![*c as u16],
+            ConstExpr::String(s) => s.chars().map(|c| c as u16).collect(),
             ConstExpr::Array(a) => a.iter().flat_map(|e| e.bin()).collect(),
             ConstExpr::Struct(f) => f.iter().flat_map(|(_, e)| e.bin()).collect(),
         }

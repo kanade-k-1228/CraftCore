@@ -6,9 +6,31 @@ use crate::{
     grammer::ast,
 };
 
+// 関数のフレーム (FP 下向き ABI)
+//
+//   high addr
+//      FP + ret_size + N      ← arg_{N-1}
+//           :
+//      FP + ret_size + 1      ← arg_0
+//      FP + ret_size          ← ret slot 最後
+//           :
+//      FP + 1                 ← ret slot 先頭
+//      FP + 0                 ← saved RA           (callee の prologue で書く)
+//      FP - 1                 ← saved caller's FP  (caller が書く)
+//      FP - 2                 ← local 0
+//      FP - 3                 ← local 1
+//           :                 locals は宣言順に -2, -3, ...
+//      FP - 2 - locals_total  ← spill 0 (動的)
+//           :
+//   low addr
+//
+// - レジスタは全て caller-save (T0-T9)
+// - 引数・戻り値は全て stack で渡す
+
+/// 関数の引数 + ローカル変数のシンボルテーブル。
 pub struct Local<'a> {
     global: &'a Global<'a>,
-    stack: IndexMap<&'a str, (NormType, isize)>,
+    stack: IndexMap<&'a str, (NormType, i32)>, // (name → (type, FP+offset))
 }
 
 impl<'a> Local<'a> {
@@ -19,68 +41,50 @@ impl<'a> Local<'a> {
         }
     }
 
-    /// Returns the base offset (lowest address relative to FP) for a new local
-    /// of the given size. Locals live below FP, so this is negative.
-    fn next_offset(&self, size: isize) -> isize {
-        let lowest = self
-            .stack
-            .values()
-            .filter(|(_, offset)| *offset < 0)
-            .map(|(_, offset)| *offset)
-            .min()
-            .unwrap_or(0);
-        lowest - size
-    }
-
-    pub fn args(&mut self, args: &'a [(ast::Ident, ast::Type)]) -> Result<isize, Error> {
-        // Args are stored above FP, immediately after the saved RA (FP+0) and
-        // saved FP (FP+1) slots. The first declared argument gets the lowest
-        // offset (FP+2), matching the prologue which copies args in declaration
-        // order.
-        let mut offset = 2isize;
-        for ((name, _), ty) in args.iter() {
-            let ty = self.global.normtype(ty)?;
-            let size = ty.sizeof() as isize;
-            self.stack.insert(name.as_str(), (ty, offset));
-            offset += size;
-        }
-        Ok(offset)
-    }
-
-    pub fn push(&mut self, ident: &'a ast::Ident, ty: &'a ast::Type) -> Result<isize, Error> {
+    /// 名前 → (型, FP+offset) を登録する。offset は呼び出し側が決める (符号付き)。
+    pub fn insert(
+        &mut self,
+        ident: &'a ast::Ident,
+        ty: NormType,
+        offset: i32,
+    ) -> Result<(), Error> {
         let (name, pos) = ident;
         if self.stack.contains_key(name.as_str()) {
             return Err(Error::DuplicateLocal(pos.clone(), name.clone()));
         }
-
-        let norm_ty = self.global.normtype(ty)?;
-        let size = norm_ty.sizeof() as isize;
-        let offset = self.next_offset(size);
-
-        self.stack.insert(name.as_str(), (norm_ty, offset));
-
-        Ok(offset)
+        self.stack.insert(name.as_str(), (ty, offset));
+        Ok(())
     }
 
-    pub fn pop(&mut self) {}
+    /// 引数を全て登録する。新 ABI: arg_i は FP + ret_size + 1 + Σ(prior arg sizes)。
+    pub fn insert_args(
+        &mut self,
+        ret_size: usize,
+        args: &'a [(ast::Ident, ast::Type)],
+    ) -> Result<(), Error> {
+        let mut off = (ret_size + 1) as i32;
+        for (ident, ty) in args {
+            let nty = self.global.normtype(ty)?;
+            let sz = nty.sizeof();
+            self.insert(ident, nty, off)?;
+            off += sz as i32;
+        }
+        Ok(())
+    }
 
     pub fn vartype(&self, name: &str) -> Option<&NormType> {
         self.stack.get(name).map(|(ty, _)| ty)
     }
 
-    pub fn offset(&self, name: &str) -> Option<isize> {
+    pub fn offset(&self, name: &str) -> Option<i32> {
         self.stack.get(name).map(|(_, offset)| *offset)
     }
 
-    /// Normalize a type - simply delegates to global
     pub fn normtype(&self, ty: &'a ast::Type) -> Result<NormType, Error> {
         self.global.normtype(ty)
     }
 
-    /// Evaluate a constant expression - delegates to global
-    /// Local variables are not constant expressions
     pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, Error> {
-        // Local variables cannot be used in constant expressions
         if let ast::Expr::Ident((name, pos)) = expr {
             if self.is_local(name) {
                 return Err(Error::NonConstantExpression(pos.clone()));
@@ -89,36 +93,64 @@ impl<'a> Local<'a> {
         self.global.constexpr(expr)
     }
 
-    /// Infer the type of an expression with local context
+    /// Infer the type of an expression with local context.
     pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, Error> {
         match expr {
             ast::Expr::Ident((name, _)) => {
-                // Check local scope first
                 if let Some(ty) = self.vartype(name) {
                     return Ok(ty.clone());
                 }
-                // Fall back to global scope
+                if name == "csr" {
+                    return Ok(NormType::Int);
+                }
                 self.global.typeinfer(expr)
             }
-            // For other expressions, delegate to global
+            ast::Expr::Addr(inner) => {
+                let ty = self.typeinfer(inner)?;
+                Ok(NormType::Addr(Box::new(ty)))
+            }
+            ast::Expr::Deref(inner) => {
+                let ty = self.typeinfer(inner)?;
+                match ty {
+                    NormType::Addr(t) => Ok(*t),
+                    _ => Err(Error::CannotDereferenceNonPointer(inner.pos_or_default())),
+                }
+            }
+            ast::Expr::Member(base, (field, field_pos)) => {
+                let base_ty = self.typeinfer(base)?;
+                match base_ty {
+                    NormType::Struct(fields) => {
+                        match fields.into_iter().find(|(n, _)| n == field) {
+                            Some((_, ty)) => Ok(ty),
+                            None => Err(Error::NoSuchField(field_pos.clone(), field.clone())),
+                        }
+                    }
+                    _ => Err(Error::NotAStruct(base.pos_or_default())),
+                }
+            }
+            ast::Expr::Index(base, _) => {
+                let base_ty = self.typeinfer(base)?;
+                match base_ty {
+                    NormType::Array(_, elem) => Ok(*elem),
+                    NormType::Addr(inner) => Ok(*inner),
+                    _ => Err(Error::NotIndexable(base.pos_or_default())),
+                }
+            }
+            ast::Expr::Cast(_, ty) => Ok(self.normtype(ty)?),
+            ast::Expr::Unary(_, inner) => self.typeinfer(inner),
+            ast::Expr::Binary(_, left, _) => self.typeinfer(left),
             _ => self.global.typeinfer(expr),
         }
     }
 
-    /// Infer address of expr with unresolved symbol
-    /// Local variables cannot have static addresses
     pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
         match expr {
             ast::Expr::Ident((name, pos)) => {
-                // Local variables don't have static addresses
                 if self.is_local(name) {
                     return Err(Error::NotAddressable(pos.clone(), name.clone()));
                 }
-                // Delegate to global for static/const/func
                 self.global.addrexpr(expr)
             }
-
-            // For member access, check if base is local
             ast::Expr::Member(base, _field) => {
                 if let ast::Expr::Ident((name, pos)) = base.as_ref() {
                     if self.is_local(name) {
@@ -130,8 +162,6 @@ impl<'a> Local<'a> {
                 }
                 self.global.addrexpr(expr)
             }
-
-            // For index access, check if base is local
             ast::Expr::Index(base, _index) => {
                 if let ast::Expr::Ident((name, pos)) = base.as_ref() {
                     if self.is_local(name) {
@@ -143,8 +173,6 @@ impl<'a> Local<'a> {
                 }
                 self.global.addrexpr(expr)
             }
-
-            // For other expressions, delegate to global
             _ => self.global.addrexpr(expr),
         }
     }
@@ -153,26 +181,65 @@ impl<'a> Local<'a> {
         self.stack.contains_key(name)
     }
 
-    /// Look up a global definition by name (delegates to Global).
     pub fn global_def(&self, name: &str) -> Option<&'a ast::Def> {
         self.global.get(name)
     }
 
-    /// All (name → FP-relative offset) entries, preserving insertion order.
-    pub fn entries(&self) -> IndexMap<String, isize> {
+    pub fn global(&self) -> &'a Global<'a> {
+        self.global
+    }
+
+    /// (name → FP+offset) を挿入順で返す。
+    pub fn entries(&self) -> IndexMap<String, i32> {
         self.stack
             .iter()
-            .map(|(name, (_, offset))| (name.to_string(), *offset))
+            .map(|(n, (_, off))| (n.to_string(), *off))
             .collect()
     }
 
-    /// Total stack space used by locals (positive; in 16-bit words).
-    pub fn stack_size(&self) -> usize {
-        self.stack
-            .values()
-            .filter(|(_, offset)| *offset < 0)
-            .map(|(_, offset)| (-offset) as usize)
-            .max()
-            .unwrap_or(0)
+    /// callee の (ret_size, [arg sizes]) を返す。
+    ///
+    /// - 直接呼出 (`Ident → Def::Func`): 関数定義の signature を見る。
+    /// - 直接呼出 (`Ident → Def::Asm`): asm に signature 定義は無いので
+    ///   「ret_size=0, 各 arg は 1 word」と仮定。
+    /// - 間接呼出: func_expr の型 `*(...)->R` から抜き出す。
+    pub fn callee_signature(
+        &self,
+        func_expr: &'a ast::Expr,
+        args: &'a [ast::Expr],
+    ) -> Result<(usize, Vec<usize>), Error> {
+        if let ast::Expr::Ident((name, _)) = func_expr {
+            match self.global.get(name) {
+                Some(ast::Def::Func(_, fargs, fret, _)) => {
+                    let ret_size = self.global.normtype(fret)?.sizeof();
+                    let mut arg_sizes = Vec::new();
+                    for (_, ty) in fargs {
+                        arg_sizes.push(self.global.normtype(ty)?.sizeof());
+                    }
+                    return Ok((ret_size, arg_sizes));
+                }
+                Some(ast::Def::Asm(..)) => {
+                    let arg_sizes = args.iter().map(|_| 1).collect();
+                    return Ok((0, arg_sizes));
+                }
+                _ => {}
+            }
+        }
+        let func_ty = self.typeinfer(func_expr)?;
+        let inner = match func_ty {
+            NormType::Addr(inner) => *inner,
+            other => other,
+        };
+        match inner {
+            NormType::Func(fargs, fret) => {
+                let ret_size = fret.sizeof();
+                let arg_sizes = fargs.into_iter().map(|(_, ty)| ty.sizeof()).collect();
+                Ok((ret_size, arg_sizes))
+            }
+            _ => {
+                let arg_sizes = args.iter().map(|_| 1).collect();
+                Ok((0, arg_sizes))
+            }
+        }
     }
 }

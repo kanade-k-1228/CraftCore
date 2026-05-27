@@ -262,8 +262,9 @@ impl ast::Expr {
                 },
                 _ => inner.imm(global, loc),
             },
-            ast::Expr::Deref(_) => Err(Error::CannotDereferenceInAssembly(loc.clone())),
-            ast::Expr::Member(expr, (field, _)) => match expr.imm(global, loc)? {
+            ast::Expr::Deref(inner) => inner.imm(global, loc),
+            ast::Expr::Cast(inner, _) => inner.imm(global, loc),
+            ast::Expr::Member(base_expr, (field, _)) => match base_expr.imm(global, loc)? {
                 Imm::Symbol(ident, base) => {
                     let offset = match global.get(ident.as_str()) {
                         Some(ast::Def::Static(_, _, ty)) => {
@@ -283,9 +284,18 @@ impl ast::Expr {
                     };
                     Ok(Imm::Symbol(ident, base + offset))
                 }
-                Imm::Lit(_) | Imm::Const(_, _) => {
-                    Err(Error::CannotAccessFieldOfImmediate(loc.clone()))
+                // base が数値即値 (典型的には `@(N as *T)` 経由) なら、
+                // base_expr の型からフィールドオフセットを解決して加算。
+                // C の `&((T*)N)->field` を `(@(N as *T)).field@` で表す。
+                // auto-deref はせず、ユーザが明示的に `@` deref を書く必要がある。
+                Imm::Lit(base_addr) => {
+                    let base_ty = global.typeinfer(base_expr)?;
+                    let ofs = base_ty
+                        .get_field_offset(field)
+                        .ok_or_else(|| Error::FieldNotFoundInStruct(loc.clone(), field.clone()))?;
+                    Ok(Imm::Lit(base_addr + ofs))
                 }
+                Imm::Const(_, _) => Err(Error::CannotAccessFieldOfImmediate(loc.clone())),
                 Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel(loc.clone())),
                 Imm::ScopeExit(_) | Imm::ScopeEntry(_) => {
                     unreachable!("scope placeholders are only produced inside fn bodies")

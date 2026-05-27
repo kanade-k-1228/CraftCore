@@ -1,0 +1,13 @@
+// system.tasm を単独でビルドする際に必要な、ユーザ側シンボルの空 stub。
+// 実用コードでは defaults.tasm の代わりに、ユーザ自身が以下を定義する。
+
+const user_global_size = 0;
+
+fn init_tasks() {
+    return;
+}
+
+fn intr0() { return; }
+fn intr1() { return; }
+fn intr2() { return; }
+fn intr3() { return; }

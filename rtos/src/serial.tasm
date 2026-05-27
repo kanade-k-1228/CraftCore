@@ -1,0 +1,38 @@
+// ============================================================
+// serial.tasm — シリアル I/O と print 系標準ライブラリ
+// ============================================================
+
+// シリアル I/O (MMIO)
+static @ 0x1000 serial_tx : int; // 書き込みで 1 文字送信
+static @ 0x1001 serial_rx : int; // 読むと 1 文字受信 (なければ 0xFFFF)
+
+// 1 文字送信
+fn print_char(c: int) {
+    serial_tx = c;
+}
+
+// null 終端文字列を送信
+// 各要素は int (1 word) で、0 終端
+fn print_str(s: *int) {
+    var p: *int = s;
+    while (@p != 0) {
+        serial_tx = @p;
+        p = (p as int + 1) as *int;
+    }
+}
+
+// 16bit 整数を 4 桁の 16 進数として送信
+fn print_hex(v: int) {
+    var i: int = 0;
+    while (i < 4) {
+        // 上位ニブルから順に取り出す
+        var shift: int = (3 - i) * 4;
+        var nibble: int = (v >> shift) & 0x000f;
+        if (nibble < 10) {
+            serial_tx = nibble + '0';
+        } else {
+            serial_tx = nibble + 0x37; // 'A' - 10
+        }
+        i = i + 1;
+    }
+}

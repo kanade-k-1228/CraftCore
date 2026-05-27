@@ -1,0 +1,321 @@
+// ============================================================
+// task.tasm — 割り込みハンドラ・タスク管理・排他制御 (FP 下向き ABI 版)
+//
+// ABI:
+//   - SP 廃止。FP のみ。
+//   - レジスタは全て caller-save (T0..T9)。callee-saved は無い。
+//   - 引数・戻り値は全て stack で渡す。 callee 視点で
+//       FP+0   : saved RA   (callee の prologue で書く)
+//       FP+1   : ret slot
+//       FP+1+i : arg_i      (caller が STORE)
+//       FP-1   : saved caller_FP (caller が new_FP-1 に STORE 済)
+//       FP-2.. : callee の locals / spills
+//   - CSR はレジスタ (slot #3)。`andi(csr, csr, mask)` 等で 1 命令で操作可能。
+// ============================================================
+
+// --------------------------------------------------------
+// 割り込み制御フラグ
+
+const INTR = {
+    ENABLE: 0x0001,
+    MASK0:  0x0004,
+    MASK1:  0x0008,
+    MASK2:  0x0010,
+    MASK3:  0x0020,
+};
+
+const intr0_flag = 0x0100;
+const intr1_flag = 0x0200;
+const intr2_flag = 0x0400;
+const intr3_flag = 0x0800;
+
+// --------------------------------------------------------
+// タスク管理用の OS グローバル変数
+
+static @ 0x0042 task_running: *TCB;  // 実行中のタスク(TCB)のアドレス
+static @ 0x0043 task_list   : *TCB;  // タスク(TCB)連結リストの先頭
+
+// Task Context Block
+// next フィールドは自己参照を避けるため *void として持つ
+type TCB = {
+    next:  *void, // 次のタスク（実体は *TCB、cast で復元する）
+    fp:    *int,  // 中断時の FP (= 退避領域の下端)
+    bp:    *int,  // スタック上端 (allocated 領域の終端)
+    ra:    *int,  // 中断時の IRA (= 再開時の PC)
+    state: int,   // タスクの状態
+};
+
+// Task state constants
+const task_state_ready   = 0;
+const task_state_waiting = 1;
+const task_state_exit    = 2;
+
+// --------------------------------------------------------
+// 退避領域レイアウト (FP 相対、12 word):
+//   FP+0  RA
+//   FP+1  旧 FP (中断時の FP = 復帰時に書き戻す)
+//   FP+2  T0
+//   FP+3  T1
+//   FP+4  T2
+//   FP+5  T3
+//   FP+6  T4
+//   FP+7  T5
+//   FP+8  T6
+//   FP+9  T7
+//   FP+10 T8
+//   FP+11 T9
+
+// --------------------------------------------------------
+// 割り込みプロローグ
+//
+// HW が ENABLE を自動で落として PC=4 にジャンプ、IRA に旧 PC を退避済。
+
+asm _intr {
+    subi(fp, fp, 12);
+
+    store(ra, fp, 0);
+    store(t0, fp, 2);
+    store(t1, fp, 3);
+    store(t2, fp, 4);
+    store(t3, fp, 5);
+    store(t4, fp, 6);
+    store(t5, fp, 7);
+    store(t6, fp, 8);
+    store(t7, fp, 9);
+    store(t8, fp, 10);
+    store(t9, fp, 11);
+
+    // 旧 FP を slot 1 へ。 t0 を scratch にしてよい (すでに退避済)。
+    addi(t0, fp, 12);
+    store(t0, fp, 1);
+
+    // TCB に fp / ra を保存
+    load(t0, z, task_running@);
+    store(ira, t0, (@(0 as *TCB)).ra@);
+    store(fp,  t0, (@(0 as *TCB)).fp@);
+
+    jump(intr_dispatch);
+}
+
+// --------------------------------------------------------
+// 割り込みディスパッチャ
+
+fn intr_dispatch() {
+    if ((csr & intr0_flag) != 0) {
+        intr0();
+    }
+    if ((csr & intr1_flag) != 0) {
+        intr1();
+    }
+    if ((csr & intr2_flag) != 0) {
+        intr2();
+    }
+    if ((csr & intr3_flag) != 0) {
+        intr3();
+    }
+    os_task_scheduler();
+}
+
+// --------------------------------------------------------
+// タスクの初期化
+//
+//   initial_state: タスクの初期状態 (READY/WAITING/EXIT)
+//   stack_size:    専用スタックのワード数
+//   entry_address: 関数ポインタ
+// 戻り値: 新しい TCB のアドレス
+fn os_task_setup(
+    initial_state: int,
+    stack_size:    int,
+    entry_address: int,
+) -> *TCB {
+    // タスクリストの末尾 (last) を探す
+    var last: *TCB = 0 as *TCB;
+    var cur:  *TCB = task_list;
+    while (cur != (0 as *TCB)) {
+        last = cur;
+        cur  = (@cur).next as *TCB;
+    }
+
+    // 新しい TCB と専用スタックを確保
+    var new_tcb:    *TCB = malloc(sizeof<TCB>) as *TCB;
+    var stack_base: *int = malloc(stack_size);
+    var stack_top:  int  = (stack_base as int) + stack_size;
+    // 退避領域 12 word ぶんを stack の上端から下に取った位置を FP の初期値とする。
+    var fp_init:    int  = stack_top - 12;
+
+    // リストへ連結
+    if (last == (0 as *TCB)) {
+        task_list = new_tcb;
+    } else {
+        (@last).next = new_tcb as *void;
+    }
+
+    // TCB の初期化
+    (@new_tcb).next  = 0 as *void;
+    (@new_tcb).fp    = fp_init as *int;
+    (@new_tcb).bp    = stack_top as *int;
+    (@new_tcb).ra    = entry_address as *int;
+    (@new_tcb).state = initial_state;
+
+    // 退避領域 [fp_init+0..fp_init+11] に初期コンテキストを仕込む。
+    var sp_ptr: *int = fp_init as *int;
+    sp_ptr[0]  = entry_address; // RA (resume 時 iret で entry へ)
+    sp_ptr[1]  = stack_top;     // 旧 FP = タスクスタック上端
+    sp_ptr[2]  = 0;             // T0
+    sp_ptr[3]  = 0;             // T1
+    sp_ptr[4]  = 0;             // T2
+    sp_ptr[5]  = 0;             // T3
+    sp_ptr[6]  = 0;             // T4
+    sp_ptr[7]  = 0;             // T5
+    sp_ptr[8]  = 0;             // T6
+    sp_ptr[9]  = 0;             // T7
+    sp_ptr[10] = 0;             // T8
+    sp_ptr[11] = 0;             // T9
+    return new_tcb;
+}
+
+// --------------------------------------------------------
+// タスク管理関数 (asm)
+//
+// これらは「呼ばれて戻らない」(scheduler に jump する) ので、
+// fn の prologue/epilogue 機構を経由せず asm で書く。
+//
+// 新 ABI 注意:
+//   - 引数は FP+1+i で読む (asm 関数の callee_signature fallback: ret=0, 各 arg 1word)
+//   - 退避領域の slot 1 (saved old FP) には caller_FP を入れる必要がある。
+//     caller_FP は caller が new_FP-1 に書いてあるので、subi で退避領域を切ったあと
+//     FP+11 (= new_FP-1) から読み取る。 ★ T9 をその slot に上書きする前に読むこと。
+//   - 一方、_intr は割り込み起因で「caller」概念が無いので、退避時の FP がそのまま
+//     「再開時に書き戻す FP」になる。 addi(t0, fp, 12) のままで良い。
+
+// タスクの終了
+asm os_task_exit {
+    andi(csr, csr, 0xfffe);   // 1 命令で割り込み禁止
+
+    load(t0, z, task_running@);
+    loadi(t1, task_state_exit);
+    store(t1, t0, (@(0 as *TCB)).state@);
+
+    jump(os_task_scheduler);
+}
+
+// 実行中のタスクを一時停止して scheduler へ
+asm os_task_wait {
+    andi(csr, csr, 0xfffe);
+
+    subi(fp, fp, 12);
+    store(t0, fp, 2);     // 元 T0 を保存
+    load(t0, fp, 11);     // ★ FP+11 = new_FP-1 に caller_FP がある (T9 を書く前に読む)
+    store(t0, fp, 1);     // saved old FP = caller_FP
+    store(ra, fp, 0);
+    store(t1, fp, 3);
+    store(t2, fp, 4);
+    store(t3, fp, 5);
+    store(t4, fp, 6);
+    store(t5, fp, 7);
+    store(t6, fp, 8);
+    store(t7, fp, 9);
+    store(t8, fp, 10);
+    store(t9, fp, 11);
+
+    load(t0, z, task_running@);
+    store(fp, t0, (@(0 as *TCB)).fp@);
+    store(ra, t0, (@(0 as *TCB)).ra@);
+    loadi(t1, task_state_waiting);
+    store(t1, t0, (@(0 as *TCB)).state@);
+
+    jump(os_task_scheduler);
+}
+
+// 指定 TCB を Ready 状態にして scheduler へ
+//   引数 0 = target *TCB (FP+1)
+asm os_task_ready {
+    andi(csr, csr, 0xfffe);
+
+    // 引数 0 (= target) を t1 に読み込む。 FP を動かす前に。
+    load(t1, fp, 1);
+
+    subi(fp, fp, 12);
+    store(t0, fp, 2);   // 元 T0 を保存
+    load(t0, fp, 11);   // ★ caller_FP (= new_FP-1) を読む (T9 を書く前)
+    store(t0, fp, 1);   // saved old FP = caller_FP
+    store(ra, fp, 0);
+    store(t1, fp, 3);   // 旧 t1 (= target) を save する。 t1 自体は値を保持
+    store(t2, fp, 4);
+    store(t3, fp, 5);
+    store(t4, fp, 6);
+    store(t5, fp, 7);
+    store(t6, fp, 8);
+    store(t7, fp, 9);
+    store(t8, fp, 10);
+    store(t9, fp, 11);
+
+    load(t0, z, task_running@);
+    store(fp, t0, (@(0 as *TCB)).fp@);
+    store(ra, t0, (@(0 as *TCB)).ra@);
+
+    // target.state = ready
+    loadi(t2, task_state_ready);
+    store(t2, t1, (@(0 as *TCB)).state@);
+
+    jump(os_task_scheduler);
+}
+
+// 次の Ready タスクを探して切り替える
+asm os_task_scheduler {
+    load(t0, z, task_list@);     // cur = task_list
+  sched_next:
+    eqi(t1, t0, 0);
+    jumpifr(t1, sched_no_ready);
+    load(t2, t0, (@(0 as *TCB)).state@);
+    eqi(t3, t2, 0);              // ready (=0) か?
+    jumpifr(t3, sched_found);
+    load(t0, t0, (@(0 as *TCB)).next@);
+    jumpr(sched_next);
+  sched_found:
+    store(t0, z, task_running@);
+    jump(os_restore_context);
+  sched_no_ready:
+    jump(_exit);
+}
+
+// 中断していたタスクを再開して iret
+asm os_restore_context {
+    ori(csr, csr, 0x0001);       // 割り込み許可
+
+    // TCB から FP と IRA を復元
+    load(t0, z, task_running@);
+    load(fp,  t0, (@(0 as *TCB)).fp@);
+    load(ira, t0, (@(0 as *TCB)).ra@);
+
+    // 退避領域 fp+0..fp+11 から 12 word を復元する。
+    // 最後の `load(fp, fp, 1)` で FP 自身を旧 FP に書き換える。
+    load(ra, fp, 0);
+    load(t0, fp, 2);
+    load(t1, fp, 3);
+    load(t2, fp, 4);
+    load(t3, fp, 5);
+    load(t4, fp, 6);
+    load(t5, fp, 7);
+    load(t6, fp, 8);
+    load(t7, fp, 9);
+    load(t8, fp, 10);
+    load(t9, fp, 11);
+    load(fp, fp, 1);     // ★ 最後に FP 自身を旧 FP で書き換える
+    iret();
+}
+
+// --------------------------------------------------------
+// 排他制御（未実装）
+
+fn os_lock_init() {
+    return;
+}
+
+fn os_lock_aloc(initial_state: int) -> int {
+    return 0;
+}
+
+fn os_lock_free(lock_id: int) {
+    return;
+}

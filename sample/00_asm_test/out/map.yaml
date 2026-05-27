@@ -1,0 +1,12 @@
+code:
+  reset:
+    addr: 0x8
+    size: 0x25
+    stacks: {}
+data:
+  hoge:
+    addr: 0x5000
+    size: 0x1
+  fuga:
+    addr: 0x5001
+    size: 0x1

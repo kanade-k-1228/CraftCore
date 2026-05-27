@@ -1,0 +1,30 @@
+// ============================================================
+// heap.tasm — ヒープメモリ管理
+// ============================================================
+
+// ヒープ管理用のポインタは固定アドレスに置く
+static @ 0x0040 heap_top    : *int;  // ヒープメモリの先頭
+static @ 0x0041 heap_bottom : *int;  // ヒープメモリの末尾
+
+// 単純な bump allocator
+fn malloc(size: int) -> *int {
+    var addr: *int = heap_top;
+    heap_top = (addr as int + size) as *int;
+    return addr;
+}
+
+// --------------------------------------------------------
+// 高機能ヒープ管理（未実装）
+
+fn os_heap_init() {
+    // TODO: Implement heap initialization
+}
+
+fn os_heap_aloc(size: int) -> *int {
+    // TODO: Implement heap allocation
+    return 0 as *int;
+}
+
+fn os_heap_free(addr: *int) {
+    // TODO: Implement heap free
+}

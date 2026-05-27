@@ -1,0 +1,166 @@
+code:
+  reset:
+    addr: 0x0
+    size: 0x2
+    stacks: {}
+  irq:
+    addr: 0x4
+    size: 0x1
+    stacks: {}
+  os_task_ready:
+    addr: 0x8
+    size: 0x16
+    stacks: {}
+  task_a:
+    addr: 0x1e
+    size: 0x19
+    stacks: {}
+  intr2:
+    addr: 0x37
+    size: 0xe
+    stacks: {}
+  os_restore_context:
+    addr: 0x45
+    size: 0x14
+    stacks: {}
+  init_tasks:
+    addr: 0x59
+    size: 0x2a
+    stacks: {}
+  task_c:
+    addr: 0x83
+    size: 0x17
+    stacks: {}
+  _intr:
+    addr: 0x9a
+    size: 0x14
+    stacks: {}
+  os_task_wait:
+    addr: 0xae
+    size: 0x16
+    stacks: {}
+  os_task_scheduler:
+    addr: 0xc4
+    size: 0xb
+    stacks: {}
+  os_task_exit:
+    addr: 0xcf
+    size: 0x7
+    stacks: {}
+  intr_dispatch:
+    addr: 0xd6
+    size: 0x36
+    stacks: {}
+  intr1:
+    addr: 0x10c
+    size: 0xe
+    stacks: {}
+  intr0:
+    addr: 0x11a
+    size: 0xe
+    stacks: {}
+  os_init:
+    addr: 0x128
+    size: 0x19
+    stacks: {}
+  print_str:
+    addr: 0x141
+    size: 0x1b
+    stacks:
+      s: 0x2
+      p: 0xffff
+  _exit:
+    addr: 0x15c
+    size: 0x11
+    stacks: {}
+  init:
+    addr: 0x16d
+    size: 0x3
+    stacks: {}
+  intr3:
+    addr: 0x170
+    size: 0xe
+    stacks: {}
+  task_b:
+    addr: 0x17e
+    size: 0x15
+    stacks: {}
+data:
+  heap_top:
+    addr: 0x40
+    size: 0x1
+  heap_bottom:
+    addr: 0x41
+    size: 0x1
+  task_running:
+    addr: 0x42
+    size: 0x1
+  task_list:
+    addr: 0x43
+    size: 0x1
+  csr:
+    addr: 0x50
+    size: 0x1
+  serial_tx:
+    addr: 0x1000
+    size: 0x1
+  task_id_a:
+    addr: 0x44
+    size: 0x1
+  task_id_b:
+    addr: 0x45
+    size: 0x1
+  task_id_c:
+    addr: 0x46
+    size: 0x1
+  os_global_size:
+    addr: 0x3000
+    size: 0x1
+  mem_top:
+    addr: 0x3001
+    size: 0x1
+  mem_bottom:
+    addr: 0x3002
+    size: 0x1
+  INTR:
+    addr: 0x3003
+    size: 0x5
+  intr0_flag:
+    addr: 0x3008
+    size: 0x1
+  intr1_flag:
+    addr: 0x3009
+    size: 0x1
+  intr2_flag:
+    addr: 0x300a
+    size: 0x1
+  intr3_flag:
+    addr: 0x300b
+    size: 0x1
+  clock_stop:
+    addr: 0x300c
+    size: 0x1
+  task_state_ready:
+    addr: 0x300d
+    size: 0x1
+  user_global_size:
+    addr: 0x300e
+    size: 0x1
+  s_start_a:
+    addr: 0x300f
+    size: 0x8
+  s_start_b:
+    addr: 0x3018
+    size: 0x8
+  s_start_c:
+    addr: 0x3021
+    size: 0x8
+  s_resume_a:
+    addr: 0x302a
+    size: 0x9
+  s_resume_b:
+    addr: 0x3034
+    size: 0x9
+  s_resume_c:
+    addr: 0x303e
+    size: 0x9

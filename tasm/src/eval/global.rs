@@ -583,43 +583,50 @@ impl<'a> Global<'a> {
     }
 
     /// Walk a function body and produce a map of (local var name → FP-relative
-    /// offset). Args get positive offsets (FP+2, FP+3, …) and locals get
-    /// negative offsets (FP-1, FP-2, …) reflecting the runtime layout.
-    pub fn get_func_locals(&'a self, name: &str) -> Option<IndexMap<String, isize>> {
+    /// offset). 新 ABI (FP 下向き): args は FP+1+i、locals は FP-2, -3, ... の負方向。
+    pub fn get_func_locals(&'a self, name: &str) -> Option<IndexMap<String, i32>> {
         let def = self.defs.get(name).copied()?;
-        let (params, body) = match def {
-            ast::Def::Func(_, params, _, body) => (params, body),
+        let (params, ret_ty, body) = match def {
+            ast::Def::Func(_, params, ret_ty, body) => (params, ret_ty, body),
             _ => return None,
         };
         let mut local = super::local::Local::fork(self);
-        local.args(params).ok()?;
+        let ret_size = self.normtype(ret_ty).ok()?.sizeof();
+        local.insert_args(ret_size, params).ok()?;
         // Walk statements to collect every Var declaration in source order.
         fn walk<'a>(
+            global: &'a super::global::Global<'a>,
             local: &mut super::local::Local<'a>,
+            next: &mut i32,
             stmt: &'a ast::Stmt,
         ) -> Result<(), crate::error::Error> {
             match stmt {
                 ast::Stmt::Block(_, stmts) => {
                     for s in stmts {
-                        walk(local, s)?;
+                        walk(global, local, next, s)?;
                     }
                 }
                 ast::Stmt::Cond(_, t, f) => {
-                    walk(local, t)?;
+                    walk(global, local, next, t)?;
                     if let Some(e) = f {
-                        walk(local, e)?;
+                        walk(global, local, next, e)?;
                     }
                 }
-                ast::Stmt::Loop(_, body) => walk(local, body)?,
+                ast::Stmt::Loop(_, body) => walk(global, local, next, body)?,
                 ast::Stmt::Var(ident, ty, _) => {
-                    let _ = local.push(ident, ty);
+                    let nty = global.normtype(ty)?;
+                    let size = nty.sizeof() as i32;
+                    let head = *next - size + 1;
+                    *next -= size;
+                    let _ = local.insert(ident, nty, head);
                 }
                 _ => {}
             }
             Ok(())
         }
+        let mut next: i32 = -2;
         for s in body {
-            walk(&mut local, s).ok()?;
+            walk(self, &mut local, &mut next, s).ok()?;
         }
         Some(local.entries())
     }

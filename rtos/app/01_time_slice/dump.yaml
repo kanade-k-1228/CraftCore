@@ -1,0 +1,18 @@
+0x010F:
+  stack: false
+  heap: [0x0042, 0x0043]
+0x014C:
+  stack: false
+  heap: []
+0x014F:
+  stack: false
+  heap: []
+0x0152:
+  stack: false
+  heap: []
+0x015B:
+  stack: false
+  heap: []
+0x0164:
+  stack: false
+  heap: []

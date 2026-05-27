@@ -8,10 +8,9 @@ pub fn genibin<'a>(
     imap: &IndexMap<String, usize>,
     dmap: &IndexMap<String, usize>,
 ) -> Result<Vec<u8>, Error> {
-    // Calculate max address
     let max_addr = imap
         .iter()
-        .filter_map(|(name, &addr)| global.code(name).ok().map(|code| addr + code.0.len() * 4))
+        .filter_map(|(name, &addr)| global.code(name).ok().map(|code| (addr + code.0.len()) * 4))
         .max()
         .unwrap_or(0);
 
@@ -20,7 +19,7 @@ pub fn genibin<'a>(
     // Resolve symbols and write to binary
     for (name, &addr) in imap {
         let code = global.code(name)?;
-        let mut offset = addr;
+        let mut offset = addr * 4;
         for inst in &code.0 {
             let resolved = inst.clone().resolve(|imm| match imm {
                 Imm::Lit(val) => val as u16,
@@ -43,8 +42,7 @@ pub fn genibin<'a>(
 }
 
 pub fn gencbin(global: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, Error> {
-    // Find the maximum address to determine binary size
-    let max_addr = dmmap
+    let max_words = dmmap
         .iter()
         .filter_map(|(name, addr)| {
             global
@@ -54,21 +52,19 @@ pub fn gencbin(global: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u
         .max()
         .unwrap_or(0);
 
-    // Create binary with proper size, filled with zeros
-    let mut binary = vec![0u8; max_addr];
+    let mut words = vec![0u16; max_words];
 
-    // Place each constant at its specified address
     for name in global.consts() {
         if let Some((_, value, _)) = global.get_const_resolved(name) {
             if let Some(&addr) = dmmap.get(name) {
-                let bytes = value.bin();
-                let end = (addr + bytes.len()).min(binary.len());
-                if addr < binary.len() {
-                    binary[addr..end].copy_from_slice(&bytes[..end - addr]);
+                let payload = value.bin();
+                let end = (addr + payload.len()).min(words.len());
+                if addr < words.len() {
+                    words[addr..end].copy_from_slice(&payload[..end - addr]);
                 }
             }
         }
     }
 
-    Ok(binary)
+    Ok(words.into_iter().flat_map(|w| w.to_le_bytes()).collect())
 }
