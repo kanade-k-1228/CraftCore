@@ -1,42 +1,31 @@
-# CraftCore: Learn the fundamentals of computers
+# 🥤 CraftCore: Learn the fundamentals of computers
 
 CraftCore is a project to build a CPU with standard logic IC's, and run custom OS on it.
 
 - **Simple**: We keep it simple instead of going for optimization, so it's easy to implement.
 - **Sufficient**: Our computer has sufficient functionality to run various programs.
+- **Scalable**: Our computer provides interfaces for extending its functionality, allowing you to attach various peripheral cards.
 
-## Archtecture: RK16
+## Stacks
 
-RK16 is a simple RISC ISA.
-
-## Assembler: rkasm
-
-## Emulator: rkemu
-
-## RKOS: Real Time OS for RK16
+- arch: Define binary formats
+- tasm: Assembler with strong abstruction
+- emu: Emulator
+- rtos: Real-Time OS
 
 ## Tutorial
 
-### Install
+### 1. Install tools
 
 ```
 $ cargo install --path tasm
 $ cargo install --path emu
 ```
 
-### Assemble
+### 2. Run examples
 
 ```
-$ tasm sample/00_asm_test/main.tasm
-```
-
-![](rkasm.png)
-
-Left side is the output binary, right side is the assembly code.
-
-## Test
-
-```
-cargo test
-cargo llvm-cov --html
+$ cd example/00_asm
+$ ccasm main.tasm
+$ ccemu ...
 ```

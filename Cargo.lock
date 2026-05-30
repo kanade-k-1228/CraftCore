@@ -275,19 +275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rkasm"
-version = "0.1.0"
-dependencies = [
- "arch",
- "bimap",
- "clap",
- "color-print",
- "indexmap",
- "once_cell",
- "thiserror",
-]
-
-[[package]]
 name = "rkemu"
 version = "0.1.0"
 dependencies = [
