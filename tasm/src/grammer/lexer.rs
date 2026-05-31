@@ -115,17 +115,7 @@ impl<'a> LineLexer<'a> {
                     let (_, ch1) = self.consume().unwrap();
 
                     let ch_value = if ch1 == '\\' {
-                        // Handle escape sequences
-                        let (_, ch2) = self.consume().unwrap();
-                        match ch2 {
-                            'n' => '\n',
-                            't' => '\t',
-                            'r' => '\r',
-                            '\\' => '\\',
-                            '\'' => '\'',
-                            '0' => '\0',
-                            _ => panic!("Invalid escape sequence: \\{}", ch2),
-                        }
+                        self.parse_escape()
                     } else {
                         ch1
                     };
@@ -194,25 +184,30 @@ impl<'a> LineLexer<'a> {
         self.consume();
 
         let mut lexeme = vec![];
-        let mut escape = false;
         while let Some((_, ch)) = self.consume() {
-            if escape {
-                match ch {
-                    '\\' => lexeme.push('\\'),
-                    'n' => lexeme.push('\n'),
-                    ch => panic!("Invalid Escape :{ch}"),
-                }
-                escape = false;
-            } else {
-                match ch {
-                    '"' => break,
-                    '\\' => escape = true,
-                    ch => lexeme.push(ch),
-                }
+            match ch {
+                '"' => break,
+                '\\' => lexeme.push(self.parse_escape()),
+                ch => lexeme.push(ch),
             }
         }
         let lexeme = lexeme.into_iter().collect::<String>();
         TokenKind::Text(lexeme.to_string())
+    }
+
+    /// Decode the character following a `\` in a char/string literal.
+    fn parse_escape(&mut self) -> char {
+        let (_, ch) = self.consume().expect("Unexpected EOF in escape sequence");
+        match ch {
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            '\\' => '\\',
+            '\'' => '\'',
+            '"' => '"',
+            '0' => '\0',
+            _ => panic!("Invalid escape sequence: \\{}", ch),
+        }
     }
 
     fn parse_number(&mut self) -> TokenKind {
@@ -222,6 +217,14 @@ impl<'a> LineLexer<'a> {
                 if ch1 == 'x' || ch1 == 'X' {
                     self.consume();
                     return self.parse_number_hex(ch0, ch1);
+                }
+                if ch1 == 'o' || ch1 == 'O' {
+                    self.consume();
+                    return self.parse_number_oct(ch0, ch1);
+                }
+                if ch1 == 'b' || ch1 == 'B' {
+                    self.consume();
+                    return self.parse_number_bin(ch0, ch1);
                 }
             }
         }
@@ -238,6 +241,30 @@ impl<'a> LineLexer<'a> {
         }
         let lexeme = lexeme.into_iter().collect::<String>();
         match usize::from_str_radix(&lexeme[2..].replace("_", ""), 16) {
+            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
+            Err(_) => TokenKind::Error(lexeme.to_string()),
+        }
+    }
+
+    fn parse_number_oct(&mut self, ch0: char, ch1: char) -> TokenKind {
+        let mut lexeme = vec![ch0, ch1];
+        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '_' | '0'..='7')) {
+            lexeme.push(ch);
+        }
+        let lexeme = lexeme.into_iter().collect::<String>();
+        match usize::from_str_radix(&lexeme[2..].replace("_", ""), 8) {
+            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
+            Err(_) => TokenKind::Error(lexeme.to_string()),
+        }
+    }
+
+    fn parse_number_bin(&mut self, ch0: char, ch1: char) -> TokenKind {
+        let mut lexeme = vec![ch0, ch1];
+        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '_' | '0' | '1')) {
+            lexeme.push(ch);
+        }
+        let lexeme = lexeme.into_iter().collect::<String>();
+        match usize::from_str_radix(&lexeme[2..].replace("_", ""), 2) {
             Ok(num) => TokenKind::Number(lexeme.to_string(), num),
             Err(_) => TokenKind::Error(lexeme.to_string()),
         }

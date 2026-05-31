@@ -20,7 +20,7 @@ def = "type" ident "=" type ";"
     | "asm" [ "@" expr ] ident "{" { asm-stmt } "}"
     | "fn" ident "(" [ ident ":" type { "," ident ":" type } [ "," ] ] ")" [ "->" type ] "{" { stmt } "}" ;
 
-asm-stmt = { ident ":" } ident "(" [ expr { "," expr } [ "," ] ] ")" [ ";" ] ;
+asm-stmt = { ident ":" } ident "(" [ expr { "," expr } [ "," ] ] ")" ";" ;
 
 (* Statements -------------------------------------------------------------- *)
 
@@ -50,7 +50,7 @@ mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ] ;
 unary-expr = ( "+" | "-" | "!" | "@" ) unary-expr | postfix-expr ;
 
 postfix-expr = prim-expr { postfix-op } ;
-postfix-op = "(" [ expr { "," expr } ] ")"
+postfix-op = "(" [ expr { "," expr } [ "," ] ] ")"
            | "[" expr "]"
            | "." ident
            | "@"
@@ -75,13 +75,12 @@ ident = ( "A".."Z" | "a".."z" | "_" ) { "0".."9" | "A".."Z" | "a".."z" | "_" } ;
 
 (* Number literal *)
 num-lit = hex | oct | bin | dec ;
-hex = "0x" { "_" | "0".."9" | "A".."F" | "a".."f" } ;
-oct = "0o" { "_" | "0".."7" } ;
-bin = "0b" { "_" | "0" | "1" } ;
+hex = ( "0x" | "0X" ) { "_" | "0".."9" | "A".."F" | "a".."f" } ;
+oct = ( "0o" | "0O" ) { "_" | "0".."7" } ;
+bin = ( "0b" | "0B" ) { "_" | "0" | "1" } ;
 dec = "0".."9" { "0".."9" | "_" } ;
 
 (* String and Character literals *)
-string-lit = '"' { char } '"' ;
-char-lit = "'" char "'" ;
-char = esc | ? any character except ' and \ ? ;
+char-lit = "'" ( esc | ? any character except ' and \ ? ) "'" ;
+string-lit = '"' { esc | ? any character except " and \ ? } '"' ;
 esc = "\" ( "n" | "t" | "r" | "\" | "'" | '"' | "0" ) ;

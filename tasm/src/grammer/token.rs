@@ -74,11 +74,8 @@ pub enum TokenKind {
     KwAs,       // "as"
     KwSizeof,   // "sizeof"
 
-    // Identifier
-    Ident(String),
-
-    // Scope name ('ident) — used to label a `{}` scope
-    Scope(String),
+    Ident(String), // Identifier
+    Scope(String), // Scope name
 
     // Literals
     Number(String, usize),
