@@ -1,6 +1,6 @@
 SRCS := main.tasm \
-	../../rtos/src/init.tasm \
-	../../rtos/src/heap.tasm \
-	../../rtos/src/serial.tasm \
-	../../rtos/src/task.tasm
+	../../rtos/init.tasm \
+	../../rtos/heap.tasm \
+	../../rtos/serial.tasm \
+	../../rtos/task.tasm
 include ../common.mk
