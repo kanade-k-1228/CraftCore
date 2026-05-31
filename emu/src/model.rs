@@ -3,7 +3,6 @@ use std::io::{self, Read};
 use std::u16;
 
 use arch::alu::ALU;
-use arch::inst::Inst;
 use arch::op::Op;
 use arch::reg::Reg;
 
@@ -110,11 +109,10 @@ impl State {
         Ok(())
     }
 
-    pub fn exec(&mut self) -> (u16, u32, Op, Inst<Reg, u16>) {
+    pub fn exec(&mut self) -> (u16, u32, Op<Reg, u16>) {
         let pc = self.dmem[Reg::PC as usize];
         let bin = self.imem[pc as usize];
-        let op = Op::from_bin(bin);
-        let inst = Inst::from_op(op.clone());
+        let op = Op::decode(bin);
 
         match op {
             Op::CALC(alu, rd, rs1, rs2) => self.calc(alu, rd, rs1, rs2),
@@ -123,7 +121,7 @@ impl State {
             Op::STORE(rs2, rs1, imm) => self.store(rs2, rs1, imm),
             Op::CTRL(rd, rs1, rs2, imm) => self.ctrl(rd, rs1, rs2, imm),
         };
-        return (pc, bin, op, inst);
+        return (pc, bin, op);
     }
 
     fn calc(&mut self, alu: ALU, rd: Reg, rs1: Reg, rs2: Reg) {

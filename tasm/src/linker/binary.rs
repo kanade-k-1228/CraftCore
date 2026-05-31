@@ -30,7 +30,7 @@ pub fn genibin<'a>(
                     panic!("internal error: unpatched scope placeholder (id={})", id)
                 }
             });
-            let bytes = resolved.to_op().to_bin().to_le_bytes();
+            let bytes = resolved.encode().to_le_bytes();
             if offset + 4 <= binary.len() {
                 binary[offset..offset + 4].copy_from_slice(&bytes);
                 offset += 4;

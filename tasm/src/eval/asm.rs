@@ -7,7 +7,7 @@ use super::{
     code::{Code, Imm},
     global::Global,
 };
-use arch::{inst::Inst, reg::Reg};
+use arch::{op::Op, reg::Reg};
 use std::collections::HashMap;
 
 impl<'a> Global<'a> {
@@ -49,143 +49,139 @@ fn parse_stmt<'a>(
     local: &HashMap<&str, usize>,
     idx: usize,
     stmt: &'a ast::Asm,
-) -> Result<Inst<Reg, Imm>, Error> {
+) -> Result<Op<Reg, Imm>, Error> {
     let g = global;
     let ast::Asm((inst, _), args, _, pos) = stmt;
     let loc = pos.clone();
     match (inst.to_lowercase().as_str(), args.len()) {
-        ("nop", 0) => Ok(Inst::NOP()),
-        ("mov", 2) => Ok(Inst::MOV(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("add", 3) => Ok(Inst::ADD(
+        ("nop", 0) => Ok(Op::nop()),
+        ("mov", 2) => Ok(Op::mov(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("add", 3) => Ok(Op::add(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("addi", 3) => Ok(Inst::ADDI(
+        ("addi", 3) => Ok(Op::addi(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("subi", 3) => Ok(Inst::SUBI(
+        ("subi", 3) => Ok(Op::subi(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("andi", 3) => Ok(Inst::ANDI(
+        ("andi", 3) => Ok(Op::andi(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("ori", 3) => Ok(Inst::ORI(
+        ("ori", 3) => Ok(Op::ori(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("xori", 3) => Ok(Inst::XORI(
+        ("xori", 3) => Ok(Op::xori(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("eqi", 3) => Ok(Inst::EQI(
+        ("eqi", 3) => Ok(Op::eqi(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("neqi", 3) => Ok(Inst::NEQI(
+        ("neqi", 3) => Ok(Op::neqi(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("lti", 3) => Ok(Inst::LTI(
+        ("lti", 3) => Ok(Op::lti(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("ltsi", 3) => Ok(Inst::LTSI(
+        ("ltsi", 3) => Ok(Op::ltsi(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("not", 2) => Ok(Inst::NOT(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("loadi", 2) => Ok(Inst::LOADI(args[0].reg(&loc)?, args[1].imm(g, &loc)?)),
-        ("sub", 3) => Ok(Inst::SUB(
+        ("not", 2) => Ok(Op::not(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("loadi", 2) => Ok(Op::loadi(args[0].reg(&loc)?, args[1].imm(g, &loc)?)),
+        ("sub", 3) => Ok(Op::sub(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("and", 3) => Ok(Inst::AND(
+        ("and", 3) => Ok(Op::and(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("or", 3) => Ok(Inst::OR(
+        ("or", 3) => Ok(Op::or(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("xor", 3) => Ok(Inst::XOR(
+        ("xor", 3) => Ok(Op::xor(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("eq", 3) => Ok(Inst::EQ(
+        ("eq", 3) => Ok(Op::eq(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("neq", 3) => Ok(Inst::NEQ(
+        ("neq", 3) => Ok(Op::neq(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("lt", 3) => Ok(Inst::LT(
+        ("lt", 3) => Ok(Op::lt(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("lts", 3) => Ok(Inst::LTS(
+        ("lts", 3) => Ok(Op::lts(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].reg(&loc)?,
         )),
-        ("sr", 2) => Ok(Inst::SR(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("srs", 2) => Ok(Inst::SRS(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("srr", 2) => Ok(Inst::SRR(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("sl", 2) => Ok(Inst::SL(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("slr", 2) => Ok(Inst::SLR(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("load", 2) => Ok(Inst::LOADI(args[0].reg(&loc)?, args[1].imm(g, &loc)?)),
-        ("load", 3) => Ok(Inst::LOAD(
+        ("sr", 2) => Ok(Op::sr(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("srs", 2) => Ok(Op::srs(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("srr", 2) => Ok(Op::srr(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("sl", 2) => Ok(Op::sl(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("slr", 2) => Ok(Op::slr(args[0].reg(&loc)?, args[1].reg(&loc)?)),
+        ("load", 2) => Ok(Op::loadi(args[0].reg(&loc)?, args[1].imm(g, &loc)?)),
+        ("load", 3) => Ok(Op::load(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
-        ("store", 2) => Ok(Inst::STORE(
-            args[1].reg(&loc)?,
-            Reg::Z,
-            args[0].imm(g, &loc)?,
-        )),
-        ("store", 3) => Ok(Inst::STORE(
+        ("store", 2) => Ok(Op::store(args[1].reg(&loc)?, Reg::Z, args[0].imm(g, &loc)?)),
+        ("store", 3) => Ok(Op::store(
             args[0].reg(&loc)?,
             args[1].reg(&loc)?,
             args[2].imm(g, &loc)?,
         )),
 
-        ("jumpif", 2) => Ok(Inst::JUMPIF(
+        ("jumpif", 2) => Ok(Op::jumpif(
             args[0].reg(&loc)?,
             args[1].global(global, &loc)?,
         )),
-        ("jumpifr", 2) => Ok(Inst::JUMPIFR(
+        ("jumpifr", 2) => Ok(Op::jumpifr(
             args[0].reg(&loc)?,
             args[1].local(local, idx, &loc)?,
         )),
 
-        ("jump", 1) => Ok(Inst::JUMP(args[0].global(global, &loc)?)),
-        ("jumpr", 1) => Ok(Inst::JUMPR(args[0].local(local, idx, &loc)?)),
+        ("jump", 1) => Ok(Op::jump(args[0].global(global, &loc)?)),
+        ("jumpr", 1) => Ok(Op::jumpr(args[0].local(local, idx, &loc)?)),
 
-        ("call", 1) => Ok(Inst::CALL(args[0].global(global, &loc)?)),
+        ("call", 1) => Ok(Op::call(args[0].global(global, &loc)?)),
 
-        ("ret", 0) => Ok(Inst::RET()),
-        ("iret", 0) => Ok(Inst::IRET()),
+        ("ret", 0) => Ok(Op::ret()),
+        ("iret", 0) => Ok(Op::iret()),
         _ => Err(Error::InvalidInstruction(loc, inst.clone())),
     }
 }

@@ -72,8 +72,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tmax = args.tmax.unwrap_or(u64::MAX);
     for time in 0..tmax {
         // 1. Execute instruction
-        let (addr, code, _, inst) = state.exec();
-        println!("[{:0>4}] {}", time, inst.cformat());
+        let (addr, code, op) = state.exec();
+        println!("[{:0>4}] {}", time, op.print());
 
         // Execute side effects
         for hook in hooks.iter_mut() {

@@ -1,8 +1,8 @@
-use arch::inst::Inst;
+use arch::op::Op;
 use arch::reg::Reg;
 
 #[derive(Debug, Clone)]
-pub struct Code(pub Vec<Inst<Reg, Imm>>);
+pub struct Code(pub Vec<Op<Reg, Imm>>);
 
 /// Unresolved immidiate value
 #[derive(Debug, Clone)]
@@ -19,5 +19,11 @@ impl Imm {
     /// FP-relative negative offset (= FP - n). Encoded as 16bit two's complement.
     pub fn neg(n: usize) -> Self {
         Imm::Lit(((-(n as i32)) as u16) as usize)
+    }
+}
+
+impl From<u16> for Imm {
+    fn from(v: u16) -> Self {
+        Imm::Lit(v as usize)
     }
 }
