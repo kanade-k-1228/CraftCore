@@ -38,7 +38,6 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    println!("RK16 Emulator by kanade-k-1228");
 
     println!("+-----------------------------------------------+");
     println!("| {:<45} |", args.ibin);

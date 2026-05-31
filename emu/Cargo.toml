@@ -1,9 +1,9 @@
 [package]
-name = "rkemu"
+name = "ccemu"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kanade <kanade.k.1228@gmail.com>"]
-description = "Emulator for RK16 architecture"
+description = "Emulator for CC16 architecture"
 
 [dependencies]
 arch = { path = "../arch" }

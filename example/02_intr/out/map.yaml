@@ -1,0 +1,11 @@
+code:
+  reset:
+    addr: 0x0
+    size: 0x1
+    stacks: {}
+  main:
+    addr: 0x8
+    size: 0x4
+    stacks: {}
+data:
+  {}

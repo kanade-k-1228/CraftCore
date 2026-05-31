@@ -1,36 +1,38 @@
-.PHONY: build release test fmt check install clean help
+EXAMPLES := $(patsubst example/%/,%,$(wildcard example/*/))
+
+.PHONY: help b i c f t $(EXAMPLES)
 
 help:
 	@echo "Targets:"
-	@echo "  build     - cargo build --all"
-	@echo "  release   - cargo build --all --release"
-	@echo "  test      - cargo test --all"
-	@echo "  fmt       - cargo fmt --all"
-	@echo "  check     - cargo check && cargo clippy"
-	@echo "  install   - install tasm and rkemu"
-	@echo "  clean     - cargo clean"
+	@echo "  make b         : Release build"
+	@echo "  make i         : Install release build"
+	@echo "  make c         : Check"
+	@echo "  make f         : Fix"
+	@echo "  make t         : Run all tests"
+	@echo "  make <example> : Run example"
+	@echo "    $(EXAMPLES)"
 
-build:
-	cargo build --all
+b: target/release/tasm target/release/ccemu
+target/release/tasm:
+	cargo build -p tasm --release
+target/release/ccemu:
+	cargo build -p ccemu --release
 
-release:
-	cargo build --all --release
-
-test:
-	cargo test --all
-
-fmt:
-	cargo fmt --all
-
-check:
-	cargo check --all
-	cargo clippy --all
-
-install:
+i:
 	cargo install --path tasm
 	cargo install --path emu
 
-clean:
-	cargo clean
+t:
+	cargo test --all
 
-.DEFAULT_GOAL := help
+f:
+	cargo fmt --all
+
+c:
+	cargo check --all
+	cargo clippy --all
+
+$(EXAMPLES): target/release/tasm target/release/ccemu
+	@$(MAKE) --no-print-directory -C example/$@ \
+		TASM=$(CURDIR)/target/release/tasm \
+		CCEMU=$(CURDIR)/target/release/ccemu

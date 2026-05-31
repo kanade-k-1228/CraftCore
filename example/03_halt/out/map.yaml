@@ -1,0 +1,9 @@
+code:
+  reset:
+    addr: 0x0
+    size: 0x2
+    stacks: {}
+data:
+  halt:
+    addr: 0x10
+    size: 0x1
