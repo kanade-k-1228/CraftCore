@@ -1,0 +1,36 @@
+import arch_pkg::*;
+
+/// 14演算ALU: arch::alu::ALU と等価。a,b は 16bit unsigned。
+/// 比較結果は cemu と同様 0xFFFF/0x0000 で返す。
+pub module alu (
+    i_op: input  ALU         ,
+    i_a : input  logic<WORD_W>,
+    i_b : input  logic<WORD_W>,
+    o_y : output logic<WORD_W>,
+) {
+    function calc (
+        op: input ALU         ,
+        a : input logic<WORD_W>,
+        b : input logic<WORD_W>,
+    ) -> logic<WORD_W> {
+        case op {
+            ALU::ADD: return a + b;
+            ALU::SUB: return a - b;
+            ALU::AND: return a & b;
+            ALU::OR : return a | b;
+            ALU::XOR: return a ^ b;
+            ALU::EQ : return if a == b ? 16'hFFFF : 16'h0000;
+            ALU::NEQ: return if a != b ? 16'hFFFF : 16'h0000;
+            ALU::LT : return if a <: b ? 16'hFFFF : 16'h0000;
+            ALU::LTS: return if a as SWord <: b as SWord ? 16'hFFFF : 16'h0000;
+            ALU::SR : return {1'b0, a[15:1]};
+            ALU::SRS: return {a[15], a[15:1]};
+            ALU::SRR: return {a[0], a[15:1]};
+            ALU::SL : return {a[14:0], 1'b0};
+            ALU::SLR: return {a[14:0], a[15]};
+            default : return 16'h0000;
+        }
+    }
+
+    assign o_y = calc(i_op, i_a, i_b);
+}

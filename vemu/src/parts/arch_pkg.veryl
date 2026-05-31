@@ -1,0 +1,57 @@
+pub package arch_pkg {
+    const WORD_W : u32 = 16;
+    const INST_W : u32 = 32;
+    const REG_N  : u32 = 16;
+    const REG_W  : u32 = 4;
+    const ADDR_W : u32 = 16;
+
+    type Word  = logic<WORD_W>;
+    type SWord = signed logic<WORD_W>;
+    type Inst  = logic<INST_W>;
+    type Addr  = logic<ADDR_W>;
+    type RegId = logic<REG_W>;
+
+    enum ALU: logic<4> {
+        ADD = 4'd0,
+        SUB = 4'd1,
+        AND = 4'd2,
+        OR  = 4'd3,
+        XOR = 4'd4,
+        EQ  = 4'd5,
+        NEQ = 4'd6,
+        LT  = 4'd7,
+        LTS = 4'd8,
+        SR  = 4'd9,
+        SRS = 4'd10,
+        SRR = 4'd11,
+        SL  = 4'd12,
+        SLR = 4'd13,
+    }
+
+    enum Reg: logic<4> {
+        Z   = 4'd0,
+        IRA = 4'd1,
+        PC  = 4'd2,
+        CSR = 4'd3,
+        RA  = 4'd4,
+        FP  = 4'd5,
+        T0  = 4'd6,
+        T1  = 4'd7,
+        T2  = 4'd8,
+        T3  = 4'd9,
+        T4  = 4'd10,
+        T5  = 4'd11,
+        T6  = 4'd12,
+        T7  = 4'd13,
+        T8  = 4'd14,
+        T9  = 4'd15,
+    }
+
+    enum OpC: logic<4> {
+        CALC  = 4'b0000,
+        CALCI = 4'b0001,
+        LOAD  = 4'b0011,
+        STORE = 4'b0111,
+        CTRL  = 4'b1111,
+    }
+}

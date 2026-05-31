@@ -1,0 +1,22 @@
+import arch_pkg::*;
+
+/// 命令メモリ: 64KW x 32bit, 同期1R1W。
+/// 書き込みポートはローダ用 (実機 ROM の場合はゲート可)。
+pub module imem (
+    i_clk  : input  clock     ,
+    i_raddr: input  Addr      ,
+    o_rdata: output Inst      ,
+    i_we   : input  logic     ,
+    i_waddr: input  Addr      ,
+    i_wdata: input  Inst      ,
+) {
+    var mem: Inst[65536];
+
+    always_ff {
+        if i_we {
+            mem[i_waddr] = i_wdata;
+        }
+    }
+
+    assign o_rdata = mem[i_raddr];
+}

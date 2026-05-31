@@ -10,5 +10,7 @@ CraftCore is a project to build a CPU with standard logic IC's, and run custom O
 
 - arch: Define binary formats
 - tasm: Assembler with strong abstruction
-- cemu: Core Emulator
 - rtos: Real-Time OS
+- cemu: Cycle level emulator
+- hemu: Hardware emulator (veryl)
+- board: Circuit implimentation (kicad)

@@ -1,0 +1,75 @@
+import arch_pkg::*;
+
+/// CALC/CALCI 命令の1サイクル実行ユニット:
+///   decoder + regfile + alu を組み合わせて、命令から writeback まで実行する。
+/// LOAD/STORE/CTRL は未対応 (parts 検証用の最小 unit)。
+pub module exec (
+    i_clk : input  clock,
+    i_rst : input  reset,
+    i_inst: input  Inst , /// 実行する命令 (1サイクルに1命令)
+    i_en  : input  logic, /// 1 のときその命令を発行
+    // デバッグ用の覗き窓
+    o_rd     : output RegId,
+    o_alu    : output ALU  ,
+    o_result : output Word ,
+    o_writeen: output logic,
+) {
+    var opc : OpC  ;
+    var rd  : RegId;
+    var rs1 : RegId;
+    var rs2 : RegId;
+    var alu_op : ALU;
+    var imm : Word ;
+
+    inst u_dec: decoder (
+        i_inst             ,
+        o_opc  : opc       ,
+        o_rd   : rd        ,
+        o_rs1  : rs1       ,
+        o_rs2  : rs2       ,
+        o_alu  : alu_op    ,
+        o_imm  : imm       ,
+    );
+
+    var rdata1: Word;
+    var rdata2: Word;
+    var wdata : Word;
+    var we    : logic;
+
+    inst u_rf: regfile (
+        i_clk                  ,
+        i_rst                  ,
+        i_raddr1: rs1          ,
+        i_raddr2: rs2          ,
+        o_rdata1: rdata1       ,
+        o_rdata2: rdata2       ,
+        i_we    : we           ,
+        i_waddr : rd           ,
+        i_wdata : wdata        ,
+    );
+
+    var alu_b: Word;
+    always_comb {
+        case opc {
+            OpC::CALC : alu_b = rdata2;
+            OpC::CALCI: alu_b = imm;
+            default   : alu_b = 0 as Word;
+        }
+    }
+
+    inst u_alu: alu (
+        i_op: alu_op  ,
+        i_a : rdata1  ,
+        i_b : alu_b   ,
+        o_y : wdata   ,
+    );
+
+    always_comb {
+        we = i_en && (opc == OpC::CALC || opc == OpC::CALCI);
+    }
+
+    assign o_rd      = rd;
+    assign o_alu     = alu_op;
+    assign o_result  = wdata;
+    assign o_writeen = we;
+}

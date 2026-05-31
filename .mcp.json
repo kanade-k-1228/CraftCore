@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "kicad": {
+      "command": "board/kicad-mcp/.venv/bin/python",
+      "args": [
+        "board/kicad-mcp/main.py"
+      ],
+      "env": {
+        "KICAD_SEARCH_PATHS": "board"
+      }
+    }
+  }
+}

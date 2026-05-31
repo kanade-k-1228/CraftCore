@@ -1,0 +1,77 @@
+#[test(test_exec_calc)]
+embed (inline) sv{{{
+module test_exec_calc;
+  import vemu_arch_pkg::*;
+
+  logic        clk = 0;
+  logic        rst = 0;  // active-low
+  logic [31:0] inst;
+  logic        en;
+  logic [3:0]  rd;
+  ALU          alu;
+  logic [15:0] result;
+  logic        we;
+
+  always #5 clk = ~clk;
+
+  vemu_exec u_dut (
+    .i_clk     (clk   ),
+    .i_rst     (rst   ),
+    .i_inst    (inst  ),
+    .i_en      (en    ),
+    .o_rd      (rd    ),
+    .o_alu     (alu   ),
+    .o_result  (result),
+    .o_writeen (we    )
+  );
+
+  function automatic logic [31:0] enc(
+    input logic [3:0]  opc_in,
+    input logic [3:0]  rd_in,
+    input logic [3:0]  rs1_in,
+    input logic [3:0]  rs2_in,
+    input logic [15:0] imm_in
+  );
+    return {imm_in, {rd_in, rs2_in}, {rs1_in, opc_in}};
+  endfunction
+
+  initial begin
+    en = 0; inst = 0;
+    @(posedge clk); @(posedge clk);
+    rst = 1;
+    @(posedge clk);
+
+    // T0 <- 0 + 5 (loadi T0, 5 == CALCI ADD T0, Z, 5)
+    @(negedge clk);
+    inst = enc(OpC_CALCI, 4'd6, 4'd0, 4'd0, 16'd5); en = 1;
+    #1;
+    assert (we === 1'b1)        else $error("writeen for CALCI");
+    assert (rd === 4'd6)         else $error("rd for loadi");
+    assert (result === 16'd5)    else $error("CALCI ADD result=%h", result);
+    @(posedge clk);
+
+    // T1 <- 0 + 7
+    @(negedge clk);
+    inst = enc(OpC_CALCI, 4'd7, 4'd0, 4'd0, 16'd7); en = 1;
+    @(posedge clk);
+
+    // T2 <- T0 + T1
+    @(negedge clk);
+    inst = enc(OpC_CALC, 4'd8, 4'd6, 4'd7, 16'h0000); en = 1;
+    #1;
+    assert (we === 1'b1)         else $error("writeen for CALC");
+    assert (alu === ALU_ADD)     else $error("CALC alu");
+    assert (result === 16'd12)   else $error("CALC ADD t0+t1 result=%h", result);
+    @(posedge clk);
+
+    // LOAD は今の exec では実行しない -> we は 0
+    @(negedge clk);
+    inst = enc(OpC_LOAD, 4'd6, 4'd7, 4'd0, 16'h0000); en = 1;
+    #1;
+    assert (we === 1'b0) else $error("LOAD should not writeen in exec");
+
+    $display("test_exec_calc: all checks passed");
+    $finish;
+  end
+endmodule
+}}}

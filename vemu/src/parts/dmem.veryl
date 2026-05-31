@@ -1,0 +1,21 @@
+import arch_pkg::*;
+
+/// データメモリ: 64KW x 16bit, 1R1W (read 非同期 / write 同期)。
+pub module dmem (
+    i_clk  : input  clock,
+    i_raddr: input  Addr ,
+    o_rdata: output Word ,
+    i_we   : input  logic,
+    i_waddr: input  Addr ,
+    i_wdata: input  Word ,
+) {
+    var mem: Word[65536];
+
+    always_ff {
+        if i_we {
+            mem[i_waddr] = i_wdata;
+        }
+    }
+
+    assign o_rdata = mem[i_raddr];
+}

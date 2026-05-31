@@ -1,0 +1,92 @@
+#[test(test_decoder_basic)]
+embed (inline) sv{{{
+module test_decoder_basic;
+  import vemu_arch_pkg::*;
+
+  logic [31:0] inst;
+  OpC          opc;
+  logic [3:0]  rd;
+  logic [3:0]  rs1;
+  logic [3:0]  rs2;
+  ALU          alu;
+  logic [15:0] imm;
+
+  vemu_decoder u_dut (
+    .i_inst (inst),
+    .o_opc  (opc ),
+    .o_rd   (rd  ),
+    .o_rs1  (rs1 ),
+    .o_rs2  (rs2 ),
+    .o_alu  (alu ),
+    .o_imm  (imm )
+  );
+
+  // arch::op::encode に合わせて 32bit 命令を組む。
+  // [b0=rs1|opc][b1=rd|rs2][b2,b3=imm LE]
+  function automatic logic [31:0] enc(
+    input logic [3:0]  opc_in,
+    input logic [3:0]  rd_in,
+    input logic [3:0]  rs1_in,
+    input logic [3:0]  rs2_in,
+    input logic [15:0] imm_in
+  );
+    logic [7:0] b0, b1;
+    b0 = {rs1_in, opc_in};
+    b1 = {rd_in,  rs2_in};
+    return {imm_in, b1, b0};
+  endfunction
+
+  initial begin
+    // CALC: add t0, t1, t2  (rd=T0=6, rs1=T1=7, rs2=T2=8, alu=ADD=0 -> imm 下位4bit)
+    inst = enc(OpC_CALC, 4'd6, 4'd7, 4'd8, 16'h0000);
+    #1;
+    assert (opc === OpC_CALC) else $error("CALC opc");
+    assert (rd  === 4'd6)     else $error("CALC rd=%0d", rd);
+    assert (rs1 === 4'd7)     else $error("CALC rs1=%0d", rs1);
+    assert (rs2 === 4'd8)     else $error("CALC rs2=%0d", rs2);
+    assert (alu === ALU_ADD)  else $error("CALC alu=%0d", alu);
+
+    // CALC: xor (alu=XOR=4) -> imm 下位4bit に 4 が入る
+    inst = enc(OpC_CALC, 4'd6, 4'd7, 4'd8, 16'h0004);
+    #1;
+    assert (alu === ALU_XOR) else $error("CALC alu xor=%0d", alu);
+
+    // CALCI: addi rd=T0, rs1=T1, imm=0x1234, alu(ADD=0) -> rs2 フィールドに格納
+    inst = enc(OpC_CALCI, 4'd6, 4'd7, 4'd0, 16'h1234);
+    #1;
+    assert (opc === OpC_CALCI) else $error("CALCI opc");
+    assert (alu === ALU_ADD)   else $error("CALCI alu=%0d", alu);
+    assert (imm === 16'h1234)  else $error("CALCI imm=%h", imm);
+
+    // CALCI: xori (alu=XOR=4) -> rs2=4
+    inst = enc(OpC_CALCI, 4'd6, 4'd7, 4'd4, 16'h00FF);
+    #1;
+    assert (alu === ALU_XOR) else $error("CALCI xori alu=%0d", alu);
+
+    // LOAD
+    inst = enc(OpC_LOAD, 4'd6, 4'd7, 4'd0, 16'hCAFE);
+    #1;
+    assert (opc === OpC_LOAD)  else $error("LOAD opc");
+    assert (rd  === 4'd6)      else $error("LOAD rd");
+    assert (rs1 === 4'd7)      else $error("LOAD rs1");
+    assert (imm === 16'hCAFE)  else $error("LOAD imm");
+
+    // STORE
+    inst = enc(OpC_STORE, 4'd0, 4'd7, 4'd8, 16'hBEEF);
+    #1;
+    assert (opc === OpC_STORE) else $error("STORE opc");
+    assert (rs1 === 4'd7)      else $error("STORE rs1");
+    assert (rs2 === 4'd8)      else $error("STORE rs2");
+    assert (imm === 16'hBEEF)  else $error("STORE imm");
+
+    // CTRL (jump)
+    inst = enc(OpC_CTRL, 4'd0, 4'd0, 4'd0, 16'h0042);
+    #1;
+    assert (opc === OpC_CTRL)  else $error("CTRL opc");
+    assert (imm === 16'h0042)  else $error("CTRL imm");
+
+    $display("test_decoder_basic: all checks passed");
+    $finish;
+  end
+endmodule
+}}}

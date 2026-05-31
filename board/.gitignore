@@ -1,0 +1,8 @@
+kicad-mcp/
+.env
+
+*-backups/
+*.kicad_pro-bak
+*.kicad_sch-bak
+*.kicad_pcb-bak
+fp-info-cache

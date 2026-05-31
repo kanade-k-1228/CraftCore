@@ -1,0 +1,76 @@
+#[test(test_regfile_basic)]
+embed (inline) sv{{{
+module test_regfile_basic;
+  import vemu_arch_pkg::*;
+
+  logic        clk = 0;
+  logic        rst = 0;  // active-low
+  logic [3:0]  raddr1, raddr2;
+  logic [15:0] rdata1, rdata2;
+  logic        we;
+  logic [3:0]  waddr;
+  logic [15:0] wdata;
+
+  always #5 clk = ~clk;
+
+  vemu_regfile u_dut (
+    .i_clk    (clk   ),
+    .i_rst    (rst   ),
+    .i_raddr1 (raddr1),
+    .i_raddr2 (raddr2),
+    .o_rdata1 (rdata1),
+    .o_rdata2 (rdata2),
+    .i_we     (we    ),
+    .i_waddr  (waddr ),
+    .i_wdata  (wdata )
+  );
+
+  initial begin
+    // reset (active-low): 数サイクル 0 を保ってから解除
+    raddr1 = 0; raddr2 = 0; we = 0; waddr = 0; wdata = 0;
+    @(posedge clk); @(posedge clk);
+    rst = 1;
+    @(posedge clk);
+
+    // 全レジスタ 0
+    for (int i = 0; i < 16; ++i) begin
+      raddr1 = i[3:0]; #1;
+      assert (rdata1 === 16'h0000) else $error("init R%0d != 0 (got %h)", i, rdata1);
+    end
+
+    // T0 (=6) に書き込み
+    @(negedge clk);
+    we = 1; waddr = 4'd6; wdata = 16'h1234;
+    @(posedge clk);
+    @(negedge clk);
+    we = 0;
+
+    raddr1 = 4'd6; #1;
+    assert (rdata1 === 16'h1234) else $error("T0 write/read mismatch (got %h)", rdata1);
+
+    // Z (=0) への書き込みは無視される
+    @(negedge clk);
+    we = 1; waddr = 4'd0; wdata = 16'hFFFF;
+    @(posedge clk);
+    @(negedge clk);
+    we = 0;
+
+    raddr1 = 4'd0; #1;
+    assert (rdata1 === 16'h0000) else $error("Z write should be ignored (got %h)", rdata1);
+
+    // 2 ポート同時読み出し
+    @(negedge clk);
+    we = 1; waddr = 4'd7; wdata = 16'hABCD;
+    @(posedge clk);
+    @(negedge clk);
+    we = 0;
+
+    raddr1 = 4'd6; raddr2 = 4'd7; #1;
+    assert (rdata1 === 16'h1234) else $error("dual read p1 (got %h)", rdata1);
+    assert (rdata2 === 16'hABCD) else $error("dual read p2 (got %h)", rdata2);
+
+    $display("test_regfile_basic: all checks passed");
+    $finish;
+  end
+endmodule
+}}}

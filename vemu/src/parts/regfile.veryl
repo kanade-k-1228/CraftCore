@@ -1,0 +1,32 @@
+import arch_pkg::*;
+
+/// 16x16bit レジスタファイル (2R/1W)。
+/// アドレス 0 (Reg::Z) は常に 0 を返し、書き込みは無視。
+pub module regfile (
+    i_clk   : input  clock,
+    i_rst   : input  reset,
+    i_raddr1: input  RegId,
+    i_raddr2: input  RegId,
+    o_rdata1: output Word ,
+    o_rdata2: output Word ,
+    i_we    : input  logic,
+    i_waddr : input  RegId,
+    i_wdata : input  Word ,
+) {
+    var regs: Word[REG_N];
+
+    always_ff {
+        if_reset {
+            for i: u32 in 0..REG_N {
+                regs[i] = 0 as Word;
+            }
+        } else if i_we && i_waddr != 4'd0 {
+            regs[i_waddr] = i_wdata;
+        }
+    }
+
+    always_comb {
+        o_rdata1 = if i_raddr1 == 4'd0 ? 0 as Word : regs[i_raddr1];
+        o_rdata2 = if i_raddr2 == 4'd0 ? 0 as Word : regs[i_raddr2];
+    }
+}
