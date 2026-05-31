@@ -12,8 +12,8 @@ pub struct Serial {
 const INDENT: usize = 26;
 
 impl Serial {
-    const TX: u16 = 0x1000;
-    const RX: u16 = 0x1001;
+    const TX: u16 = 0x0100;
+    const RX: u16 = 0x0101;
     const NONE: u16 = 0xFFFF;
     pub fn arg(style: bool, write_file: Option<String>, read_file: Option<String>) -> Serial {
         // open file and read

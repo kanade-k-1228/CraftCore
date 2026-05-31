@@ -1,6 +1,7 @@
 pub mod dump;
 pub mod intr;
 pub mod serial;
+pub mod video;
 
 use crate::model::State;
 

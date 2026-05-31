@@ -1,0 +1,173 @@
+code:
+  reset:
+    addr: 0x0
+    size: 0x3
+    stacks: {}
+  irq:
+    addr: 0x4
+    size: 0x1
+    stacks: {}
+  task_a:
+    addr: 0x8
+    size: 0x34
+    stacks: {}
+  os_task_scheduler:
+    addr: 0x3c
+    size: 0xb
+    stacks: {}
+  _intr:
+    addr: 0x47
+    size: 0x12
+    stacks: {}
+  malloc:
+    addr: 0x59
+    size: 0x13
+    stacks:
+      size: 0x2
+      addr: 0xfffe
+  task_b:
+    addr: 0x6c
+    size: 0x29
+    stacks: {}
+  _exit:
+    addr: 0x95
+    size: 0x2
+    stacks: {}
+  intr0:
+    addr: 0x97
+    size: 0x9
+    stacks: {}
+  os_task_setup:
+    addr: 0xa0
+    size: 0xdc
+    stacks:
+      initial_state: 0x2
+      stack_size: 0x3
+      entry_address: 0x4
+      last: 0xfffe
+      cur: 0xfffd
+      new_tcb: 0xfffc
+      stack_base: 0xfffb
+      stack_top: 0xfffa
+      fp_init: 0xfff9
+      sp_ptr: 0xfff8
+  task_c:
+    addr: 0x17c
+    size: 0x2d
+    stacks: {}
+  print_str:
+    addr: 0x1a9
+    size: 0x19
+    stacks:
+      s: 0x1
+      p: 0xfffe
+  os_task_wait:
+    addr: 0x1c2
+    size: 0x15
+    stacks: {}
+  init:
+    addr: 0x1d7
+    size: 0x23
+    stacks: {}
+  intr1:
+    addr: 0x1fa
+    size: 0x9
+    stacks: {}
+  intr3:
+    addr: 0x203
+    size: 0x9
+    stacks: {}
+  os_restore_context:
+    addr: 0x20c
+    size: 0x11
+    stacks: {}
+  os_task_ready:
+    addr: 0x21d
+    size: 0x16
+    stacks: {}
+  init_tasks:
+    addr: 0x233
+    size: 0x44
+    stacks: {}
+  os_task_exit:
+    addr: 0x277
+    size: 0x5
+    stacks: {}
+  intr_dispatch:
+    addr: 0x27c
+    size: 0x54
+    stacks: {}
+  intr2:
+    addr: 0x2d0
+    size: 0x9
+    stacks: {}
+data:
+  task_id_a:
+    addr: 0x44
+    size: 0x1
+  task_id_b:
+    addr: 0x45
+    size: 0x1
+  task_id_c:
+    addr: 0x46
+    size: 0x1
+  heap_top:
+    addr: 0x40
+    size: 0x1
+  heap_bottom:
+    addr: 0x41
+    size: 0x1
+  serial_tx:
+    addr: 0x100
+    size: 0x1
+  task_running:
+    addr: 0x42
+    size: 0x1
+  task_list:
+    addr: 0x43
+    size: 0x1
+  user_global_size:
+    addr: 0x3000
+    size: 0x1
+  s_start_a:
+    addr: 0x3001
+    size: 0x8
+  s_start_b:
+    addr: 0x300a
+    size: 0x8
+  s_start_c:
+    addr: 0x3013
+    size: 0x8
+  s_resume_a:
+    addr: 0x301c
+    size: 0x9
+  s_resume_b:
+    addr: 0x3026
+    size: 0x9
+  s_resume_c:
+    addr: 0x3030
+    size: 0x9
+  os_global_size:
+    addr: 0x303a
+    size: 0x1
+  mem_top:
+    addr: 0x303b
+    size: 0x1
+  mem_bottom:
+    addr: 0x303c
+    size: 0x1
+  intr0_flag:
+    addr: 0x303d
+    size: 0x1
+  intr1_flag:
+    addr: 0x303e
+    size: 0x1
+  intr2_flag:
+    addr: 0x303f
+    size: 0x1
+  intr3_flag:
+    addr: 0x3040
+    size: 0x1
+  task_state_ready:
+    addr: 0x3041
+    size: 0x1

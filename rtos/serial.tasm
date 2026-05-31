@@ -3,8 +3,8 @@
 // ============================================================
 
 // シリアル I/O (MMIO)
-static @ 0x1000 serial_tx : int; // 書き込みで 1 文字送信
-static @ 0x1001 serial_rx : int; // 読むと 1 文字受信 (なければ 0xFFFF)
+static @ 0x0100 serial_tx : int; // 書き込みで 1 文字送信
+static @ 0x0101 serial_rx : int; // 読むと 1 文字受信 (なければ 0xFFFF)
 
 // 1 文字送信
 fn print_char(c: int) {

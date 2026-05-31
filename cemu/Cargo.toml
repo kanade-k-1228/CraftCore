@@ -3,7 +3,7 @@ name = "cemu"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kanade <kanade.k.1228@gmail.com>"]
-description = "Emulator for CC16 architecture"
+description = "Cycle level emulator for CraftCore MCU"
 
 [dependencies]
 arch = { path = "../arch" }

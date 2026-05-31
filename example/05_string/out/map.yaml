@@ -9,7 +9,7 @@ code:
     stacks: {}
 data:
   serial_tx:
-    addr: 0x1000
+    addr: 0x100
     size: 0x1
   msg:
     addr: 0x3000

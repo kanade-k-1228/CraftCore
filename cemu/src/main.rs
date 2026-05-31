@@ -3,7 +3,7 @@ mod model;
 
 use clap::Parser;
 
-use hooks::{dump::Dump, intr::Intr, serial::Serial, Hook};
+use hooks::{dump::Dump, intr::Intr, serial::Serial, video::Video, Hook};
 use model::State;
 
 #[derive(Parser, Debug)]
@@ -34,6 +34,10 @@ struct Args {
     /// Serial output file
     #[arg(long)]
     sout: Option<String>,
+
+    /// VRAM dump file (raw little-endian u16, 0x1000-0x2FFF)
+    #[arg(long)]
+    vram_out: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -57,6 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut hooks: Vec<Box<dyn Hook>> = vec![
         Box::new(Serial::arg(true, args.sout, args.sin)),
+        Box::new(Video::arg(args.vram_out)),
         Box::new(Intr::arg(args.intr_cfg)),
         Box::new(Dump::arg(args.dump_cfg, args.dump_all)),
     ];

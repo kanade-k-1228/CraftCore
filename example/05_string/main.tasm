@@ -1,4 +1,4 @@
-static @ 0x1000 serial_tx : int;
+static @ 0x0100 serial_tx : int;
 
 const msg = "Hello, World!\n";
 
