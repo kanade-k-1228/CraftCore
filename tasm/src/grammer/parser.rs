@@ -164,26 +164,24 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// asm-stmt = { ident ":" } ident "(" [ expr { "," expr } ] ")" ";"
     fn parse_asm_stmt(&mut self) -> Result<Asm, Error> {
         let mut labels: Vec<Ident> = Vec::new();
-        let mut pos = Pos::default();
 
         // Parse labels (ident ":")
         while let Some(token) = self.peek() {
             if let Ident(s) = &token.kind {
                 let ident = s.clone();
-                let ident_pos = token.pos.clone();
-                pos = token.pos.clone();
+                let pos = token.pos.clone();
                 self.next();
 
                 if check!(self, Colon) {
                     expect!(self, Colon)?;
-                    labels.push((ident, ident_pos));
+                    labels.push((ident, pos));
                 } else {
                     // This is the instruction name
                     expect!(self, LParen)?;
                     let args = repeat!(self, self.parse_expr(), Comma, RParen);
                     expect!(self, RParen)?;
                     expect!(self, Semicolon)?;
-                    return Ok(Asm((ident, ident_pos), args, labels, pos));
+                    return Ok(Asm((ident, pos.clone()), args, labels, pos));
                 }
             } else {
                 break;

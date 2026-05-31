@@ -55,10 +55,7 @@ dependencies = [
 name = "arch"
 version = "0.1.0"
 dependencies = [
- "bimap",
- "color-print",
  "num_enum",
- "once_cell",
  "serde",
  "strum",
 ]
@@ -240,12 +237,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "once_cell"
-version = "1.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "proc-macro-crate"

@@ -107,36 +107,6 @@ impl Allocator {
             .filter_map(|region| region.name.as_ref().map(|n| (n.clone(), region.begin)))
             .collect()
     }
-
-    /// Get a map of all allocated sections with their addresses and sizes
-    pub fn get_map(&self) -> HashMap<String, (usize, usize)> {
-        self.segments
-            .iter()
-            .filter_map(|section| {
-                section.name.as_ref().map(|name| {
-                    let size = section.end - section.begin;
-                    (name.clone(), (section.begin, size))
-                })
-            })
-            .collect()
-    }
-
-    /// Get an iterator over sections within the specified range [begin, end)
-    pub fn slice(
-        &self,
-        begin: usize,
-        end: usize,
-    ) -> impl Iterator<Item = (String, usize, usize)> + '_ {
-        self.segments
-            .iter()
-            .filter(move |section| section.overlaps(begin, end))
-            .filter_map(|section| {
-                section.name.as_ref().map(|name| {
-                    let size = section.end - section.begin;
-                    (name.clone(), section.begin, size)
-                })
-            })
-    }
 }
 
 /// Represent [begin, end)

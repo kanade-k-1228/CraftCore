@@ -34,11 +34,8 @@ struct LineLexer<'a> {
 
 impl<'a> LineLexer<'a> {
     fn new(line: &'a str, file: Rc<str>, col: usize) -> Self {
-        Self {
-            iter: line.char_indices().peekable(),
-            file,
-            col,
-        }
+        let iter = line.char_indices().peekable();
+        Self { iter, file, col }
     }
 }
 

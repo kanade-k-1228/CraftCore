@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::{self, Read};
-use std::u16;
 
 use arch::alu::ALU;
 use arch::op::Op;
@@ -69,13 +68,6 @@ impl State {
         self.dmem[Self::HALT as usize] == 0x0001
     }
 }
-
-// const WAIT: u16 = 0x0011;
-// const MODE: u16 = 0x0012;
-// const IEN: u16 = 0x0013;
-// const IMASK: u16 = 0x0014;
-// const IRQ: u16 = 0x0015;
-// const TRAP: u16 = 0x0016;
 
 impl State {
     pub fn new() -> Self {

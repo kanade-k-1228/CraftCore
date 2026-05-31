@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 
 use crate::{
     error::Error,
-    eval::{constexpr::ConstExpr, global::Global, normtype::NormType},
+    eval::{global::Global, normtype::NormType},
     grammer::ast,
 };
 
@@ -84,15 +84,6 @@ impl<'a> Local<'a> {
         self.global.normtype(ty)
     }
 
-    pub fn constexpr(&self, expr: &'a ast::Expr) -> Result<ConstExpr, Error> {
-        if let ast::Expr::Ident((name, pos)) = expr {
-            if self.is_local(name) {
-                return Err(Error::NonConstantExpression(pos.clone()));
-            }
-        }
-        self.global.constexpr(expr)
-    }
-
     /// Infer the type of an expression with local context.
     pub fn typeinfer(&self, expr: &'a ast::Expr) -> Result<NormType, Error> {
         match expr {
@@ -143,50 +134,8 @@ impl<'a> Local<'a> {
         }
     }
 
-    pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
-        match expr {
-            ast::Expr::Ident((name, pos)) => {
-                if self.is_local(name) {
-                    return Err(Error::NotAddressable(pos.clone(), name.clone()));
-                }
-                self.global.addrexpr(expr)
-            }
-            ast::Expr::Member(base, _field) => {
-                if let ast::Expr::Ident((name, pos)) = base.as_ref() {
-                    if self.is_local(name) {
-                        return Err(Error::NotAddressable(
-                            pos.clone(),
-                            format!("local variable {}", name),
-                        ));
-                    }
-                }
-                self.global.addrexpr(expr)
-            }
-            ast::Expr::Index(base, _index) => {
-                if let ast::Expr::Ident((name, pos)) = base.as_ref() {
-                    if self.is_local(name) {
-                        return Err(Error::NotAddressable(
-                            pos.clone(),
-                            format!("local variable {}", name),
-                        ));
-                    }
-                }
-                self.global.addrexpr(expr)
-            }
-            _ => self.global.addrexpr(expr),
-        }
-    }
-
-    pub fn is_local(&self, name: &str) -> bool {
-        self.stack.contains_key(name)
-    }
-
     pub fn global_def(&self, name: &str) -> Option<&'a ast::Def> {
         self.global.get(name)
-    }
-
-    pub fn global(&self) -> &'a Global<'a> {
-        self.global
     }
 
     /// (name → FP+offset) を挿入順で返す。
