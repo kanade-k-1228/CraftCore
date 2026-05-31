@@ -1,2 +1,2 @@
-CCEMU_ARGS := -t 10
-include ../common.mk
+ARGS := -t 10
+include ../Makefile

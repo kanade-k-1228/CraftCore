@@ -1,15 +1,15 @@
 TASM ?= tasm
-CCEMU ?= ccemu
-CCEMU_ARGS ?=
+CEMU ?= cemu
 SRCS ?= main.tasm
+ARGS ?=
 
 .PHONY: run clean
 
 run: out/main.bin
-	@$(CCEMU) out/main.bin out/const.bin \
+	@$(CEMU) out/main.bin out/const.bin \
 		$$([ -f dump.yaml ] && echo "-d dump.yaml") \
 		$$([ -f intr.yaml ] && echo "-i intr.yaml") \
-		$(CCEMU_ARGS)
+		$(ARGS)
 
 out/main.bin out/const.bin out/map.yaml &: $(SRCS)
 	@mkdir -p out

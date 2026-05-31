@@ -3,4 +3,4 @@ SRCS := main.tasm \
 	../../rtos/heap.tasm \
 	../../rtos/serial.tasm \
 	../../rtos/task.tasm
-include ../common.mk
+include ../Makefile

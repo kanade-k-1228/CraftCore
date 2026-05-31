@@ -4,23 +4,23 @@ EXAMPLES := $(patsubst example/%/,%,$(wildcard example/*/))
 
 help:
 	@echo "Targets:"
-	@echo "  make b         : Release build"
-	@echo "  make i         : Install release build"
-	@echo "  make c         : Check"
-	@echo "  make f         : Fix"
-	@echo "  make t         : Run all tests"
-	@echo "  make <example> : Run example"
+	@echo "  make b  : Release build"
+	@echo "  make i  : Install release build"
+	@echo "  make c  : Check"
+	@echo "  make f  : Fix"
+	@echo "  make t  : Run all tests"
+	@echo "  make *  : Run example"
 	@echo "    $(EXAMPLES)"
 
-b: target/release/tasm target/release/ccemu
+b: target/release/tasm target/release/cemu
 target/release/tasm:
 	cargo build -p tasm --release
-target/release/ccemu:
-	cargo build -p ccemu --release
+target/release/cemu:
+	cargo build -p cemu --release
 
 i:
 	cargo install --path tasm
-	cargo install --path emu
+	cargo install --path cemu
 
 t:
 	cargo test --all
@@ -32,7 +32,7 @@ c:
 	cargo check --all
 	cargo clippy --all
 
-$(EXAMPLES): target/release/tasm target/release/ccemu
+$(EXAMPLES): target/release/tasm target/release/cemu
 	@$(MAKE) --no-print-directory -C example/$@ \
 		TASM=$(CURDIR)/target/release/tasm \
-		CCEMU=$(CURDIR)/target/release/ccemu
+		CEMU=$(CURDIR)/target/release/cemu

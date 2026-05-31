@@ -1,5 +1,5 @@
 [package]
-name = "ccemu"
+name = "cemu"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kanade <kanade.k.1228@gmail.com>"]
