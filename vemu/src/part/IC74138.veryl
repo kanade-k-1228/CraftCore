@@ -1,0 +1,50 @@
+/// 74HC138: 3-to-8 Line Decoder/Demultiplexer
+///   nY[i] が active-low 出力 (datasheet Y0..Y7)。
+///   enable = G1 & ~nG2A & ~nG2B。
+pub module IC74138 (
+    A   : input  logic   ,
+    B   : input  logic   ,
+    C   : input  logic   ,
+    G1  : input  logic   ,
+    nG2A: input  logic   ,
+    nG2B: input  logic   ,
+    nY  : output logic<8>,
+) {
+    var en: logic;
+    assign en = G1 & ~nG2A & ~nG2B;
+    assign nY = if en ? ~(8'd1 << {C, B, A}) : 8'hFF;
+}
+
+#[test(test_IC74138)]
+module test_IC74138 {
+    var A   : logic;
+    var B   : logic;
+    var C   : logic;
+    var G1  : logic;
+    var nG2A: logic;
+    var nG2B: logic;
+    var nY  : logic<8>;
+
+    inst dut: IC74138 (
+        A   : A,
+        B   : B,
+        C   : C,
+        G1  : G1,
+        nG2A: nG2A,
+        nG2B: nG2B,
+        nY  : nY,
+    );
+
+    initial {
+        G1 = 1; nG2A = 0; nG2B = 0;
+        for i: u32 in 0..8 {
+            A = i[0]; B = i[1]; C = i[2];
+            $assert(nY[i] == 1'b0);
+        }
+        G1 = 0;
+        $assert(nY == 8'hFF);
+        G1 = 1; nG2A = 1;
+        $assert(nY == 8'hFF);
+        $finish();
+    }
+}

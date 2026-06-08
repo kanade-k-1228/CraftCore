@@ -1,0 +1,44 @@
+/// 74HC157: Quad 2-input Data Selector/Multiplexer (non-inverting)
+///   A[i], B[i], Y[i] = ゲート (i+1) の 1A, 1B, 1Y。
+///   nG=0 で有効化、S=0 なら A、S=1 なら B。nG=1 のとき Y=0。
+pub module IC74157 (
+    nG: input  logic   ,
+    S : input  logic   ,
+    A : input  logic<4>,
+    B : input  logic<4>,
+    Y : output logic<4>,
+) {
+    always_comb {
+        if nG {
+            Y = 4'h0;
+        } else if S {
+            Y = B;
+        } else {
+            Y = A;
+        }
+    }
+}
+
+#[test(test_IC74157)]
+module test_IC74157 {
+    var nG: logic;
+    var S : logic;
+    var A : logic<4>;
+    var B : logic<4>;
+    var Y : logic<4>;
+
+    inst dut: IC74157 (
+        nG: nG, S: S, A: A, B: B, Y: Y,
+    );
+
+    initial {
+        A = 4'b1010; B = 4'b0101;
+        nG = 0; S = 0;
+        $assert(Y == 4'b1010);
+        S = 1;
+        $assert(Y == 4'b0101);
+        nG = 1;
+        $assert(Y == 4'b0000);
+        $finish();
+    }
+}

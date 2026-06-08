@@ -24,7 +24,7 @@ pub enum Reg {
     PC,
     CSR,
     RA,
-    FP,
+    SP,
     T0,
     T1,
     T2,
@@ -56,9 +56,9 @@ fn test() {
     assert_eq!(Some(Reg::IRA), Reg::parse("ira"));
     assert_eq!(Some(Reg::PC), Reg::parse("pc"));
     assert_eq!(Some(Reg::CSR), Reg::parse("csr"));
-    assert_eq!(None, Reg::parse("sp"));
+    assert_eq!(None, Reg::parse("fp"));
     assert_eq!(Some(Reg::RA), Reg::parse("ra"));
-    assert_eq!(Some(Reg::FP), Reg::parse("fp"));
+    assert_eq!(Some(Reg::SP), Reg::parse("sp"));
     assert_eq!(Some(Reg::T0), Reg::parse("t0"));
     assert_eq!(Some(Reg::T1), Reg::parse("t1"));
     assert_eq!(Some(Reg::T2), Reg::parse("t2"));

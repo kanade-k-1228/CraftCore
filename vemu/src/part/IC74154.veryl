@@ -1,0 +1,52 @@
+/// 74HC154: 4-to-16 Line Decoder/Demultiplexer
+///   nY[i] が active-low 出力 (datasheet Y0..Y15)。
+///   両 G が L のとき nY[{D,C,B,A}] のみ 0。
+pub module IC74154 (
+    A  : input  logic    ,
+    B  : input  logic    ,
+    C  : input  logic    ,
+    D  : input  logic    ,
+    nG1: input  logic    ,
+    nG2: input  logic    ,
+    nY : output logic<16>,
+) {
+    var sel: logic<4>;
+    var en : logic;
+    assign sel = {D, C, B, A};
+    assign en  = ~nG1 & ~nG2;
+
+    always_comb {
+        if en {
+            nY = ~(16'd1 << sel);
+        } else {
+            nY = 16'hFFFF;
+        }
+    }
+}
+
+#[test(test_IC74154)]
+module test_IC74154 {
+    var A  : logic;
+    var B  : logic;
+    var C  : logic;
+    var D  : logic;
+    var nG1: logic;
+    var nG2: logic;
+    var nY : logic<16>;
+
+    inst dut: IC74154 (
+        A: A, B: B, C: C, D: D,
+        nG1: nG1, nG2: nG2, nY: nY,
+    );
+
+    initial {
+        nG1 = 0; nG2 = 0;
+        for i: u32 in 0..16 {
+            A = i[0]; B = i[1]; C = i[2]; D = i[3];
+            $assert(nY[i] == 1'b0);
+        }
+        nG1 = 1;
+        $assert(nY == 16'hFFFF);
+        $finish();
+    }
+}

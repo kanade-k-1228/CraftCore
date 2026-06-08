@@ -38,7 +38,7 @@ impl SymbolMap {
                 .map(|c| c.0.len())
                 .unwrap_or(0);
 
-            // For functions, surface each local's FP-relative offset.
+            // For functions, surface each local's SP-relative offset.
             let stacks: IndexMap<String, usize> = evaluator
                 .get_func_locals(name.as_str())
                 .map(|locals| {

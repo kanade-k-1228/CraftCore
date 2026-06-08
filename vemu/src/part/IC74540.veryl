@@ -1,0 +1,42 @@
+/// 74HC540: Octal Buffer with 3-State Inverting Outputs
+///   nOE1=0 かつ nOE2=0 のとき Y = ~A、それ以外 hi-Z。
+///   (datasheet では A1..A8, Y1..Y8 表記。本モデルは A[0]=A1 等にマップ)
+pub module IC74540 (
+    nOE1: input  logic   ,
+    nOE2: input  logic   ,
+    A   : input  logic<8>,
+    Y   : output logic<8>,
+) {
+    always_comb {
+        if !nOE1 && !nOE2 {
+            Y = ~A;
+        } else {
+            Y = 8'bz;
+        }
+    }
+}
+
+#[test(test_IC74540)]
+module test_IC74540 {
+    var nOE1: logic;
+    var nOE2: logic;
+    var A   : logic<8>;
+    var Y   : logic<8>;
+
+    inst dut: IC74540 (
+        nOE1: nOE1, nOE2: nOE2, A: A, Y: Y,
+    );
+
+    initial {
+        // 有効化: Y = ~A
+        nOE1 = 0; nOE2 = 0;
+        A = 8'h00;
+        $assert(Y == 8'hFF);
+        A = 8'hAA;
+        $assert(Y == 8'h55);
+        A = 8'h5A;
+        $assert(Y == 8'hA5);
+        // hi-Z 状態は native では検証しない (実機振る舞いは 'z を出力)
+        $finish();
+    }
+}

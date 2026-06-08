@@ -1,0 +1,52 @@
+/// 74HC574: Octal D-Type Flip-Flop with 3-State Outputs
+///   立ち上がりエッジで D を取り込み、nOE=0 のとき Q を出力、それ以外 hi-Z。
+///   datasheet 同様リセット端子なし。
+///   (datasheet では 1D..8D, 1Q..8Q 表記。本モデルは D[0]=1D 等にマップ)
+pub module IC74574 (
+    CLK: input  clock   ,
+    nOE: input  logic   ,
+    D  : input  logic<8>,
+    Q  : output logic<8>,
+) {
+    var q_r: logic<8>;
+
+    always_ff {
+        q_r = D;
+    }
+
+    always_comb {
+        if !nOE {
+            Q = q_r;
+        } else {
+            Q = 8'bz;
+        }
+    }
+}
+
+#[test(test_IC74574)]
+module test_IC74574 {
+    inst clk: $tb::clock_gen;
+    var nOE: logic;
+    var D  : logic<8>;
+    var Q  : logic<8>;
+
+    inst dut: IC74574 (
+        CLK: clk,
+        nOE: nOE,
+        D  : D,
+        Q  : Q,
+    );
+
+    initial {
+        nOE = 0;
+        D = 8'h00;
+        clk.next();
+        D = 8'hA5;
+        clk.next();
+        $assert(Q == 8'hA5);
+        D = 8'h3C;
+        clk.next();
+        $assert(Q == 8'h3C);
+        $finish();
+    }
+}

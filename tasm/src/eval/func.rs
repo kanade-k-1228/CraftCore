@@ -37,22 +37,30 @@ struct ScopeFrame {
 }
 
 /// 関数 1 つ分のコンパイル状態。
-/// 新 ABI (FP 下向き) では事前 AST 走査が不要なので、フレームは動的に伸びる。
+/// 新 ABI (SP 下向き) では事前 AST 走査が不要なので、フレームは動的に伸びる。
+///
+/// フレームレイアウト (callee 視点):
+///   SP + 2 + ret_size .. SP + 3   : 戻り値スロット (head = SP+3, field i = SP+3+i)
+///   SP + 2                        : saved RA          (callee の prologue で書く)
+///   SP + 1                        : saved caller's SP (caller が書く)
+///   SP + 0 .. SP - (args_total-1) : 引数 (arg_0 が最上位 SP+0)
+///   SP - args_total ..            : locals / spills (下方向に伸びる)
 struct Context<'a> {
     local: Local<'a>,
     scope_stack: Vec<ScopeFrame>,
     scope_counter: usize,
     /// 自関数の戻り値サイズ (signature から)
     ret_size: usize,
-    /// 現在使用中のフレーム深度 (= 1 + locals_total + active_spills + 一時 call-outgoing)
-    /// saved_old_FP (FP-1) の 1 を含む。
+    /// 現在使用中のフレーム深度 (= args_total + locals_total + active_spills + 一時 call-outgoing)
+    /// 次に空いているスロットは SP - current_bottom。
     current_bottom: usize,
-    /// 次に置くローカル変数の FP+offset (負方向に伸びる、最初は -2)
+    /// 次に置くローカル変数の SP+offset (最上位スロット、負方向に伸びる)
+    /// 初期値は -args_total (引数の直下)。
     next_local_offset: i32,
 }
 
-/// FP+offset の符号付き値を Imm にエンコード (負は 16bit 二の補数)。
-fn fp_off(off: i32) -> Imm {
+/// SP+offset の符号付き値を Imm にエンコード (負は 16bit 二の補数)。
+fn sp_off(off: i32) -> Imm {
     Imm::Lit((off as u16) as usize)
 }
 
@@ -65,41 +73,49 @@ impl<'a> Context<'a> {
     ) -> Result<Self, Error> {
         let mut local = Local::fork(global);
         let ret_size = global.normtype(ret)?.sizeof();
-        local.insert_args(ret_size, args)?;
+        local.insert_args(args)?;
+        // args_total: 引数の総サイズ
+        let mut args_total: usize = 0;
+        for (_, ty) in args {
+            args_total += global.normtype(ty)?.sizeof();
+        }
         Ok(Self {
             local,
             scope_stack: Vec::new(),
             scope_counter: 0,
             ret_size,
-            current_bottom: 1, // saved old FP の 1 word を最初から計上
-            next_local_offset: -2,
+            current_bottom: args_total,
+            next_local_offset: -(args_total as i32),
         })
     }
 
-    /// 新 ABI prologue: saved RA を FP+0 に書くだけ。
-    /// (saved old FP は caller が new_FP-1 にあらかじめ書いている。)
+    /// 新 ABI prologue: saved RA を SP+2 に書くだけ。
+    /// (saved caller_SP は caller が new_SP+1 にあらかじめ書いている。)
     fn prologue(&self) -> Vec<Op<Reg, Imm>> {
-        vec![Op::store(Reg::RA, Reg::FP, Imm::Lit(0))]
+        vec![Op::store(Reg::RA, Reg::SP, Imm::Lit(2))]
     }
 
     /// 新 ABI epilogue:
-    ///   LOAD T0, FP, -1     ; saved old FP
-    ///   LOAD RA, FP, 0
-    ///   MOV  FP, T0
+    ///   LOAD T0, SP, 1      ; saved caller_SP
+    ///   LOAD RA, SP, 2
+    ///   MOV  SP, T0
     ///   RET
     fn epilogue_insts(&self) -> Vec<Op<Reg, Imm>> {
         vec![
-            Op::load(Reg::T0, Reg::FP, Imm::neg(1)),
-            Op::load(Reg::RA, Reg::FP, Imm::Lit(0)),
-            Op::mov(Reg::FP, Reg::T0),
+            Op::load(Reg::T0, Reg::SP, Imm::Lit(1)),
+            Op::load(Reg::RA, Reg::SP, Imm::Lit(2)),
+            Op::mov(Reg::SP, Reg::T0),
             Op::ret(),
         ]
     }
 
-    /// 一時 spill スロットを取り、FP+offset (負) を返す。
+    /// 一時 spill スロットを取り、SP+offset (負) を返す。
+    /// current_bottom は「次に空いているスロットの深さ」を表す。
+    /// 確保前: 次の空きは SP - current_bottom。確保後: そこから 1 つ下が次の空き。
     fn alloc_spill_slot(&mut self) -> i32 {
+        let slot = -(self.current_bottom as i32);
         self.current_bottom += 1;
-        -(self.current_bottom as i32)
+        slot
     }
 
     fn free_spill_slot(&mut self) {
@@ -284,7 +300,8 @@ impl<'a> Context<'a> {
                     )
                 })?;
                 let size = norm_ty.sizeof();
-                // 先頭 word の offset (例: size=1 なら FP-2, size=2 なら FP-3 から始まる)
+                // 先頭 word の offset (低アドレス側 = field 0 の位置)
+                // 例: args_total=1, size=1 なら SP-1。 size=2 なら SP-2..SP-1 (head=SP-2)。
                 let head_offset = self.next_local_offset - (size as i32) + 1;
                 self.next_local_offset -= size as i32;
                 self.current_bottom += size;
@@ -301,7 +318,7 @@ impl<'a> Context<'a> {
                 if let Some(init_expr) = init {
                     let (init_insts, init_reg) = self.compile_expr(init_expr, Reg::T0)?;
                     insts.extend(init_insts);
-                    insts.push(Op::store(init_reg, Reg::FP, fp_off(head_offset)));
+                    insts.push(Op::store(init_reg, Reg::SP, sp_off(head_offset)));
                 }
                 Ok(insts)
             }
@@ -311,9 +328,18 @@ impl<'a> Context<'a> {
                 if let Some(expr) = expr {
                     let (expr_insts, expr_reg) = self.compile_expr(expr, Reg::T0)?;
                     insts.extend(expr_insts);
-                    if self.ret_size > 0 {
-                        // 戻り値は FP + 1 に書く
-                        insts.push(Op::store(expr_reg, Reg::FP, Imm::Lit(1)));
+                    if self.ret_size == 1 {
+                        // 単一 word 戻り値: SP+3 に書く (戻り値スロットは SP+3 から開始)
+                        insts.push(Op::store(expr_reg, Reg::SP, Imm::Lit(3)));
+                    } else if self.ret_size > 1 {
+                        // 多 word 戻り値: expr は対象アドレスを返す (multi-word ident は addr を返す慣習)
+                        // expr_reg にあるアドレスから ret_size word をコピーして SP+3..SP+(2+ret_size) に置く。
+                        // 1 word ずつ T1 経由でコピー。
+                        let addr_reg = expr_reg;
+                        for i in 0..self.ret_size {
+                            insts.push(Op::load(Reg::T1, addr_reg, Imm::Lit(i)));
+                            insts.push(Op::store(Reg::T1, Reg::SP, Imm::Lit(3 + i)));
+                        }
                     }
                 }
                 insts.extend(self.epilogue_insts());
@@ -354,9 +380,9 @@ impl<'a> Context<'a> {
 
                 if let Some(offset) = self.local.offset(name) {
                     if multi_word {
-                        insts.push(Op::addi(target, Reg::FP, fp_off(offset)));
+                        insts.push(Op::addi(target, Reg::SP, sp_off(offset)));
                     } else {
-                        insts.push(Op::load(target, Reg::FP, fp_off(offset)));
+                        insts.push(Op::load(target, Reg::SP, sp_off(offset)));
                     }
                 } else if name == "csr" {
                     insts.push(Op::mov(target, Reg::CSR));
@@ -388,13 +414,13 @@ impl<'a> Context<'a> {
                     prelude.push(Op::mov(Reg::T0, lhs_inner_reg));
                 }
                 let spill = self.alloc_spill_slot();
-                prelude.push(Op::store(Reg::T0, Reg::FP, fp_off(spill)));
+                prelude.push(Op::store(Reg::T0, Reg::SP, sp_off(spill)));
                 let (rhs_insts, rhs_inner_reg) = self.compile_expr(rhs, Reg::T1)?;
                 prelude.extend(rhs_insts);
                 if rhs_inner_reg != Reg::T1 {
                     prelude.push(Op::mov(Reg::T1, rhs_inner_reg));
                 }
-                prelude.push(Op::load(Reg::T0, Reg::FP, fp_off(spill)));
+                prelude.push(Op::load(Reg::T0, Reg::SP, sp_off(spill)));
                 self.free_spill_slot();
                 let lhs_insts = prelude;
                 let rhs_insts: Vec<Op<Reg, Imm>> = Vec::new();
@@ -615,16 +641,27 @@ impl<'a> Context<'a> {
         Ok((insts, result_reg))
     }
 
-    /// 新 ABI の関数呼び出し:
-    ///   1. (CALLR の場合のみ) func ptr を T0 へ評価 → caller の spill 1 個に退避
-    ///   2. T1 := FP - (current_bottom + 1 + R + N)  (= new_FP)
-    ///   3. STORE FP, T1, -1   (= 新フレームの saved old FP に caller_FP を保存)
-    ///   4. 各 arg を T0 へ評価 → STORE T0, T1, R + 1 + i_cum
-    ///        ※ 引数評価中に内側 call が起きると T1 が破壊されるため、
-    ///          arg STORE 直前に毎回 T1 を再構築する。
-    ///   5. MOV FP, T1
+    /// 新 ABI の関数呼び出し (SP 基準):
+    ///
+    /// 呼出直前の current_bottom を L とすると、各スロットの caller_SP からの offset:
+    ///   -L .. -(L + ret_size - 1) : Return slots (head = -(L + ret_size - 1) の field 0)
+    ///                               ※ 単一 word: ret slot = -L
+    ///   -(L + ret_size)           : saved RA (callee の prologue で書く)
+    ///   -(L + ret_size + 1)       : saved caller_SP (caller が書く)
+    ///   -(L + ret_size + 2)       : new_SP+0 = arg_0 の最上位 ← new_SP がここ
+    ///   -(L + ret_size + 2 + 1)   : arg_0 の続き or arg_1
+    ///       :
+    ///
+    /// 手順:
+    ///   1. (CALLR の場合のみ) func ptr を T0 へ評価 → caller の spill に退避
+    ///   2. T1 := SP - (L + ret_size + 2)  (= new_SP)
+    ///   3. STORE SP, T1, 1   (= 新フレームの saved caller_SP)
+    ///   4. 各 arg を T0 へ評価 → STORE T0, T1, -cum   (cum は今まで積んだ word 数)
+    ///        ※ 引数評価中に内側 call が起きると T1 が破壊されるため、毎回再構築する。
+    ///   5. MOV SP, T1
     ///   6. CALL(Label) または CALLR(T0)
-    ///   7. 戻り値を LOAD T0, FP, -(B+1)  (caller_FP 相対)
+    ///   7. 戻り後 SP は caller_SP に戻っている。
+    ///      単一 word 戻り値: LOAD target, SP, -L
     fn compile_call(
         &mut self,
         expr: &'a ast::Expr,
@@ -668,7 +705,9 @@ impl<'a> Context<'a> {
         };
 
         let args_total: usize = arg_sizes.iter().sum();
-        let call_frame = 1 + ret_size + args_total; // saved old FP + ret slot + args
+        // call frame 占有スロット数 (caller_SP の下に確保):
+        //   ret_size (Return) + 1 (saved RA) + 1 (saved caller_SP) + args_total
+        let call_frame = ret_size + 2 + args_total;
         let mut insts: Vec<Op<Reg, Imm>> = Vec::new();
 
         // 間接呼びの場合は事前に func ptr を T0 で評価して caller の spill へ退避
@@ -679,28 +718,32 @@ impl<'a> Context<'a> {
                 insts.push(Op::mov(Reg::T0, func_reg));
             }
             let s = self.alloc_spill_slot();
-            insts.push(Op::store(Reg::T0, Reg::FP, fp_off(s)));
+            insts.push(Op::store(Reg::T0, Reg::SP, sp_off(s)));
             Some(s)
         } else {
             None
         };
 
+        // 呼び出し直前の current_bottom を記録 (戻り値ロード時に使う)
+        let bottom_before = self.current_bottom;
         // 内側 call から見ても call frame 領域が「使用中」になるよう current_bottom に加算
         self.current_bottom += call_frame;
-        let outer_bottom = self.current_bottom; // = B + call_frame
 
-        // (2)(3) new_FP を T1 で構築し、saved old FP に caller_FP を書く
-        // new_FP = FP - outer_bottom
-        let build_new_fp = |insts: &mut Vec<Op<Reg, Imm>>, bottom: usize| {
-            insts.push(Op::loadi(Reg::T1, Imm::Lit(bottom)));
-            insts.push(Op::sub(Reg::T1, Reg::FP, Reg::T1));
+        // new_SP = caller_SP - (bottom_before + ret_size + 2)
+        let new_sp_depth = bottom_before + ret_size + 2;
+        let build_new_sp = |insts: &mut Vec<Op<Reg, Imm>>, depth: usize| {
+            insts.push(Op::loadi(Reg::T1, Imm::Lit(depth)));
+            insts.push(Op::sub(Reg::T1, Reg::SP, Reg::T1));
         };
-        build_new_fp(&mut insts, outer_bottom);
-        insts.push(Op::store(Reg::FP, Reg::T1, Imm::neg(1)));
 
-        // (4) 各引数を評価して new_FP+ret_size+1+i_cum に STORE
-        // 引数評価中の内側 call が T1 を破壊する可能性があるため、
-        // STORE 直前に T1 を再構築する (build_new_fp を再呼出し)。
+        // (2)(3) new_SP を T1 で構築し、saved caller_SP を new_SP+1 に書く
+        build_new_sp(&mut insts, new_sp_depth);
+        insts.push(Op::store(Reg::SP, Reg::T1, Imm::Lit(1)));
+
+        // (4) 各引数を評価し new_SP - cum へ STORE。
+        //   単一 word arg: head_offset (from T1) = -cum。
+        //   引数評価中の内側 call が T1 を破壊する可能性があるため、
+        //   STORE 直前に T1 を再構築する。
         let mut cum: usize = 0;
         for (i, arg) in args.iter().enumerate() {
             let (arg_insts, arg_reg) = self.compile_expr(arg, Reg::T0)?;
@@ -708,41 +751,39 @@ impl<'a> Context<'a> {
             if arg_reg != Reg::T0 {
                 insts.push(Op::mov(Reg::T0, arg_reg));
             }
-            // T1 を再構築 (arg 評価で破壊された可能性)
-            build_new_fp(&mut insts, outer_bottom);
-            insts.push(Op::store(Reg::T0, Reg::T1, Imm::Lit(ret_size + 1 + cum)));
+            build_new_sp(&mut insts, new_sp_depth);
+            let off = -(cum as i32);
+            insts.push(Op::store(Reg::T0, Reg::T1, sp_off(off)));
             cum += arg_sizes[i];
             let _ = i;
         }
 
-        // (5)(6) FP 切替 + CALL
+        // (5)(6) SP 切替 + CALL
         if direct {
             let name = if let ast::Expr::Ident((n, _)) = func_expr {
                 n.clone()
             } else {
                 unreachable!()
             };
-            // T1 を最新に
-            build_new_fp(&mut insts, outer_bottom);
-            insts.push(Op::mov(Reg::FP, Reg::T1));
+            build_new_sp(&mut insts, new_sp_depth);
+            insts.push(Op::mov(Reg::SP, Reg::T1));
             insts.push(Op::call(Imm::Label(name)));
         } else {
-            // func ptr を T0 にロード (この時点ではまだ FP は caller)
             let s = func_ptr_spill.unwrap();
-            insts.push(Op::load(Reg::T0, Reg::FP, fp_off(s)));
-            build_new_fp(&mut insts, outer_bottom);
-            insts.push(Op::mov(Reg::FP, Reg::T1));
+            insts.push(Op::load(Reg::T0, Reg::SP, sp_off(s)));
+            build_new_sp(&mut insts, new_sp_depth);
+            insts.push(Op::mov(Reg::SP, Reg::T1));
             insts.push(Op::callr(Reg::T0));
         }
 
         // 内側 call 用に増やしていた current_bottom を戻す
         self.current_bottom -= call_frame;
 
-        // (7) 戻り値ロード: caller_FP 相対で -(B + call_frame) + 1 = -(B + ret_size + args_total)
-        // ret slot 先頭 = new_FP + 1 = caller_FP - outer_bottom + 1
-        if ret_size > 0 {
-            let ret_off = -((outer_bottom as i32) - 1); // = -(B + call_frame - 1)
-            insts.push(Op::load(target, Reg::FP, fp_off(ret_off)));
+        // (7) 戻り値ロード (戻り後 SP は caller_SP)。
+        //   単一 word: Return slot は SP - bottom_before。
+        if ret_size == 1 {
+            let ret_off = -(bottom_before as i32);
+            insts.push(Op::load(target, Reg::SP, sp_off(ret_off)));
         }
 
         // func_ptr 用 spill を解放
@@ -762,7 +803,7 @@ impl<'a> Context<'a> {
             ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
-                    insts.push(Op::addi(target, Reg::FP, fp_off(offset)));
+                    insts.push(Op::addi(target, Reg::SP, sp_off(offset)));
                 } else {
                     match self.local.global_def(name) {
                         Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)) => {
@@ -810,10 +851,10 @@ impl<'a> Context<'a> {
                 let idx_target = if target == Reg::T0 { Reg::T1 } else { Reg::T0 };
 
                 let spill = self.alloc_spill_slot();
-                insts.push(Op::store(target, Reg::FP, fp_off(spill)));
+                insts.push(Op::store(target, Reg::SP, sp_off(spill)));
                 let (idx_insts, idx_reg) = self.compile_expr(idx, idx_target)?;
                 insts.extend(idx_insts);
-                insts.push(Op::load(target, Reg::FP, fp_off(spill)));
+                insts.push(Op::load(target, Reg::SP, sp_off(spill)));
                 self.free_spill_slot();
 
                 for _ in 0..elem_size {
@@ -846,7 +887,7 @@ impl<'a> Context<'a> {
             ast::Expr::Ident((name, _)) => {
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
-                    insts.push(Op::store(value_reg, Reg::FP, fp_off(offset)));
+                    insts.push(Op::store(value_reg, Reg::SP, sp_off(offset)));
                 } else if name == "csr" {
                     insts.push(Op::mov(Reg::CSR, value_reg));
                 } else {
@@ -867,14 +908,14 @@ impl<'a> Context<'a> {
             ast::Expr::Member(..) | ast::Expr::Index(..) => {
                 let addr_reg = Reg::T1;
                 let spill = self.alloc_spill_slot();
-                let mut insts = vec![Op::store(value_reg, Reg::FP, fp_off(spill))];
+                let mut insts = vec![Op::store(value_reg, Reg::SP, sp_off(spill))];
                 insts.extend(self.compile_addr(lvalue, addr_reg)?);
                 let val_reg = if addr_reg == Reg::T0 {
                     Reg::T2
                 } else {
                     Reg::T0
                 };
-                insts.push(Op::load(val_reg, Reg::FP, fp_off(spill)));
+                insts.push(Op::load(val_reg, Reg::SP, sp_off(spill)));
                 self.free_spill_slot();
                 insts.push(Op::store(val_reg, addr_reg, Imm::Lit(0)));
                 Ok(insts)

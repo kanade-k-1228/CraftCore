@@ -6,8 +6,8 @@
 // 割り込みベクタ
 
 asm @ 0x0000 reset {
-    // 新 ABI: SP は廃止。FP が唯一のスタックポインタ。
-    loadi(fp, 0xffff);
+    // 新 ABI: SP が唯一のスタックポインタ (Arg[0]=SP+0, saved RA=SP+2)。
+    loadi(sp, 0xffff);
     call(init);
   halt:
     jumpr(halt);

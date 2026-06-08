@@ -6,31 +6,33 @@ use crate::{
     grammer::ast,
 };
 
-// 関数のフレーム (FP 下向き ABI)
+// 関数のフレーム (SP 下向き ABI)
 //
 //   high addr
-//      FP + ret_size + N      ← arg_{N-1}
+//      SP + 2 + ret_size            ← ret slot 最後 (= Return[0] 相当の最上位)
 //           :
-//      FP + ret_size + 1      ← arg_0
-//      FP + ret_size          ← ret slot 最後
-//           :
-//      FP + 1                 ← ret slot 先頭
-//      FP + 0                 ← saved RA           (callee の prologue で書く)
-//      FP - 1                 ← saved caller's FP  (caller が書く)
-//      FP - 2                 ← local 0
-//      FP - 3                 ← local 1
-//           :                 locals は宣言順に -2, -3, ...
-//      FP - 2 - locals_total  ← spill 0 (動的)
+//      SP + 3                       ← ret slot 先頭 (= 戻り値型の field 0)
+//      SP + 2                       ← saved RA          (callee の prologue で書く)
+//      SP + 1                       ← saved caller's SP (caller が書く)
+//      SP + 0                       ← arg_0 (の最上位スロット)
+//      SP - 1                       ← arg_0 続き or arg_1
+//           :                       args は宣言順にスロット下方向へ詰める
+//      SP - (args_total - 1)        ← 最後の arg スロット
+//      SP - args_total              ← local 0 (の最上位スロット)
+//           :                       locals は宣言順にスロット下方向へ
+//      SP - args_total - locals_total ← spill 0 (動的)
 //           :
 //   low addr
 //
 // - レジスタは全て caller-save (T0-T9)
 // - 引数・戻り値は全て stack で渡す
+// - 多 word 値は head_offset (低アドレス) を基準に field i は head_offset + i に配置
+//   (= 引数 / ローカル / 戻り値とも自然な struct レイアウトに従う)
 
 /// 関数の引数 + ローカル変数のシンボルテーブル。
 pub struct Local<'a> {
     global: &'a Global<'a>,
-    stack: IndexMap<&'a str, (NormType, i32)>, // (name → (type, FP+offset))
+    stack: IndexMap<&'a str, (NormType, i32)>, // (name → (type, SP+offset))
 }
 
 impl<'a> Local<'a> {
@@ -41,7 +43,7 @@ impl<'a> Local<'a> {
         }
     }
 
-    /// 名前 → (型, FP+offset) を登録する。offset は呼び出し側が決める (符号付き)。
+    /// 名前 → (型, SP+offset) を登録する。offset は呼び出し側が決める (符号付き)。
     pub fn insert(
         &mut self,
         ident: &'a ast::Ident,
@@ -56,18 +58,22 @@ impl<'a> Local<'a> {
         Ok(())
     }
 
-    /// 引数を全て登録する。新 ABI: arg_i は FP + ret_size + 1 + Σ(prior arg sizes)。
+    /// 引数を全て登録する。新 ABI:
+    ///   arg_0 (size S0) は SP+0 .. SP-(S0-1) を占有 (head = SP-(S0-1))。
+    ///   arg_i は arg_{i-1} の直下のスロットに連続配置。
+    ///   各 arg 内では head + j が field j (低アドレス = field 0)。
     pub fn insert_args(
         &mut self,
-        ret_size: usize,
         args: &'a [(ast::Ident, ast::Type)],
     ) -> Result<(), Error> {
-        let mut off = (ret_size + 1) as i32;
+        // top = この arg の最上位スロット offset。初期値は 0 (SP+0)。
+        let mut top: i32 = 0;
         for (ident, ty) in args {
             let nty = self.global.normtype(ty)?;
-            let sz = nty.sizeof();
-            self.insert(ident, nty, off)?;
-            off += sz as i32;
+            let sz = nty.sizeof() as i32;
+            let head = top - sz + 1;
+            self.insert(ident, nty, head)?;
+            top -= sz;
         }
         Ok(())
     }

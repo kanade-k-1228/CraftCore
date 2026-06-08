@@ -1,15 +1,16 @@
 // ============================================================
-// task.tasm — 割り込みハンドラ・タスク管理・排他制御 (FP 下向き ABI 版)
+// task.tasm — 割り込みハンドラ・タスク管理・排他制御 (SP 下向き ABI 版)
 //
 // ABI:
-//   - SP 廃止。FP のみ。
+//   - スタックポインタは SP (旧 FP)。
 //   - レジスタは全て caller-save (T0..T9)。callee-saved は無い。
 //   - 引数・戻り値は全て stack で渡す。 callee 視点で
-//       FP+0   : saved RA   (callee の prologue で書く)
-//       FP+1   : ret slot
-//       FP+1+i : arg_i      (caller が STORE)
-//       FP-1   : saved caller_FP (caller が new_FP-1 に STORE 済)
-//       FP-2.. : callee の locals / spills
+//       SP+2+ret_size .. SP+3 : 戻り値スロット (head = SP+3, field i = SP+3+i)
+//       SP+2   : saved RA          (callee の prologue で書く)
+//       SP+1   : saved caller_SP   (caller が STORE)
+//       SP+0   : arg_0 (の最上位)  ← SP が指す
+//       SP-1.. : arg_0 続き / arg_1 / ... と下方向に
+//       SP-args_total..       : callee の locals / spills
 //   - CSR はレジスタ (slot #3)。`andi(csr, csr, mask)` 等で 1 命令で操作可能。
 // ============================================================
 
@@ -39,7 +40,7 @@ static @ 0x0043 task_list   : *TCB;  // タスク(TCB)連結リストの先頭
 // next フィールドは自己参照を避けるため *void として持つ
 type TCB = {
     next:  *void, // 次のタスク（実体は *TCB、cast で復元する）
-    fp:    *int,  // 中断時の FP (= 退避領域の下端)
+    sp:    *int,  // 中断時の SP (= 退避領域の下端)
     bp:    *int,  // スタック上端 (allocated 領域の終端)
     ra:    *int,  // 中断時の IRA (= 再開時の PC)
     state: int,   // タスクの状態
@@ -51,19 +52,19 @@ const task_state_waiting = 1;
 const task_state_exit    = 2;
 
 // --------------------------------------------------------
-// 退避領域レイアウト (FP 相対、12 word):
-//   FP+0  RA
-//   FP+1  旧 FP (中断時の FP = 復帰時に書き戻す)
-//   FP+2  T0
-//   FP+3  T1
-//   FP+4  T2
-//   FP+5  T3
-//   FP+6  T4
-//   FP+7  T5
-//   FP+8  T6
-//   FP+9  T7
-//   FP+10 T8
-//   FP+11 T9
+// 退避領域レイアウト (SP 相対、12 word):
+//   SP+0  RA
+//   SP+1  旧 SP (中断時の SP = 復帰時に書き戻す)
+//   SP+2  T0
+//   SP+3  T1
+//   SP+4  T2
+//   SP+5  T3
+//   SP+6  T4
+//   SP+7  T5
+//   SP+8  T6
+//   SP+9  T7
+//   SP+10 T8
+//   SP+11 T9
 
 // --------------------------------------------------------
 // 割り込みプロローグ
@@ -71,28 +72,28 @@ const task_state_exit    = 2;
 // HW が ENABLE を自動で落として PC=4 にジャンプ、IRA に旧 PC を退避済。
 
 asm _intr {
-    subi(fp, fp, 12);
+    subi(sp, sp, 12);
 
-    store(ra, fp, 0);
-    store(t0, fp, 2);
-    store(t1, fp, 3);
-    store(t2, fp, 4);
-    store(t3, fp, 5);
-    store(t4, fp, 6);
-    store(t5, fp, 7);
-    store(t6, fp, 8);
-    store(t7, fp, 9);
-    store(t8, fp, 10);
-    store(t9, fp, 11);
+    store(ra, sp, 0);
+    store(t0, sp, 2);
+    store(t1, sp, 3);
+    store(t2, sp, 4);
+    store(t3, sp, 5);
+    store(t4, sp, 6);
+    store(t5, sp, 7);
+    store(t6, sp, 8);
+    store(t7, sp, 9);
+    store(t8, sp, 10);
+    store(t9, sp, 11);
 
-    // 旧 FP を slot 1 へ。 t0 を scratch にしてよい (すでに退避済)。
-    addi(t0, fp, 12);
-    store(t0, fp, 1);
+    // 旧 SP を slot 1 へ。 t0 を scratch にしてよい (すでに退避済)。
+    addi(t0, sp, 12);
+    store(t0, sp, 1);
 
-    // TCB に fp / ra を保存
+    // TCB に sp / ra を保存
     load(t0, z, task_running@);
     store(ira, t0, (@(0 as *TCB)).ra@);
-    store(fp,  t0, (@(0 as *TCB)).fp@);
+    store(sp,  t0, (@(0 as *TCB)).sp@);
 
     jump(intr_dispatch);
 }
@@ -140,8 +141,8 @@ fn os_task_setup(
     var new_tcb:    *TCB = malloc(sizeof<TCB>) as *TCB;
     var stack_base: *int = malloc(stack_size);
     var stack_top:  int  = (stack_base as int) + stack_size;
-    // 退避領域 12 word ぶんを stack の上端から下に取った位置を FP の初期値とする。
-    var fp_init:    int  = stack_top - 12;
+    // 退避領域 12 word ぶんを stack の上端から下に取った位置を SP の初期値とする。
+    var sp_init:    int  = stack_top - 12;
 
     // リストへ連結
     if (last == (0 as *TCB)) {
@@ -152,25 +153,25 @@ fn os_task_setup(
 
     // TCB の初期化
     (@new_tcb).next  = 0 as *void;
-    (@new_tcb).fp    = fp_init as *int;
+    (@new_tcb).sp    = sp_init as *int;
     (@new_tcb).bp    = stack_top as *int;
     (@new_tcb).ra    = entry_address as *int;
     (@new_tcb).state = initial_state;
 
-    // 退避領域 [fp_init+0..fp_init+11] に初期コンテキストを仕込む。
-    var sp_ptr: *int = fp_init as *int;
-    sp_ptr[0]  = entry_address; // RA (resume 時 iret で entry へ)
-    sp_ptr[1]  = stack_top;     // 旧 FP = タスクスタック上端
-    sp_ptr[2]  = 0;             // T0
-    sp_ptr[3]  = 0;             // T1
-    sp_ptr[4]  = 0;             // T2
-    sp_ptr[5]  = 0;             // T3
-    sp_ptr[6]  = 0;             // T4
-    sp_ptr[7]  = 0;             // T5
-    sp_ptr[8]  = 0;             // T6
-    sp_ptr[9]  = 0;             // T7
-    sp_ptr[10] = 0;             // T8
-    sp_ptr[11] = 0;             // T9
+    // 退避領域 [sp_init+0..sp_init+11] に初期コンテキストを仕込む。
+    var slot_ptr: *int = sp_init as *int;
+    slot_ptr[0]  = entry_address; // RA (resume 時 iret で entry へ)
+    slot_ptr[1]  = stack_top;     // 旧 SP = タスクスタック上端
+    slot_ptr[2]  = 0;             // T0
+    slot_ptr[3]  = 0;             // T1
+    slot_ptr[4]  = 0;             // T2
+    slot_ptr[5]  = 0;             // T3
+    slot_ptr[6]  = 0;             // T4
+    slot_ptr[7]  = 0;             // T5
+    slot_ptr[8]  = 0;             // T6
+    slot_ptr[9]  = 0;             // T7
+    slot_ptr[10] = 0;             // T8
+    slot_ptr[11] = 0;             // T9
     return new_tcb;
 }
 
@@ -181,12 +182,14 @@ fn os_task_setup(
 // fn の prologue/epilogue 機構を経由せず asm で書く。
 //
 // 新 ABI 注意:
-//   - 引数は FP+1+i で読む (asm 関数の callee_signature fallback: ret=0, 各 arg 1word)
-//   - 退避領域の slot 1 (saved old FP) には caller_FP を入れる必要がある。
-//     caller_FP は caller が new_FP-1 に書いてあるので、subi で退避領域を切ったあと
-//     FP+11 (= new_FP-1) から読み取る。 ★ T9 をその slot に上書きする前に読むこと。
-//   - 一方、_intr は割り込み起因で「caller」概念が無いので、退避時の FP がそのまま
-//     「再開時に書き戻す FP」になる。 addi(t0, fp, 12) のままで良い。
+//   - 引数は SP+0..SP-(args_total-1) で読む (asm 関数の callee_signature fallback:
+//     ret=0, 各 arg 1word)。
+//   - 退避領域の slot 1 (saved old SP) には caller_SP を入れる必要がある。
+//     caller_SP は caller が new_SP+1 に書いてあるので、subi(sp,sp,12) で退避領域を
+//     切ったあと、SP+13 (= new_SP+1) から読み取る。 ★ T9 をその slot (SP+11) に
+//     上書きする前ではなく、SP+13 は退避領域の外なので読み取りタイミングは任意。
+//   - 一方、_intr は割り込み起因で「caller」概念が無いので、退避時の SP がそのまま
+//     「再開時に書き戻す SP」になる。 addi(t0, sp, 12) のままで良い。
 
 // タスクの終了
 asm os_task_exit {
@@ -203,23 +206,23 @@ asm os_task_exit {
 asm os_task_wait {
     andi(csr, csr, 0xfffe);
 
-    subi(fp, fp, 12);
-    store(t0, fp, 2);     // 元 T0 を保存
-    load(t0, fp, 11);     // ★ FP+11 = new_FP-1 に caller_FP がある (T9 を書く前に読む)
-    store(t0, fp, 1);     // saved old FP = caller_FP
-    store(ra, fp, 0);
-    store(t1, fp, 3);
-    store(t2, fp, 4);
-    store(t3, fp, 5);
-    store(t4, fp, 6);
-    store(t5, fp, 7);
-    store(t6, fp, 8);
-    store(t7, fp, 9);
-    store(t8, fp, 10);
-    store(t9, fp, 11);
+    subi(sp, sp, 12);
+    store(t0, sp, 2);     // 元 T0 を保存
+    load(t0, sp, 13);     // ★ SP+13 = new_SP+1 に caller_SP がある
+    store(t0, sp, 1);     // saved old SP = caller_SP
+    store(ra, sp, 0);
+    store(t1, sp, 3);
+    store(t2, sp, 4);
+    store(t3, sp, 5);
+    store(t4, sp, 6);
+    store(t5, sp, 7);
+    store(t6, sp, 8);
+    store(t7, sp, 9);
+    store(t8, sp, 10);
+    store(t9, sp, 11);
 
     load(t0, z, task_running@);
-    store(fp, t0, (@(0 as *TCB)).fp@);
+    store(sp, t0, (@(0 as *TCB)).sp@);
     store(ra, t0, (@(0 as *TCB)).ra@);
     loadi(t1, task_state_waiting);
     store(t1, t0, (@(0 as *TCB)).state@);
@@ -228,30 +231,30 @@ asm os_task_wait {
 }
 
 // 指定 TCB を Ready 状態にして scheduler へ
-//   引数 0 = target *TCB (FP+1)
+//   引数 0 = target *TCB (SP+0)
 asm os_task_ready {
     andi(csr, csr, 0xfffe);
 
-    // 引数 0 (= target) を t1 に読み込む。 FP を動かす前に。
-    load(t1, fp, 1);
+    // 引数 0 (= target) を t1 に読み込む。 SP を動かす前に。
+    load(t1, sp, 0);
 
-    subi(fp, fp, 12);
-    store(t0, fp, 2);   // 元 T0 を保存
-    load(t0, fp, 11);   // ★ caller_FP (= new_FP-1) を読む (T9 を書く前)
-    store(t0, fp, 1);   // saved old FP = caller_FP
-    store(ra, fp, 0);
-    store(t1, fp, 3);   // 旧 t1 (= target) を save する。 t1 自体は値を保持
-    store(t2, fp, 4);
-    store(t3, fp, 5);
-    store(t4, fp, 6);
-    store(t5, fp, 7);
-    store(t6, fp, 8);
-    store(t7, fp, 9);
-    store(t8, fp, 10);
-    store(t9, fp, 11);
+    subi(sp, sp, 12);
+    store(t0, sp, 2);   // 元 T0 を保存
+    load(t0, sp, 13);   // ★ caller_SP (= new_SP+1) を読む
+    store(t0, sp, 1);   // saved old SP = caller_SP
+    store(ra, sp, 0);
+    store(t1, sp, 3);   // 旧 t1 (= target) を save する。 t1 自体は値を保持
+    store(t2, sp, 4);
+    store(t3, sp, 5);
+    store(t4, sp, 6);
+    store(t5, sp, 7);
+    store(t6, sp, 8);
+    store(t7, sp, 9);
+    store(t8, sp, 10);
+    store(t9, sp, 11);
 
     load(t0, z, task_running@);
-    store(fp, t0, (@(0 as *TCB)).fp@);
+    store(sp, t0, (@(0 as *TCB)).sp@);
     store(ra, t0, (@(0 as *TCB)).ra@);
 
     // target.state = ready
@@ -283,25 +286,25 @@ asm os_task_scheduler {
 asm os_restore_context {
     ori(csr, csr, 0x0001);       // 割り込み許可
 
-    // TCB から FP と IRA を復元
+    // TCB から SP と IRA を復元
     load(t0, z, task_running@);
-    load(fp,  t0, (@(0 as *TCB)).fp@);
+    load(sp,  t0, (@(0 as *TCB)).sp@);
     load(ira, t0, (@(0 as *TCB)).ra@);
 
-    // 退避領域 fp+0..fp+11 から 12 word を復元する。
-    // 最後の `load(fp, fp, 1)` で FP 自身を旧 FP に書き換える。
-    load(ra, fp, 0);
-    load(t0, fp, 2);
-    load(t1, fp, 3);
-    load(t2, fp, 4);
-    load(t3, fp, 5);
-    load(t4, fp, 6);
-    load(t5, fp, 7);
-    load(t6, fp, 8);
-    load(t7, fp, 9);
-    load(t8, fp, 10);
-    load(t9, fp, 11);
-    load(fp, fp, 1);     // ★ 最後に FP 自身を旧 FP で書き換える
+    // 退避領域 sp+0..sp+11 から 12 word を復元する。
+    // 最後の `load(sp, sp, 1)` で SP 自身を旧 SP に書き換える。
+    load(ra, sp, 0);
+    load(t0, sp, 2);
+    load(t1, sp, 3);
+    load(t2, sp, 4);
+    load(t3, sp, 5);
+    load(t4, sp, 6);
+    load(t5, sp, 7);
+    load(t6, sp, 8);
+    load(t7, sp, 9);
+    load(t8, sp, 10);
+    load(t9, sp, 11);
+    load(sp, sp, 1);     // ★ 最後に SP 自身を旧 SP で書き換える
     iret();
 }
 

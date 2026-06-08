@@ -1,0 +1,103 @@
+/// 74HC182: Carry Lookahead Generator
+///   入力 nG0..nG3 / nP0..nP3: 各 74181 からの active-low generate/propagate
+///   入力 Cn   : carry-in (active-high)
+///   出力 Cnx/Cny/Cnz: 次段 (4/8/12bit 目) の carry-in (active-high)
+///   出力 nG / nP    : 本 chip の上位段への group generate/propagate (active-low)
+pub module IC74182 (
+    nG0: input  logic,
+    nG1: input  logic,
+    nG2: input  logic,
+    nG3: input  logic,
+    nP0: input  logic,
+    nP1: input  logic,
+    nP2: input  logic,
+    nP3: input  logic,
+    Cn : input  logic,
+    Cnx: output logic,
+    Cny: output logic,
+    Cnz: output logic,
+    nG : output logic,
+    nP : output logic,
+) {
+    var g0: logic;
+    var g1: logic;
+    var g2: logic;
+    var g3: logic;
+    var p0: logic;
+    var p1: logic;
+    var p2: logic;
+    var p3: logic;
+    assign g0 = ~nG0;
+    assign g1 = ~nG1;
+    assign g2 = ~nG2;
+    assign g3 = ~nG3;
+    assign p0 = ~nP0;
+    assign p1 = ~nP1;
+    assign p2 = ~nP2;
+    assign p3 = ~nP3;
+
+    assign Cnx = g0 | (p0 & Cn);
+    assign Cny = g1 | (p1 & g0) | (p1 & p0 & Cn);
+    assign Cnz = g2 | (p2 & g1) | (p2 & p1 & g0) | (p2 & p1 & p0 & Cn);
+
+    assign nG = ~(g3 | (p3 & g2) | (p3 & p2 & g1) | (p3 & p2 & p1 & g0));
+    assign nP = ~(p3 & p2 & p1 & p0);
+}
+
+#[test(test_IC74182)]
+module test_IC74182 {
+    var nG0: logic;
+    var nG1: logic;
+    var nG2: logic;
+    var nG3: logic;
+    var nP0: logic;
+    var nP1: logic;
+    var nP2: logic;
+    var nP3: logic;
+    var Cn : logic;
+    var Cnx: logic;
+    var Cny: logic;
+    var Cnz: logic;
+    var nG : logic;
+    var nP : logic;
+
+    inst dut: IC74182 (
+        nG0: nG0, nG1: nG1, nG2: nG2, nG3: nG3,
+        nP0: nP0, nP1: nP1, nP2: nP2, nP3: nP3,
+        Cn: Cn, Cnx: Cnx, Cny: Cny, Cnz: Cnz,
+        nG: nG, nP: nP,
+    );
+
+    initial {
+        // 全 G/P 抑止 → carry 伝搬なし
+        nG0 = 1; nG1 = 1; nG2 = 1; nG3 = 1;
+        nP0 = 1; nP1 = 1; nP2 = 1; nP3 = 1;
+        Cn = 1;
+        $assert(Cnx == 1'b0);
+        $assert(Cny == 1'b0);
+        $assert(Cnz == 1'b0);
+        $assert(nG == 1'b1);
+        $assert(nP == 1'b1);
+
+        // G0 生成 + P1/P2 伝搬 → Cnx/Cny/Cnz 全 1
+        nG0 = 0; nP1 = 0; nP2 = 0; Cn = 0;
+        $assert(Cnx == 1'b1);
+        $assert(Cny == 1'b1);
+        $assert(Cnz == 1'b1);
+
+        // 全 P 伝搬 + Cn=1
+        nG0 = 1; nG1 = 1; nG2 = 1; nG3 = 1;
+        nP0 = 0; nP1 = 0; nP2 = 0; nP3 = 0;
+        Cn = 1;
+        $assert(Cnx == 1'b1);
+        $assert(Cny == 1'b1);
+        $assert(Cnz == 1'b1);
+        $assert(nP == 1'b0);  // 全 P 伝搬 → group P アサート
+
+        // 全 G で group generate
+        nG0 = 0; nG1 = 0; nG2 = 0; nG3 = 0;
+        $assert(nG == 1'b0);
+
+        $finish();
+    }
+}

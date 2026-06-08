@@ -1,0 +1,64 @@
+/// 74HC139: Dual 2-to-4 Line Decoder/Demultiplexer
+///   datasheet pin: 1~G, 1A, 1B, 1~Y0..1~Y3 (識別子先頭が数字不可なので 1→末尾)
+///                  2~G, 2A, 2B, 2~Y0..2~Y3
+pub module IC74139 (
+    // 系統 1
+    nG1: input  logic   ,
+    A1 : input  logic   ,
+    B1 : input  logic   ,
+    nY1: output logic<4>,
+    // 系統 2
+    nG2: input  logic   ,
+    A2 : input  logic   ,
+    B2 : input  logic   ,
+    nY2: output logic<4>,
+) {
+    always_comb {
+        if !nG1 {
+            nY1 = ~(4'd1 << {B1, A1});
+        } else {
+            nY1 = 4'hF;
+        }
+    }
+
+    always_comb {
+        if !nG2 {
+            nY2 = ~(4'd1 << {B2, A2});
+        } else {
+            nY2 = 4'hF;
+        }
+    }
+}
+
+#[test(test_IC74139)]
+module test_IC74139 {
+    var nG1: logic;
+    var A1 : logic;
+    var B1 : logic;
+    var nY1: logic<4>;
+    var nG2: logic;
+    var A2 : logic;
+    var B2 : logic;
+    var nY2: logic<4>;
+
+    inst dut: IC74139 (
+        nG1: nG1, A1: A1, B1: B1, nY1: nY1,
+        nG2: nG2, A2: A2, B2: B2, nY2: nY2,
+    );
+
+    initial {
+        nG1 = 0; nG2 = 1;
+        for i: u32 in 0..4 {
+            A1 = i[0]; B1 = i[1];
+            $assert(nY1[i] == 1'b0);
+            $assert(nY2 == 4'hF);
+        }
+        nG1 = 1; nG2 = 0;
+        for i: u32 in 0..4 {
+            A2 = i[0]; B2 = i[1];
+            $assert(nY2[i] == 1'b0);
+            $assert(nY1 == 4'hF);
+        }
+        $finish();
+    }
+}

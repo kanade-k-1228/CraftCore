@@ -1,0 +1,54 @@
+/// 汎用 NOR Flash モデル (SST39SF / S29 系イメージ)
+///   読み出しのみ。プログラム/イレースは未実装 (実機の Command Cycle は不要)。
+///   INIT_FILE が指定されていれば simulation 開始時に $readmemh で内容を流し込む。
+///   ファイル形式: 1 行 1 アドレス分の 16 進値 (例: "1A\n2B\n..." )。
+///
+///   pin 名は SST39SF040 等を参照: nCE, nOE, A, DQ。
+pub module NORFlash #(
+    param ADDR_W   : u32    = 19           ,  // 既定 512K word
+    param DATA_W   : u32    = 8            ,  // 8bit データバス
+    param INIT_FILE: string = ""           ,  // $readmemh 用 hex ファイルパス
+) (
+    nCE: input  logic        ,
+    nOE: input  logic        ,
+    A  : input  logic<ADDR_W>,
+    DQ : output logic<DATA_W>,
+) {
+    var mem: logic<DATA_W> [2 ** ADDR_W];
+
+    initial {
+        if INIT_FILE != "" {
+            $readmemh(INIT_FILE, mem);
+        }
+    }
+
+    always_comb {
+        if !nCE && !nOE {
+            DQ = mem[A];
+        } else {
+            DQ = 'z;
+        }
+    }
+}
+
+#[test(test_NORFlash)]
+module test_NORFlash {
+    var nCE: logic;
+    var nOE: logic;
+    var A  : logic<4>;
+    var DQ : logic<8>;
+
+    // 内部 mem へ外部から書き込めないため、接続確認のみ。
+    // 実際の読み出し検証は INIT_FILE 経由か上位 unit テストで実施。
+    inst dut: NORFlash #(ADDR_W: 4, DATA_W: 8) (
+        nCE: nCE,
+        nOE: nOE,
+        A  : A,
+        DQ : DQ,
+    );
+
+    initial {
+        nCE = 0; nOE = 0; A = 4'h0;
+        $finish();
+    }
+}

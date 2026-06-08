@@ -1,0 +1,39 @@
+/// 74HC86: Quad 2-input Exclusive-OR Gate
+///   A[i], B[i], Y[i] = ゲート (i+1) の 1A, 1B, 1Y (i = 0..3)。
+pub module IC7486 (
+    A: input  logic<4>,
+    B: input  logic<4>,
+    Y: output logic<4>,
+) {
+    assign Y = A ^ B;
+}
+
+#[test(test_IC7486)]
+module test_IC7486 {
+    var A: logic<4>;
+    var B: logic<4>;
+    var Y: logic<4>;
+
+    inst dut: IC7486 (
+        A: A,
+        B: B,
+        Y: Y,
+    );
+
+    initial {
+        A = 4'b0000;
+        B = 4'b0000;
+        $assert(Y == 4'b0000);
+        A = 4'b1111;
+        $assert(Y == 4'b1111);
+        B = 4'b1111;
+        $assert(Y == 4'b0000);
+        A = 4'b1010;
+        B = 4'b0101;
+        $assert(Y == 4'b1111);
+        A = 4'b1100;
+        B = 4'b1010;
+        $assert(Y == 4'b0110);
+        $finish();
+    }
+}

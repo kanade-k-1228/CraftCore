@@ -85,9 +85,9 @@ impl Dump {
             cpu.get(Reg::T5)
         );
         println!(
-            " |  ira: {:0>4X} | fp: {:0>4X} | t1: {:0>4X} | t6: {:0>4X} |",
+            " |  ira: {:0>4X} | sp: {:0>4X} | t1: {:0>4X} | t6: {:0>4X} |",
             cpu.get(Reg::IRA),
-            cpu.get(Reg::FP),
+            cpu.get(Reg::SP),
             cpu.get(Reg::T1),
             cpu.get(Reg::T6)
         );
@@ -109,21 +109,22 @@ impl Dump {
     }
 
     fn print_stack(&self, cpu: &State) {
-        // FP 下向き ABI: FP+0=saved RA, FP+1..=ret/args, FP-1=saved old FP, FP-2..=locals/spills
-        // FP の上下両側を表示する。
-        let fp = cpu.get(Reg::FP);
-        let lo = fp.wrapping_sub(0x18);
-        let hi = fp.wrapping_add(0x08);
-        let mut sp = lo;
-        while sp != hi {
-            let marker = if sp == fp { " <- FP" } else { "      " };
+        // SP 下向き ABI:
+        //   SP+0=Arg[0], SP-1=Arg[1]/locals, SP+1=saved caller SP, SP+2=saved RA, SP+3..=Return slots
+        // SP の上下両側を表示する。
+        let sp_reg = cpu.get(Reg::SP);
+        let lo = sp_reg.wrapping_sub(0x18);
+        let hi = sp_reg.wrapping_add(0x08);
+        let mut addr = lo;
+        while addr != hi {
+            let marker = if addr == sp_reg { " <- SP" } else { "      " };
             println!(
                 " | {:0>4X} : {:0>4X}{}                            |",
-                sp,
-                cpu.get(sp),
+                addr,
+                cpu.get(addr),
                 marker
             );
-            sp = sp.wrapping_add(1);
+            addr = addr.wrapping_add(1);
         }
         println!(" +---------------------------------------------+");
     }

@@ -582,17 +582,21 @@ impl<'a> Global<'a> {
         }
     }
 
-    /// Walk a function body and produce a map of (local var name → FP-relative
-    /// offset). 新 ABI (FP 下向き): args は FP+1+i、locals は FP-2, -3, ... の負方向。
+    /// Walk a function body and produce a map of (local var name → SP-relative
+    /// offset). 新 ABI (SP 下向き): args は SP+0..SP-(args_total-1)、locals はその直下の負方向。
     pub fn get_func_locals(&'a self, name: &str) -> Option<IndexMap<String, i32>> {
         let def = self.defs.get(name).copied()?;
-        let (params, ret_ty, body) = match def {
+        let (params, _ret_ty, body) = match def {
             ast::Def::Func(_, params, ret_ty, body) => (params, ret_ty, body),
             _ => return None,
         };
         let mut local = super::local::Local::fork(self);
-        let ret_size = self.normtype(ret_ty).ok()?.sizeof();
-        local.insert_args(ret_size, params).ok()?;
+        // 引数の総サイズを計算 (locals の開始位置を決めるため)
+        let mut args_total: i32 = 0;
+        for (_, ty) in params {
+            args_total += self.normtype(ty).ok()?.sizeof() as i32;
+        }
+        local.insert_args(params).ok()?;
         // Walk statements to collect every Var declaration in source order.
         fn walk<'a>(
             global: &'a super::global::Global<'a>,
@@ -624,7 +628,8 @@ impl<'a> Global<'a> {
             }
             Ok(())
         }
-        let mut next: i32 = -2;
+        // 新 ABI: locals は args 直下 (= SP - args_total) から負方向に伸びる。
+        let mut next: i32 = -args_total;
         for s in body {
             walk(self, &mut local, &mut next, s).ok()?;
         }

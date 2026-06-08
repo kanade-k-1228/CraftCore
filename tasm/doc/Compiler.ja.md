@@ -87,12 +87,21 @@ AST 内の各定義を名前で引ける `IndexMap<&str, &Def>` にまとめた�
 
 `fn` 定義をスタックフレーム付きのアセンブリ列に変換します。
 
-- `Local` (`eval::local`) が引数とローカル変数をスタックオフセットに割り付ける (引数は FP+正、`var` は FP-負)
-- プロローグでスタックを確保し、`RA` / `FP` の保存と新 `FP` 設定、引数 (A0, A1, …) のスタック保存を行う
+- `Local` (`eval::local`) が引数とローカル変数をスタックオフセットに割り付ける (新 ABI: Arg[0] は SP+0、以降の引数は SP-1, SP-2 と下方向。 `var` はその直下)
+- プロローグで saved RA を SP+2 に書く (saved caller_SP は caller が SP+1 にあらかじめ書いている)
 - 文ごとに `compile_stmt` / `compile_expr` / `compile_lvalue` を再帰的に呼び、`if`/`while` は前方/後方の相対ジャンプ (`JUMPIFR` / `JUMPR`) に展開される
-- エピローグで `FP` を復元し、`RET` で呼び出し元に戻る
+- エピローグで `LOAD T0, SP, 1; LOAD RA, SP, 2; MOV SP, T0; RET`
 
-呼び出し規約: 第 1〜2 引数は `A0` / `A1`、それ以上はスタック渡し。戻り値は `A0`。
+呼び出し規約 (SP 下向き ABI):
+- スタックポインタは `SP` レジスタ (slot #5)
+- 引数・戻り値は全て stack で渡す。 callee 視点で
+  - `SP + 2 + ret_size` .. `SP + 3` : 戻り値スロット (head = SP+3, field i = SP+3+i)
+  - `SP + 2` : saved RA          (callee の prologue で書く)
+  - `SP + 1` : saved caller_SP   (caller が STORE)
+  - `SP + 0` : arg_0 (の最上位)  ← SP が指す
+  - `SP - 1` 以下 : arg_0 続き / arg_1 / ... と下方向に
+  - `SP - args_total` 以下 : callee の locals / spills
+- レジスタは全て caller-save (T0..T9)
 
 ## 5. Dependency Resolution (`eval::deps`)
 

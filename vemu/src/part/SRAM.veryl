@@ -1,0 +1,88 @@
+/// 汎用 SRAM モデル (HM62256 / BS62LV1024 等)
+///   nCE=0 && nOE=0 && nWE=1   → 読み出し (Do 出力, それ以外は hi-Z)
+///   nCE=0 && nWE=0 (CLK 立ち上がり) → 書き込み (mem[A] ← Di)
+///
+///   シミュレーション上、書き込みは CLK 立ち上がりエッジで離散化する
+///   (実機 datasheet には CLK は無いが Veryl always_ff の要請のため追加。
+///    上位 unit 側で system clock を CLK に接続する想定)。
+///
+///   INIT_FILE 指定で初期値を hex ロード可能 (ROM 風にも使える)。
+pub module SRAM #(
+    param ADDR_W   : u32    = 15           ,  // 既定 32K word
+    param DATA_W   : u32    = 8            ,
+    param INIT_FILE: string = ""           ,
+) (
+    CLK: input  clock        ,
+    nCE: input  logic        ,
+    nOE: input  logic        ,
+    nWE: input  logic        ,
+    A  : input  logic<ADDR_W>,
+    Di : input  logic<DATA_W>,
+    Do : output logic<DATA_W>,
+) {
+    var mem: logic<DATA_W> [2 ** ADDR_W];
+
+    initial {
+        if INIT_FILE != "" {
+            $readmemh(INIT_FILE, mem);
+        }
+    }
+
+    always_ff {
+        if !nCE && !nWE {
+            mem[A] = Di;
+        }
+    }
+
+    always_comb {
+        if !nCE && !nOE && nWE {
+            Do = mem[A];
+        } else {
+            Do = 'z;
+        }
+    }
+}
+
+#[test(test_SRAM)]
+module test_SRAM {
+    inst clk: $tb::clock_gen;
+    var nCE: logic;
+    var nOE: logic;
+    var nWE: logic;
+    var A  : logic<4>;
+    var Di : logic<8>;
+    var Do : logic<8>;
+
+    inst dut: SRAM #(ADDR_W: 4, DATA_W: 8) (
+        CLK: clk,
+        nCE: nCE,
+        nOE: nOE,
+        nWE: nWE,
+        A  : A,
+        Di : Di,
+        Do : Do,
+    );
+
+    initial {
+        nCE = 1; nOE = 1; nWE = 1; A = 4'h0; Di = 8'h00;
+        clk.next();
+
+        // 書き込みフェーズ: 各アドレスに addr^0x3C
+        nCE = 0; nWE = 0; nOE = 1;
+        for i: u32 in 0..16 {
+            A  = i[3:0];
+            Di = i[7:0] ^ 8'h3C;
+            clk.next();
+        }
+        nWE = 1;
+
+        // 読み出しフェーズ
+        nOE = 0;
+        for i: u32 in 0..16 {
+            A = i[3:0];
+            $assert(Do == i[7:0] ^ 8'h3C);
+        }
+
+        $finish();
+    }
+}

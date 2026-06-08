@@ -76,12 +76,21 @@ Each statement of an `asm` block is translated to an `arch::inst::Inst<Reg, Imm>
 
 A `fn` is lowered to an assembly sequence with a full stack frame:
 
-- `Local` (`eval::local`) assigns stack offsets — arguments at positive offsets from `FP`, locals at negative offsets
-- The prologue reserves stack space, saves `RA` and `FP`, sets the new `FP`, and stores incoming args (`A0`, `A1`) to their stack slots
+- `Local` (`eval::local`) assigns stack offsets (new ABI: Arg[0] at SP+0, subsequent args at SP-1, SP-2, …; `var` locals continue downward from there)
+- The prologue stores saved RA at SP+2 (the saved caller_SP at SP+1 was already written by the caller)
 - Statements are lowered recursively via `compile_stmt` / `compile_expr` / `compile_lvalue`; `if` / `while` expand to PC-relative `JUMPIFR` / `JUMPR` instructions
-- The epilogue restores `FP`, `RA`, deallocates the frame, and emits `RET`
+- The epilogue: `LOAD T0, SP, 1; LOAD RA, SP, 2; MOV SP, T0; RET`
 
-Calling convention: the first two arguments go in `A0` / `A1`, the rest on the stack. The return value is returned in `A0`.
+Calling convention (SP-grows-downward ABI):
+- The stack pointer is `SP` (register slot #5)
+- All arguments and return values are passed on the stack. From the callee's view:
+  - `SP + 2 + ret_size` .. `SP + 3` : return value slots (head = SP+3, field i = SP+3+i)
+  - `SP + 2` : saved RA          (callee writes in prologue)
+  - `SP + 1` : saved caller_SP   (caller writes)
+  - `SP + 0` : arg_0 (top word)  ← SP points here
+  - `SP - 1` …    : rest of arg_0 / arg_1 / … (downward)
+  - `SP - args_total` …: callee locals / spills
+- All registers (T0..T9) are caller-save
 
 ## 5. Dependency Resolution (`eval::deps`)
 

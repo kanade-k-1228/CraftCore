@@ -16,7 +16,7 @@ pub enum Imm {
 }
 
 impl Imm {
-    /// FP-relative negative offset (= FP - n). Encoded as 16bit two's complement.
+    /// SP-relative negative offset (= SP - n). Encoded as 16bit two's complement.
     pub fn neg(n: usize) -> Self {
         Imm::Lit(((-(n as i32)) as u16) as usize)
     }

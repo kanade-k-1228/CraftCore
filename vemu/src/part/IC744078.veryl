@@ -1,0 +1,38 @@
+/// 74HC4078: 8-input NOR/OR Gate
+///   datasheet pins: I0..I7 (8 入力), Y (OR), nY (NOR)。
+///   (本モデルは I[0]=I0 等にマップ)
+pub module IC744078 (
+    I : input  logic<8>,
+    Y : output logic   ,
+    nY: output logic   ,
+) {
+    assign Y  = |I;
+    assign nY = ~|I;
+}
+
+#[test(test_IC744078)]
+module test_IC744078 {
+    var I : logic<8>;
+    var Y : logic;
+    var nY: logic;
+
+    inst dut: IC744078 (
+        I: I, Y: Y, nY: nY,
+    );
+
+    initial {
+        I = 8'h00;
+        $assert(Y == 1'b0);
+        $assert(nY == 1'b1);
+        I = 8'h01;
+        $assert(Y == 1'b1);
+        $assert(nY == 1'b0);
+        I = 8'h80;
+        $assert(Y == 1'b1);
+        $assert(nY == 1'b0);
+        I = 8'hFF;
+        $assert(Y == 1'b1);
+        $assert(nY == 1'b0);
+        $finish();
+    }
+}

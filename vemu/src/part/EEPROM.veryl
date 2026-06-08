@@ -1,0 +1,90 @@
+/// 汎用 パラレル EEPROM モデル (AT28C256 / 28C64 等)
+///   インタフェース・タイミング簡略化:
+///     nCE=0 && nOE=0 && nWE=1     → 読み出し
+///     nCE=0 && nWE=0 (CLK 立ち上がり) → 書き込み (mem[A] ← Di)
+///   実機の書き込み待機 (~5ms) や Page Write はモデル化しない。
+///   CLK は datasheet には無いが Veryl always_ff の要請で追加 (SRAM と同様)。
+///
+///   INIT_FILE で const section (tasm の .const) の hex ファイルを流し込める。
+pub module EEPROM #(
+    param ADDR_W   : u32    = 15           ,
+    param DATA_W   : u32    = 8            ,
+    param INIT_FILE: string = ""           ,
+) (
+    CLK: input  clock        ,
+    nCE: input  logic        ,
+    nOE: input  logic        ,
+    nWE: input  logic        ,
+    A  : input  logic<ADDR_W>,
+    Di : input  logic<DATA_W>,
+    Do : output logic<DATA_W>,
+) {
+    var mem: logic<DATA_W> [2 ** ADDR_W];
+
+    initial {
+        if INIT_FILE != "" {
+            $readmemh(INIT_FILE, mem);
+        }
+    }
+
+    always_ff {
+        if !nCE && !nWE {
+            mem[A] = Di;
+        }
+    }
+
+    always_comb {
+        if !nCE && !nOE && nWE {
+            Do = mem[A];
+        } else {
+            Do = 'z;
+        }
+    }
+}
+
+#[test(test_EEPROM)]
+module test_EEPROM {
+    inst clk: $tb::clock_gen;
+    var nCE: logic;
+    var nOE: logic;
+    var nWE: logic;
+    var A  : logic<4>;
+    var Di : logic<8>;
+    var Do : logic<8>;
+
+    inst dut: EEPROM #(ADDR_W: 4, DATA_W: 8) (
+        CLK: clk,
+        nCE: nCE,
+        nOE: nOE,
+        nWE: nWE,
+        A  : A,
+        Di : Di,
+        Do : Do,
+    );
+
+    var expected: logic<8>;
+
+    initial {
+        nCE = 1; nOE = 1; nWE = 1; A = 4'h0; Di = 8'h00; expected = 8'h00;
+        clk.next();
+
+        // 書き込み: mem[i] = i ^ 0x5A
+        nCE = 0; nWE = 0; nOE = 1;
+        for i: u32 in 0..16 {
+            A  = i[3:0];
+            Di = i[7:0] ^ 8'h5A;
+            clk.next();
+        }
+        nWE = 1;
+
+        // 読み出し
+        nOE = 0;
+        for i: u32 in 0..16 {
+            A = i[3:0];
+            expected = i[7:0] ^ 8'h5A;
+            $assert(Do == expected);
+        }
+
+        $finish();
+    }
+}

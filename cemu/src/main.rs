@@ -77,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for time in 0..tmax {
         // 1. Execute instruction
         let (addr, code, op) = state.exec();
-        println!("[{:0>4}] {}", time, op.print());
+        println!("[{:0>4}] PC={:04X} {}", time, addr, op.print());
 
         // Execute side effects
         for hook in hooks.iter_mut() {

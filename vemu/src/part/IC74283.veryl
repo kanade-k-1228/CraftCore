@@ -1,0 +1,44 @@
+/// 74HC283: 4-bit Binary Full Adder with Fast Carry
+///   {C4, S[3:0]} = A[3:0] + B[3:0] + C0
+///   (datasheet では A1..A4, B1..B4, S1..S4 表記。本モデルは A[0]=A1 等にマップ)
+pub module IC74283 (
+    A : input  logic<4>,
+    B : input  logic<4>,
+    C0: input  logic   ,
+    S : output logic<4>,
+    C4: output logic   ,
+) {
+    var sum: logic<5>;
+    assign sum = {1'b0, A} + {1'b0, B} + {4'b0, C0};
+    assign S   = sum[3:0];
+    assign C4  = sum[4];
+}
+
+#[test(test_IC74283)]
+module test_IC74283 {
+    var A : logic<4>;
+    var B : logic<4>;
+    var C0: logic;
+    var S : logic<4>;
+    var C4: logic;
+
+    inst dut: IC74283 (
+        A: A, B: B, C0: C0, S: S, C4: C4,
+    );
+
+    initial {
+        A = 4'h0; B = 4'h0; C0 = 1'b0;
+        $assert({C4, S} == 5'h00);
+        A = 4'h0; B = 4'h0; C0 = 1'b1;
+        $assert({C4, S} == 5'h01);
+        A = 4'h7; B = 4'h3; C0 = 1'b0;
+        $assert({C4, S} == 5'h0A);
+        A = 4'hF; B = 4'h1; C0 = 1'b0;
+        $assert({C4, S} == 5'h10);
+        A = 4'hF; B = 4'hF; C0 = 1'b1;
+        $assert({C4, S} == 5'h1F);
+        A = 4'hA; B = 4'h5; C0 = 1'b0;
+        $assert({C4, S} == 5'h0F);
+        $finish();
+    }
+}
