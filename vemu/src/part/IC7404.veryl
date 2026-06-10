@@ -1,0 +1,31 @@
+/// 74HC04: Hex Inverter
+///   A[i], Y[i] = ゲート (i+1) の 1A, 1Y (i = 0..5)。
+pub module IC7404 (
+    A: input  logic<6>,
+    Y: output logic<6>,
+) {
+    assign Y = ~A;
+}
+
+#[test(test_IC7404)]
+module test_IC7404 {
+    var A: logic<6>;
+    var Y: logic<6>;
+
+    inst dut: IC7404 (
+        A: A,
+        Y: Y,
+    );
+
+    initial {
+        A = 6'b000000;
+        $assert(Y == 6'b111111);
+        A = 6'b111111;
+        $assert(Y == 6'b000000);
+        A = 6'b101010;
+        $assert(Y == 6'b010101);
+        A = 6'b110001;
+        $assert(Y == 6'b001110);
+        $finish();
+    }
+}

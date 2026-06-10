@@ -25,13 +25,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 }
 
 impl<I: Iterator<Item = Token>> Parser<I> {
-    /// Skip all invalid tokens
+    /// Skip comments and report invalid tokens from the lexer
     fn skip(&mut self) {
         while let Some(token) = self.tokens.peek() {
             match &token.kind {
-                TokenKind::Comment(_) | TokenKind::Error(_) => self.tokens.next(),
+                TokenKind::Comment(_) => {
+                    self.tokens.next();
+                }
+                TokenKind::Error(lexeme) => {
+                    let err = Error::InvalidToken(token.pos.clone(), lexeme.clone());
+                    self.tokens.next();
+                    self.errors.push(err);
+                }
                 _ => break,
-            };
+            }
         }
     }
 

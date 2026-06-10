@@ -1,6 +1,6 @@
 import arch_pkg::*;
 
-/// 32bit命令デコーダ。リトルエンディアン:
+/// 32bit命令デコーダ (74シリーズ標準ロジックIC構成)。リトルエンディアン:
 ///   bits[ 3: 0] = opcode
 ///   bits[ 7: 4] = rs1
 ///   bits[11: 8] = rs2
@@ -9,6 +9,12 @@ import arch_pkg::*;
 ///
 /// arch::op::Op::encode と整合:
 ///   pack(rs1,c) -> byte0,  pack(rd,rs2) -> byte1, imm LE -> byte2..3
+///
+/// フィールド分割は配線のみ。ALU 種別の取得先は命令種別で異なる:
+///   CALC  : imm の下位4bit (encode 時に alu as u16 を imm に詰めている)
+///   CALCI : rs2 フィールド (encode: pack(rd, a as u8) -> byte1)
+///   その他: ADD 固定 (使われない)
+/// この選択を 74154 (opcode デコード) + 7404/7408 + 74157 (選択) で行う。
 pub module decoder (
     i_inst: input  Inst ,
     o_opc : output OpC  ,
@@ -24,15 +30,88 @@ pub module decoder (
     assign o_rd  = i_inst[15:12];
     assign o_imm = i_inst[31:16];
 
-    // ALU 種別の取得先は命令種別で異なる:
-    //   CALC  : imm の下位4bit (encode 時に alu as u16 を imm に詰めている)
-    //   CALCI : rs2 フィールド (encode: pack(rd, a as u8) -> byte1)
-    //   その他: ADD 固定 (使われない)
-    always_comb {
-        case i_inst[3:0] as OpC {
-            OpC::CALC : o_alu = i_inst[19:16] as ALU;
-            OpC::CALCI: o_alu = i_inst[11:8]  as ALU;
-            default   : o_alu = ALU::ADD;
-        }
+    // ---- U1: 74154  opcode を active-low one-hot 化 ----
+    //   n_opc[0] = ~(opcode==CALC), n_opc[1] = ~(opcode==CALCI)
+    var n_opc: logic<16>;
+    inst u1_dec: IC74154 (
+        A  : i_inst[0],
+        B  : i_inst[1],
+        C  : i_inst[2],
+        D  : i_inst[3],
+        nG1: 1'b0     ,
+        nG2: 1'b0     ,
+        nY : n_opc    ,
+    );
+
+    // ---- U2: 7404  is_calci = ~n_opc[1] ----
+    var u2_y: logic<6>;
+    inst u2_inv: IC7404 (A: {5'b0, n_opc[1]}, Y: u2_y);
+
+    // ---- U3: 7408  n_en = ~is_calc & ~is_calci ----
+    //   CALC でも CALCI でもなければ 74157 を無効化して Y=0000 (= ALU::ADD)
+    var u3_y: logic<4>;
+    inst u3_and: IC7408 (A: {3'b0, n_opc[0]}, B: {3'b0, n_opc[1]}, Y: u3_y);
+
+    // ---- U4: 74157  alu フィールド選択 ----
+    //   S=0 (CALC): imm 下位4bit / S=1 (CALCI): rs2 フィールド
+    var alu_v: logic<4>;
+    inst u4_mux: IC74157 (
+        nG: u3_y[0]      ,
+        S : u2_y[0]      ,
+        A : i_inst[19:16],
+        B : i_inst[11:8] ,
+        Y : alu_v        ,
+    );
+    assign o_alu = alu_v as ALU;
+}
+
+#[test(test_decoder)]
+module test_decoder {
+    var code: logic<32>;
+    var opc : OpC      ;
+    var rd  : RegId    ;
+    var rs1 : RegId    ;
+    var rs2 : RegId    ;
+    var aluv: ALU      ;
+    var imm : Word     ;
+
+    inst dut: decoder (
+        i_inst: code,
+        o_opc : opc ,
+        o_rd  : rd  ,
+        o_rs1 : rs1 ,
+        o_rs2 : rs2 ,
+        o_alu : aluv,
+        o_imm : imm ,
+    );
+
+    initial {
+        // CALC: alu は imm の下位4bit
+        code = {16'h0004, 4'h3, 4'h2, 4'h1, 4'h0};
+        $assert(opc == OpC::CALC);
+        $assert(rs1 == 4'h1);
+        $assert(rs2 == 4'h2);
+        $assert(rd == 4'h3);
+        $assert(imm == 16'h0004);
+        $assert(aluv == ALU::XOR);
+
+        // CALCI: alu は rs2 フィールド
+        code = {16'h1234, 4'h5, 4'h9, 4'h6, 4'h1};
+        $assert(opc == OpC::CALCI);
+        $assert(rs1 == 4'h6);
+        $assert(rd == 4'h5);
+        $assert(imm == 16'h1234);
+        $assert(aluv == ALU::SR);
+
+        // その他: alu は ADD 固定
+        code = {16'hBEEF, 4'h1, 4'h2, 4'h3, 4'h3}; // LOAD
+        $assert(opc == OpC::LOAD);
+        $assert(aluv == ALU::ADD);
+        code = {16'h0001, 4'h0, 4'h0, 4'h0, 4'h7}; // STORE
+        $assert(aluv == ALU::ADD);
+        code = {16'h0002, 4'h0, 4'h0, 4'h0, 4'hF}; // CTRL
+        $assert(aluv == ALU::ADD);
+
+        $finish();
     }
 }

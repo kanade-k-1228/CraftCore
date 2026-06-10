@@ -583,39 +583,6 @@ impl<'a> Context<'a> {
 
             ast::Expr::Call(func_expr, args) => self.compile_call(expr, func_expr, args, target)?,
 
-            ast::Expr::Cond(cond, then_expr, else_expr) => {
-                let mut insts = Vec::new();
-
-                let (cond_insts, cond_reg) = self.compile_expr(cond, Reg::T0)?;
-                insts.extend(cond_insts);
-                insts.push(Op::eqi(Reg::T1, cond_reg, Imm::Lit(0)));
-
-                let (then_insts, then_reg) = self.compile_expr(then_expr, target)?;
-                let (else_insts, else_reg) = self.compile_expr(else_expr, target)?;
-
-                let else_jump_offset = (then_insts.len() + 1) as u16;
-                insts.push(Op::jumpifr(Reg::T1, Imm::Lit(else_jump_offset as usize)));
-
-                insts.extend(then_insts);
-                if then_reg != target {
-                    insts.push(Op::mov(target, then_reg));
-                }
-
-                let end_jump_offset = else_insts.len() as u16;
-                if else_reg != target {
-                    insts.push(Op::jumpr(Imm::Lit((end_jump_offset + 1) as usize)));
-                } else {
-                    insts.push(Op::jumpr(Imm::Lit(end_jump_offset as usize)));
-                }
-
-                insts.extend(else_insts);
-                if else_reg != target {
-                    insts.push(Op::mov(target, else_reg));
-                }
-
-                (insts, target)
-            }
-
             ast::Expr::SizeofType(typ) => {
                 let mut insts = Vec::new();
                 let norm_type = self.local.normtype(typ).map_err(|_| {

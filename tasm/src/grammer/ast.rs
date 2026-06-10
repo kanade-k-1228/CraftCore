@@ -44,7 +44,6 @@ pub struct Asm(pub Ident, pub Vec<Expr>, pub Vec<Ident>, pub Pos); // { ident ":
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
-    Cond(Box<Expr>, Box<Expr>, Box<Expr>), // (not in current EBNF - ternary conditional)
     Binary(BinaryOp, Box<Expr>, Box<Expr>), // expr (binop) expr
     Unary(UnaryOp, Box<Expr>),             // ( "+" | "-" | "!" ) expr
     Call(Box<Expr>, Vec<Expr>),            // expr "(" [ expr { "," expr } ] ")"

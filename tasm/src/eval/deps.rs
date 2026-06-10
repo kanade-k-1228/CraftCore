@@ -1,16 +1,17 @@
-use std::collections::HashSet;
+use indexmap::IndexSet;
 
 use super::code::Imm;
 use super::global::Global;
 use crate::error::Error;
 
 impl<'a> Global<'a> {
+    // IndexSet keeps discovery order so allocation results are deterministic
     pub fn deps(
         &'a self,
         entries: &[&str],
-        mut labels: HashSet<String>,
-        mut symbols: HashSet<String>,
-    ) -> Result<(HashSet<String>, HashSet<String>), Error> {
+        mut labels: IndexSet<String>,
+        mut symbols: IndexSet<String>,
+    ) -> Result<(IndexSet<String>, IndexSet<String>), Error> {
         for entry in entries {
             (labels, symbols) = self.deps_rec(entry, labels, symbols)?;
         }
@@ -20,9 +21,9 @@ impl<'a> Global<'a> {
     fn deps_rec(
         &'a self,
         entry: &str,
-        mut labels: HashSet<String>,
-        mut symbols: HashSet<String>,
-    ) -> Result<(HashSet<String>, HashSet<String>), Error> {
+        mut labels: IndexSet<String>,
+        mut symbols: IndexSet<String>,
+    ) -> Result<(IndexSet<String>, IndexSet<String>), Error> {
         if labels.contains(entry) {
             return Ok((labels, symbols));
         }

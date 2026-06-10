@@ -1,0 +1,36 @@
+/// 74HC00: Quad 2-input NAND Gate
+///   A[i], B[i], Y[i] = ゲート (i+1) の 1A, 1B, 1Y (i = 0..3)。
+pub module IC7400 (
+    A: input  logic<4>,
+    B: input  logic<4>,
+    Y: output logic<4>,
+) {
+    assign Y = ~(A & B);
+}
+
+#[test(test_IC7400)]
+module test_IC7400 {
+    var A: logic<4>;
+    var B: logic<4>;
+    var Y: logic<4>;
+
+    inst dut: IC7400 (
+        A: A,
+        B: B,
+        Y: Y,
+    );
+
+    initial {
+        A = 4'b0000;
+        B = 4'b0000;
+        $assert(Y == 4'b1111);
+        A = 4'b1111;
+        $assert(Y == 4'b1111);
+        B = 4'b1111;
+        $assert(Y == 4'b0000);
+        A = 4'b1010;
+        B = 4'b1100;
+        $assert(Y == 4'b0111);
+        $finish();
+    }
+}

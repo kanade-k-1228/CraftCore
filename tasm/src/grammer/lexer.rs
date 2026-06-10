@@ -18,8 +18,8 @@ impl Lexer {
 
     pub fn parse(&self) -> Vec<Token> {
         let mut tokens = Vec::new();
-        for (col, line) in self.code.lines().enumerate() {
-            let lexer = LineLexer::new(line, Rc::clone(&self.file), col);
+        for (row, line) in self.code.lines().enumerate() {
+            let lexer = LineLexer::new(line, Rc::clone(&self.file), row);
             tokens.extend(lexer.parse());
         }
         tokens
@@ -29,13 +29,13 @@ impl Lexer {
 struct LineLexer<'a> {
     iter: Peekable<CharIndices<'a>>,
     file: Rc<str>,
-    col: usize,
+    row: usize,
 }
 
 impl<'a> LineLexer<'a> {
-    fn new(line: &'a str, file: Rc<str>, col: usize) -> Self {
+    fn new(line: &'a str, file: Rc<str>, row: usize) -> Self {
         let iter = line.char_indices().peekable();
-        Self { iter, file, col }
+        Self { iter, file, row }
     }
 }
 
@@ -66,7 +66,8 @@ impl<'a> LineLexer<'a> {
                 continue;
             }
 
-            let pos = Pos::new(Rc::clone(&self.file), idx, self.col);
+            // Pos is 1-indexed (row, col) as in conventional compiler output
+            let pos = Pos::new(Rc::clone(&self.file), self.row + 1, idx + 1);
 
             // 1. Double character token
             if let Some((_, ch1)) = self.peek_nth(1) {
@@ -115,14 +116,24 @@ impl<'a> LineLexer<'a> {
                     let (_, ch1) = self.consume().unwrap();
 
                     let ch_value = if ch1 == '\\' {
-                        self.parse_escape()
+                        match self.parse_escape() {
+                            Ok(ch) => ch,
+                            Err(e) => {
+                                // Resync on the closing quote if present
+                                self.iter.next_if(|(_, ch)| *ch == '\'');
+                                tokens.push(Token::new(TokenKind::Error(e), pos));
+                                continue;
+                            }
+                        }
                     } else {
                         ch1
                     };
 
-                    let (_, ch_close) = self.consume().unwrap();
-                    assert!(ch_close == '\'', "Expected closing ' but got {}", ch_close);
-                    tokens.push(Token::new(TokenKind::Char(ch_value), pos));
+                    match self.consume() {
+                        Some((_, '\'')) => tokens.push(Token::new(TokenKind::Char(ch_value), pos)),
+                        _ => tokens
+                            .push(Token::new(TokenKind::Error(format!("'{}", ch_value)), pos)),
+                    }
                     continue;
                 }
 
@@ -184,29 +195,39 @@ impl<'a> LineLexer<'a> {
         self.consume();
 
         let mut lexeme = vec![];
+        let mut error = None;
         while let Some((_, ch)) = self.consume() {
             match ch {
                 '"' => break,
-                '\\' => lexeme.push(self.parse_escape()),
+                '\\' => match self.parse_escape() {
+                    Ok(ch) => lexeme.push(ch),
+                    Err(e) => error = error.or(Some(e)),
+                },
                 ch => lexeme.push(ch),
             }
+        }
+        if let Some(e) = error {
+            return TokenKind::Error(e);
         }
         let lexeme = lexeme.into_iter().collect::<String>();
         TokenKind::Text(lexeme.to_string())
     }
 
     /// Decode the character following a `\` in a char/string literal.
-    fn parse_escape(&mut self) -> char {
-        let (_, ch) = self.consume().expect("Unexpected EOF in escape sequence");
+    /// Returns the offending lexeme on EOF or unknown escape.
+    fn parse_escape(&mut self) -> Result<char, String> {
+        let Some((_, ch)) = self.consume() else {
+            return Err("\\".to_string());
+        };
         match ch {
-            'n' => '\n',
-            't' => '\t',
-            'r' => '\r',
-            '\\' => '\\',
-            '\'' => '\'',
-            '"' => '"',
-            '0' => '\0',
-            _ => panic!("Invalid escape sequence: \\{}", ch),
+            'n' => Ok('\n'),
+            't' => Ok('\t'),
+            'r' => Ok('\r'),
+            '\\' => Ok('\\'),
+            '\'' => Ok('\''),
+            '"' => Ok('"'),
+            '0' => Ok('\0'),
+            _ => Err(format!("\\{}", ch)),
         }
     }
 
@@ -309,7 +330,6 @@ fn single_char_token(ch: char) -> Option<TokenKind> {
         '|' => Some(TokenKind::Pipe),
         '^' => Some(TokenKind::Caret),
         '!' => Some(TokenKind::Excl),
-        '?' => Some(TokenKind::Question),
         ':' => Some(TokenKind::Colon),
         ';' => Some(TokenKind::Semicolon),
         ',' => Some(TokenKind::Comma),

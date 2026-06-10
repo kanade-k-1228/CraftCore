@@ -8,6 +8,9 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     // Parse errors
+    #[error("{0}: Invalid token: {1:?}")]
+    InvalidToken(Pos, String),
+
     #[error("{0}: Unexpected token: {1}")]
     UnexpectedToken(Pos, Token),
 

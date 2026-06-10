@@ -8,9 +8,12 @@
 ///     M              : mode (1=logic, 0=arith)
 ///     nCn            : carry-in (active-low, datasheet ~Cn)
 ///     F[3:0]         : function output
-///     nCn4           : carry-out (datasheet ~Cn+4)
+///     nCn4           : carry-out (datasheet ~Cn+4)。nCn4 → 次段 nCn の
+///                      直結リップル接続が加減算共通で成立する。
 ///     nG             : group generate (active-low)
 ///     nP             : group propagate (active-low)
+///                      ※ nG/nP は加算 (A plus B) 基準の簡略モデル。
+///                        74182 lookahead は加算でのみ使用可。
 ///     AeqB           : A=B 出力 (F=1111 のとき H)
 pub module IC74181 (
     A   : input  logic<4>,
@@ -50,6 +53,10 @@ pub module IC74181 (
         }
     }
 
+    /// 算術演算は全行を「4bit 量2つ + ci の加算」に正規化する。
+    /// "minus 1" / "minus B" は 4'b1111 / ~b (2の補数表現) の加算として
+    /// 扱うことで、減算でも nCn4 = ~carry が成立し、nCn4 → 次段 nCn の
+    /// 直結リップル接続が加減算共通で実チップ同様に機能する。
     function arith_f (
         s : input logic<4>,
         a : input logic<4>,
@@ -60,19 +67,19 @@ pub module IC74181 (
             4'b0000 : return {1'b0, a            } + {4'b0, ci};
             4'b0001 : return {1'b0, a | b        } + {4'b0, ci};
             4'b0010 : return {1'b0, a | ~b       } + {4'b0, ci};
-            4'b0011 : return 5'b11111              + {4'b0, ci};
-            4'b0100 : return {1'b0, a            } + {1'b0, a & ~b} + {4'b0, ci};
-            4'b0101 : return {1'b0, a | b        } + {1'b0, a & ~b} + {4'b0, ci};
-            4'b0110 : return {1'b0, a            } - {1'b0, b     } - 5'b00001 + {4'b0, ci};
-            4'b0111 : return {1'b0, a & ~b       } - 5'b00001 + {4'b0, ci};
-            4'b1000 : return {1'b0, a            } + {1'b0, a & b } + {4'b0, ci};
-            4'b1001 : return {1'b0, a            } + {1'b0, b     } + {4'b0, ci};
-            4'b1010 : return {1'b0, a | ~b       } + {1'b0, a & b } + {4'b0, ci};
-            4'b1011 : return {1'b0, a & b        } - 5'b00001 + {4'b0, ci};
-            4'b1100 : return {1'b0, a            } + {1'b0, a     } + {4'b0, ci};
-            4'b1101 : return {1'b0, a | b        } + {1'b0, a     } + {4'b0, ci};
-            4'b1110 : return {1'b0, a | ~b       } + {1'b0, a     } + {4'b0, ci};
-            4'b1111 : return {1'b0, a            } - 5'b00001 + {4'b0, ci};
+            4'b0011 : return {1'b0, 4'b1111      } + {4'b0, ci};
+            4'b0100 : return {1'b0, a            } + {1'b0, a & ~b } + {4'b0, ci};
+            4'b0101 : return {1'b0, a | b        } + {1'b0, a & ~b } + {4'b0, ci};
+            4'b0110 : return {1'b0, a            } + {1'b0, ~b     } + {4'b0, ci};
+            4'b0111 : return {1'b0, a & ~b       } + {1'b0, 4'b1111} + {4'b0, ci};
+            4'b1000 : return {1'b0, a            } + {1'b0, a & b  } + {4'b0, ci};
+            4'b1001 : return {1'b0, a            } + {1'b0, b      } + {4'b0, ci};
+            4'b1010 : return {1'b0, a | ~b       } + {1'b0, a & b  } + {4'b0, ci};
+            4'b1011 : return {1'b0, a & b        } + {1'b0, 4'b1111} + {4'b0, ci};
+            4'b1100 : return {1'b0, a            } + {1'b0, a      } + {4'b0, ci};
+            4'b1101 : return {1'b0, a | b        } + {1'b0, a      } + {4'b0, ci};
+            4'b1110 : return {1'b0, a | ~b       } + {1'b0, a      } + {4'b0, ci};
+            4'b1111 : return {1'b0, a            } + {1'b0, 4'b1111} + {4'b0, ci};
             default : return 5'b00000;
         }
     }
@@ -144,6 +151,20 @@ module test_IC74181 {
         // nCn=0 → +1
         nCn = 0;
         $assert(F == 4'hB);
+
+        // S=0110 (A minus B), nCn=0 → F = A - B
+        S = 4'b0110; nCn = 0;
+        A = 4'h7; B = 4'h3;
+        $assert(F == 4'h4);
+        $assert(nCn4 == 1'b0); // carry (borrow なし) → L
+        A = 4'h3; B = 4'h7;
+        $assert(F == 4'hC); // 3 - 7 = -4
+        $assert(nCn4 == 1'b1); // borrow → H
+        // S=0110, nCn=1 → F = A - B - 1。A==B で F=1111 → AeqB=H
+        A = 4'h5; B = 4'h5; nCn = 1;
+        $assert(F == 4'hF);
+        $assert(AeqB == 1'b1);
+        $assert(nCn4 == 1'b1);
 
         $finish();
     }

@@ -459,11 +459,6 @@ impl<'a> Global<'a> {
                 }
             }
             ast::Expr::SizeofType(_) | ast::Expr::SizeofExpr(_) => Ok(NormType::Int),
-            ast::Expr::Cond(_, then_expr, _else_expr) => {
-                // Type of conditional is the type of then branch
-                // (assuming then and else branches have same type)
-                self.typeinfer(then_expr)
-            }
         };
 
         // Store with write lock if successful

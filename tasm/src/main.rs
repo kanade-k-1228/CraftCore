@@ -1,8 +1,7 @@
 use std::fs;
 
 use clap::Parser;
-use indexmap::IndexMap;
-use std::collections::HashSet;
+use indexmap::{IndexMap, IndexSet};
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
@@ -65,7 +64,7 @@ fn main() -> Result<(), tasm::Error> {
 
     // 5. Resolve dependencies from entry points
     let (labels, symbols) =
-        global.deps(&["reset", "irq", "main"], HashSet::new(), HashSet::new())?;
+        global.deps(&["reset", "irq", "main"], IndexSet::new(), IndexSet::new())?;
 
     // 6-1. Allocate code objects
     let mut ialoc = tasm::Memory::new(0, 0x10000)

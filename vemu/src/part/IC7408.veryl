@@ -1,0 +1,36 @@
+/// 74HC08: Quad 2-input AND Gate
+///   A[i], B[i], Y[i] = ゲート (i+1) の 1A, 1B, 1Y (i = 0..3)。
+pub module IC7408 (
+    A: input  logic<4>,
+    B: input  logic<4>,
+    Y: output logic<4>,
+) {
+    assign Y = A & B;
+}
+
+#[test(test_IC7408)]
+module test_IC7408 {
+    var A: logic<4>;
+    var B: logic<4>;
+    var Y: logic<4>;
+
+    inst dut: IC7408 (
+        A: A,
+        B: B,
+        Y: Y,
+    );
+
+    initial {
+        A = 4'b0000;
+        B = 4'b0000;
+        $assert(Y == 4'b0000);
+        A = 4'b1111;
+        $assert(Y == 4'b0000);
+        B = 4'b1111;
+        $assert(Y == 4'b1111);
+        A = 4'b1010;
+        B = 4'b1100;
+        $assert(Y == 4'b1000);
+        $finish();
+    }
+}

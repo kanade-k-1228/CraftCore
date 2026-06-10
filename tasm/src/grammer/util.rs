@@ -13,7 +13,6 @@ impl Expr {
             Expr::Addr(inner) => inner.pos(),
             Expr::Deref(inner) => inner.pos(),
             Expr::Cast(inner, _) => inner.pos(),
-            Expr::Cond(cond, _, _) => cond.pos(),
             Expr::SizeofExpr(inner) => inner.pos(),
             Expr::SizeofType(ty) => ty.pos(),
             Expr::ArrayLit(elems) => elems.first().and_then(|e| e.pos()),

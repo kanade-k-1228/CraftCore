@@ -7,50 +7,51 @@ code:
     addr: 0x4
     size: 0x1
     stacks: {}
-  intr0:
+  init:
     addr: 0x8
-    size: 0x43
+    size: 0x23
+    stacks: {}
+  init_tasks:
+    addr: 0x2b
+    size: 0x4b
+    stacks: {}
+  task_x:
+    addr: 0x76
+    size: 0x3d
     stacks:
-      head: 0x0
-      second: 0xffff
-      tail: 0xfffe
+      i: 0x0
+  print_str:
+    addr: 0xb3
+    size: 0x19
+    stacks:
+      s: 0x0
+      p: 0xffff
   print_hex:
-    addr: 0x4b
+    addr: 0xcc
     size: 0x4b
     stacks:
       v: 0x0
       i: 0xffff
       shift: 0xfffe
       nibble: 0xfffd
-  task_z:
-    addr: 0x96
-    size: 0x3d
-    stacks:
-      i: 0x0
-  intr1:
-    addr: 0xd3
+  os_task_exit:
+    addr: 0x117
+    size: 0x5
+    stacks: {}
+  os_task_scheduler:
+    addr: 0x11c
     size: 0xb
     stacks: {}
-  init:
-    addr: 0xde
-    size: 0x23
-    stacks: {}
-  _intr:
-    addr: 0x101
-    size: 0x12
+  os_restore_context:
+    addr: 0x127
+    size: 0x11
     stacks: {}
   _exit:
-    addr: 0x113
+    addr: 0x138
     size: 0x2
     stacks: {}
-  malloc:
-    addr: 0x115
-    size: 0x13
-    stacks:
-      size: 0x0
-      addr: 0xffff
   os_task_setup:
-    addr: 0x128
+    addr: 0x13a
     size: 0xdc
     stacks:
       initial_state: 0x0
@@ -63,50 +64,49 @@ code:
       stack_top: 0xfff9
       sp_init: 0xfff8
       slot_ptr: 0xfff7
+  malloc:
+    addr: 0x216
+    size: 0x13
+    stacks:
+      size: 0x0
+      addr: 0xffff
+  task_y:
+    addr: 0x229
+    size: 0x3d
+    stacks:
+      i: 0x0
+  task_z:
+    addr: 0x266
+    size: 0x3d
+    stacks:
+      i: 0x0
+  _intr:
+    addr: 0x2a3
+    size: 0x12
+    stacks: {}
   intr_dispatch:
-    addr: 0x204
+    addr: 0x2b5
     size: 0x54
     stacks: {}
-  init_tasks:
-    addr: 0x258
-    size: 0x4b
-    stacks: {}
-  print_str:
-    addr: 0x2a3
-    size: 0x19
+  intr0:
+    addr: 0x309
+    size: 0x43
     stacks:
-      s: 0x0
-      p: 0xffff
+      head: 0x0
+      second: 0xffff
+      tail: 0xfffe
+  intr1:
+    addr: 0x34c
+    size: 0xb
+    stacks: {}
   intr2:
-    addr: 0x2bc
+    addr: 0x357
     size: 0xb
     stacks: {}
   intr3:
-    addr: 0x2c7
+    addr: 0x362
     size: 0xb
     stacks: {}
-  os_restore_context:
-    addr: 0x2d2
-    size: 0x11
-    stacks: {}
-  os_task_exit:
-    addr: 0x2e3
-    size: 0x5
-    stacks: {}
-  task_x:
-    addr: 0x2e8
-    size: 0x3d
-    stacks:
-      i: 0x0
-  os_task_scheduler:
-    addr: 0x325
-    size: 0xb
-    stacks: {}
-  task_y:
-    addr: 0x330
-    size: 0x3d
-    stacks:
-      i: 0x0
 data:
   task_id_x:
     addr: 0x48

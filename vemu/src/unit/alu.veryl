@@ -1,36 +1,406 @@
 import arch_pkg::*;
 
-/// 14演算ALU: arch::alu::ALU と等価。a,b は 16bit unsigned。
-/// 比較結果は cemu と同様 0xFFFF/0x0000 で返す。
+/// 14演算ALU (74シリーズ標準ロジックIC構成): arch::alu::ALU と等価。
+/// a,b は 16bit unsigned。比較結果は cemu と同様 0xFFFF/0x0000 で返す。
+///
+/// 演算の実現方法:
+///   ADD/SUB/AND/OR/XOR: 74181×4 リップルキャリー接続の F 出力
+///   SL/SLR            : 74181 の A plus A (SLR は carry-in に a[15] → 左ローテート)
+///   SR/SRS/SRR        : 配線シフト + fill ビット選択
+///   EQ/NEQ            : 74181 を A-B-1 モードにして AeqB 出力を AND 縮約
+///   LT                : A-B のキャリー出力 (nCn4: borrow で H)
+///   LTS               : 符号が異なれば a[15]、同じなら LT
+///   未定義 op (14,15) : flag 経路選択 + flag=0 → 0x0000
+///
+/// チップ構成 (30個):
+///   U1        74154    op の one-hot デコード (active-low)
+///   U2,U3     74540    one-hot の極性反転 (常時イネーブル)
+///   U4-U6     744078   S1 / S2 / sel_flag の OR 縮約
+///   U7        744078   flag = geq|gneq|glt|glts
+///   U8-U11    7432     制御信号の OR 木 (13ゲート)
+///   U12-U14   7408     フラグゲート・fill 生成 (11ゲート)
+///   U15       7400     neq = ~(AeqB 縮約)
+///   U16       7402     nCn0 = ~(キャリー要求), nsd = ~sd
+///   U17       7404     eq = ~neq
+///   U18       7486     sd = a[15] ^ b[15]
+///   U19-U22   74181    16bit 算術/論理コア
+///   U23-U30   74157    出力選択 (flag 展開 → 右シフト)
+///   ※ 1チップ内のゲート同士は接続しない (シミュレータの依存解析が
+///     インスタンス単位のため、チップ内帰還は組合せループと誤検出される)。
+///
+/// 74181 への制御信号 (Active-High Data convention):
+///   ADD   : S=1001 M=0 ci=0      (A plus B)
+///   SUB   : S=0110 M=0 ci=1      (A minus B)
+///   AND   : S=1011 M=1
+///   OR    : S=1110 M=1
+///   XOR   : S=0110 M=1
+///   EQ/NEQ: S=0110 M=0 ci=0      (F = A-B-1。A==B で F=FFFF → AeqB)
+///   LT/LTS: S=0110 M=0 ci=1      (F = A-B。キャリーで大小判定)
+///   SL    : S=1100 M=0 ci=0      (A plus A)
+///   SLR   : S=1100 M=0 ci=a[15]  (A plus A plus a[15] = 左ローテート)
 pub module alu (
-    i_op: input  ALU         ,
+    i_op: input  ALU          ,
     i_a : input  logic<WORD_W>,
     i_b : input  logic<WORD_W>,
     o_y : output logic<WORD_W>,
 ) {
-    function calc (
-        op: input ALU         ,
-        a : input logic<WORD_W>,
-        b : input logic<WORD_W>,
-    ) -> logic<WORD_W> {
+    // ---- 信号宣言 ----
+    var opv: logic<4>; // i_op のビット表現
+
+    var n_op : logic<16>; // op one-hot (active-low)
+    var op_lo: logic<8> ;
+    var op_hi: logic<8> ;
+    var op   : logic<16>; // op one-hot (active-high)
+
+    // 入力ビットの別名 (配線)
+    var sa: logic; // a[15]
+    var sb: logic; // b[15]
+    var a0: logic; // a[0]
+
+    // 74181 制御
+    var s0  : logic; // S[0] = ADD|AND
+    var s1  : logic; // S[1] = SUB|AND|OR|XOR|EQ|NEQ|LT|LTS
+    var s2x : logic; // SUB|OR|XOR|EQ|NEQ|LT|LTS
+    var s2  : logic; // S[2] = s2x|slg
+    var s3p : logic; // s0|OR
+    var s3  : logic; // S[3] = s3p|slg
+    var slg : logic; // SL|SLR
+    var m   : logic; // M (1=logic)
+    var mp  : logic; // AND|OR
+    var ci1 : logic; // LT|LTS
+    var ci2 : logic; // SUB|LT|LTS
+    var cisl: logic; // SLR & a[15]
+    var ncn0: logic; // 初段キャリー入力 (active-low)
+    var s   : logic<4>;
+
+    // 74181 コア (リップルは個別配線)
+    var f     : logic<16>;
+    var aeqb  : logic<4> ;
+    var ncn4_0: logic; // 段間キャリー (active-low)
+    var ncn4_1: logic;
+    var ncn4_2: logic;
+    var ncn4_3: logic; // 最上段キャリー出力
+    var _ng   : logic<4>; // 未使用 (lookahead は加算専用モデルのため不使用)
+    var _np   : logic<4>;
+
+    // 比較フラグ
+    var e01 : logic; // AeqB0&AeqB1
+    var e23 : logic; // AeqB2&AeqB3
+    var neq : logic;
+    var eq  : logic;
+    var lt  : logic; // unsigned A < B (LT/LTS モード時のみ有効)
+    var sd  : logic; // 符号差 a[15]^b[15]
+    var nsd : logic;
+    var ltsa: logic; // sd & a[15]
+    var ltsb: logic; // ~sd & lt
+    var lts : logic; // signed A < B
+    var geq : logic; // EQ  & eq
+    var gneq: logic; // NEQ & neq
+    var glt : logic; // LT  & lt
+    var glts: logic; // LTS & lts
+    var flag: logic; // 選択された比較結果 (1bit)
+
+    // 出力選択
+    var sel_flag : logic; // EQ|NEQ|LT|LTS|未定義op
+    var ss1      : logic; // SR|SRS
+    var sel_shift: logic; // SR|SRS|SRR
+    var srs_t    : logic; // SRS & a[15]
+    var srr_t    : logic; // SRR & a[0]
+    var fr       : logic; // 右シフトの fill ビット
+    var sh       : logic<16>;
+    var y1       : logic<16>;
+
+    assign opv = i_op;
+    assign sa  = i_a[15];
+    assign sb  = i_b[15];
+    assign a0  = i_a[0];
+    assign op  = {op_hi, op_lo};
+    assign s   = {s3, s2, s1, s0};
+    assign sh  = {fr, i_a[15:1]}; // 右シフト本体は配線のみ
+    assign lt  = ncn4_3; // A-B モード時: 最上段キャリーなし (= borrow) で H → A < B
+
+    // ---- U1: 74154  op を active-low one-hot 化 ----
+    inst u1_dec: IC74154 (
+        A  : opv[0],
+        B  : opv[1],
+        C  : opv[2],
+        D  : opv[3],
+        nG1: 1'b0  ,
+        nG2: 1'b0  ,
+        nY : n_op  ,
+    );
+
+    // ---- U2,U3: 74540  active-high one-hot へ反転 ----
+    inst u2_inv: IC74540 (nOE1: 1'b0, nOE2: 1'b0, A: n_op[7:0], Y: op_lo);
+    inst u3_inv: IC74540 (nOE1: 1'b0, nOE2: 1'b0, A: n_op[15:8], Y: op_hi);
+
+    // ---- U4: 744078  s1 = SUB|AND|OR|XOR|EQ|NEQ|LT|LTS ----
+    var _u4_ny: logic;
+    inst u4_or8: IC744078 (I: op[8:1], Y: s1, nY: _u4_ny);
+
+    // ---- U5: 744078  s2x = SUB|OR|XOR|EQ|NEQ|LT|LTS ----
+    var _u5_ny: logic;
+    inst u5_or8: IC744078 (I: {1'b0, op[8:3], op[1]}, Y: s2x, nY: _u5_ny);
+
+    // ---- U6: 744078  sel_flag = EQ|NEQ|LT|LTS|op14|op15 ----
+    var _u6_ny: logic;
+    inst u6_or8: IC744078 (I: {op[15:14], op[8:5], 2'b00}, Y: sel_flag, nY: _u6_ny);
+
+    // ---- U7: 744078  flag = geq|gneq|glt|glts ----
+    var _u7_ny: logic;
+    inst u7_or8: IC744078 (I: {4'b0000, glts, glt, gneq, geq}, Y: flag, nY: _u7_ny);
+
+    // ---- U8: 7432  1段目の OR (入力は op のみ) ----
+    //   g0: s0  = ADD|AND   g1: slg = SL|SLR
+    //   g2: mp  = AND|OR    g3: ci1 = LT|LTS
+    var u8_y: logic<4>;
+    inst u8_or: IC7432 (
+        A: {op[7], op[2], op[12], op[0]},
+        B: {op[8], op[3], op[13], op[2]},
+        Y: u8_y                         ,
+    );
+    assign s0  = u8_y[0];
+    assign slg = u8_y[1];
+    assign mp  = u8_y[2];
+    assign ci1 = u8_y[3];
+
+    // ---- U9: 7432  2段目の OR ----
+    //   g0: ss1 = SR|SRS   g1: s3p = s0|OR
+    //   g2: m   = mp|XOR   g3: ci2 = SUB|ci1
+    var u9_y: logic<4>;
+    inst u9_or: IC7432 (
+        A: {op[1], mp, s0, op[9]}  ,
+        B: {ci1, op[4], op[3], op[10]},
+        Y: u9_y                       ,
+    );
+    assign ss1 = u9_y[0];
+    assign s3p = u9_y[1];
+    assign m   = u9_y[2];
+    assign ci2 = u9_y[3];
+
+    // ---- U10: 7432  3段目の OR ----
+    //   g0: s3 = s3p|slg          g1: s2 = s2x|slg
+    //   g2: sel_shift = ss1|SRR   g3: fr = srs_t|srr_t
+    var u10_y: logic<4>;
+    inst u10_or: IC7432 (
+        A: {srs_t, ss1, s2x, s3p}  ,
+        B: {srr_t, op[11], slg, slg},
+        Y: u10_y                    ,
+    );
+    assign s3        = u10_y[0];
+    assign s2        = u10_y[1];
+    assign sel_shift = u10_y[2];
+    assign fr        = u10_y[3];
+
+    // ---- U11: 7432  lts = ltsa|ltsb (g1-g3 未使用) ----
+    var u11_y: logic<4>;
+    inst u11_or: IC7432 (
+        A: {3'b000, ltsa},
+        B: {3'b000, ltsb},
+        Y: u11_y         ,
+    );
+    assign lts = u11_y[0];
+
+    // ---- U12: 7408  シフト fill / SLR キャリー / LTS 補正 (74181 より前段) ----
+    //   g0: srs_t = SRS&a15  g1: srr_t = SRR&a0
+    //   g2: cisl  = SLR&a15  g3: ltsa  = sd&a15
+    var u12_y: logic<4>;
+    inst u12_and: IC7408 (
+        A: {sd, op[13], op[11], op[10]},
+        B: {sa, sa, a0, sa}            ,
+        Y: u12_y                       ,
+    );
+    assign srs_t = u12_y[0];
+    assign srr_t = u12_y[1];
+    assign cisl  = u12_y[2];
+    assign ltsa  = u12_y[3];
+
+    // ---- U13: 7408  eq チェーン / lt ゲート (74181 直後) ----
+    //   g0: e01 = AeqB0&AeqB1  g1: e23  = AeqB2&AeqB3
+    //   g2: glt = LT&lt        g3: ltsb = nsd&lt
+    var u13_y: logic<4>;
+    inst u13_and: IC7408 (
+        A: {nsd, op[7], aeqb[2], aeqb[0]},
+        B: {lt, lt, aeqb[3], aeqb[1]}    ,
+        Y: u13_y                         ,
+    );
+    assign e01  = u13_y[0];
+    assign e23  = u13_y[1];
+    assign glt  = u13_y[2];
+    assign ltsb = u13_y[3];
+
+    // ---- U14: 7408  フラグゲート (g3 未使用) ----
+    //   g0: geq = EQ&eq   g1: gneq = NEQ&neq   g2: glts = LTS&lts
+    var u14_y: logic<4>;
+    inst u14_and: IC7408 (
+        A: {1'b0, op[8], op[6], op[5]},
+        B: {1'b0, lts, neq, eq}       ,
+        Y: u14_y                      ,
+    );
+    assign geq  = u14_y[0];
+    assign gneq = u14_y[1];
+    assign glts = u14_y[2];
+
+    // ---- U15: 7400  neq = ~(e01 & e23) ----
+    var u15_y: logic<4>;
+    inst u15_nand: IC7400 (
+        A: {3'b000, e01},
+        B: {3'b000, e23},
+        Y: u15_y        ,
+    );
+    assign neq = u15_y[0];
+
+    // ---- U16: 7402  ncn0 = ~(ci2 | cisl), nsd = ~sd ----
+    var u16_y: logic<4>;
+    inst u16_nor: IC7402 (
+        A: {2'b00, sd, ci2} ,
+        B: {2'b00, sd, cisl},
+        Y: u16_y            ,
+    );
+    assign ncn0 = u16_y[0];
+    assign nsd  = u16_y[1];
+
+    // ---- U17: 7404  eq = ~neq ----
+    var u17_y: logic<6>;
+    inst u17_inv: IC7404 (
+        A: {5'b0, neq},
+        Y: u17_y      ,
+    );
+    assign eq = u17_y[0];
+
+    // ---- U18: 7486  sd = a[15] ^ b[15] ----
+    var u18_y: logic<4>;
+    inst u18_xor: IC7486 (
+        A: {3'b000, sa},
+        B: {3'b000, sb},
+        Y: u18_y       ,
+    );
+    assign sd = u18_y[0];
+
+    // ---- U19-U22: 74181 ×4  リップルキャリー接続 ----
+    inst u19_alu0: IC74181 (
+        A: i_a[3:0], B: i_b[3:0], S: s, M: m, nCn: ncn0,
+        F: f[3:0], nCn4: ncn4_0, nG: _ng[0], nP: _np[0], AeqB: aeqb[0],
+    );
+    inst u20_alu1: IC74181 (
+        A: i_a[7:4], B: i_b[7:4], S: s, M: m, nCn: ncn4_0,
+        F: f[7:4], nCn4: ncn4_1, nG: _ng[1], nP: _np[1], AeqB: aeqb[1],
+    );
+    inst u21_alu2: IC74181 (
+        A: i_a[11:8], B: i_b[11:8], S: s, M: m, nCn: ncn4_1,
+        F: f[11:8], nCn4: ncn4_2, nG: _ng[2], nP: _np[2], AeqB: aeqb[2],
+    );
+    inst u22_alu3: IC74181 (
+        A: i_a[15:12], B: i_b[15:12], S: s, M: m, nCn: ncn4_2,
+        F: f[15:12], nCn4: ncn4_3, nG: _ng[3], nP: _np[3], AeqB: aeqb[3],
+    );
+
+    // ---- U23-U26: 74157  F / flag 展開の選択 ----
+    // flag の 16bit 展開はファンアウト配線のみ
+    inst u23_mux: IC74157 (nG: 1'b0, S: sel_flag, A: f[3:0], B: {flag, flag, flag, flag}, Y: y1[3:0]);
+    inst u24_mux: IC74157 (nG: 1'b0, S: sel_flag, A: f[7:4], B: {flag, flag, flag, flag}, Y: y1[7:4]);
+    inst u25_mux: IC74157 (nG: 1'b0, S: sel_flag, A: f[11:8], B: {flag, flag, flag, flag}, Y: y1[11:8]);
+    inst u26_mux: IC74157 (nG: 1'b0, S: sel_flag, A: f[15:12], B: {flag, flag, flag, flag}, Y: y1[15:12]);
+
+    // ---- U27-U30: 74157  右シフトの選択 ----
+    inst u27_mux: IC74157 (nG: 1'b0, S: sel_shift, A: y1[3:0], B: sh[3:0], Y: o_y[3:0]);
+    inst u28_mux: IC74157 (nG: 1'b0, S: sel_shift, A: y1[7:4], B: sh[7:4], Y: o_y[7:4]);
+    inst u29_mux: IC74157 (nG: 1'b0, S: sel_shift, A: y1[11:8], B: sh[11:8], Y: o_y[11:8]);
+    inst u30_mux: IC74157 (nG: 1'b0, S: sel_shift, A: y1[15:12], B: sh[15:12], Y: o_y[15:12]);
+}
+
+#[test(test_alu)]
+module test_alu {
+    var op4: logic<4> ;
+    var opc: ALU      ;
+    var a  : logic<16>;
+    var b  : logic<16>;
+    var y  : logic<16>;
+
+    assign opc = op4 as ALU;
+
+    inst dut: alu (
+        i_op: opc,
+        i_a : a  ,
+        i_b : b  ,
+        o_y : y  ,
+    );
+
+    // 旧 behavioral 実装を参照値に使う
+    function expect_y (
+        op: input logic<4> ,
+        ta: input logic<16>,
+        tb: input logic<16>,
+    ) -> logic<16> {
         case op {
-            ALU::ADD: return a + b;
-            ALU::SUB: return a - b;
-            ALU::AND: return a & b;
-            ALU::OR : return a | b;
-            ALU::XOR: return a ^ b;
-            ALU::EQ : return if a == b ? 16'hFFFF : 16'h0000;
-            ALU::NEQ: return if a != b ? 16'hFFFF : 16'h0000;
-            ALU::LT : return if a <: b ? 16'hFFFF : 16'h0000;
-            ALU::LTS: return if a as SWord <: b as SWord ? 16'hFFFF : 16'h0000;
-            ALU::SR : return {1'b0, a[15:1]};
-            ALU::SRS: return {a[15], a[15:1]};
-            ALU::SRR: return {a[0], a[15:1]};
-            ALU::SL : return {a[14:0], 1'b0};
-            ALU::SLR: return {a[14:0], a[15]};
-            default : return 16'h0000;
+            4'd0   : return ta + tb;
+            4'd1   : return ta - tb;
+            4'd2   : return ta & tb;
+            4'd3   : return ta | tb;
+            4'd4   : return ta ^ tb;
+            4'd5   : return if ta == tb ? 16'hFFFF : 16'h0000;
+            4'd6   : return if ta != tb ? 16'hFFFF : 16'h0000;
+            4'd7   : return if ta <: tb ? 16'hFFFF : 16'h0000;
+            // 注: `as SWord` の signed 比較は native シミュレータで unsigned 評価
+            // されるため、符号ビットを明示して比較する
+            4'd8   : return if ta[15] != tb[15] ? (if ta[15] ? 16'hFFFF : 16'h0000) : (if ta <: tb ? 16'hFFFF : 16'h0000);
+            4'd9   : return {1'b0, ta[15:1]};
+            4'd10  : return {ta[15], ta[15:1]};
+            4'd11  : return {ta[0], ta[15:1]};
+            4'd12  : return {ta[14:0], 1'b0};
+            4'd13  : return {ta[14:0], ta[15]};
+            default: return 16'h0000;
         }
     }
 
-    assign o_y = calc(i_op, i_a, i_b);
+    function vec_a (i: input u32) -> logic<16> {
+        case i {
+            0      : return 16'h0000;
+            1      : return 16'h0001;
+            2      : return 16'hFFFF;
+            3      : return 16'h1234;
+            4      : return 16'h8000;
+            5      : return 16'h7FFF;
+            6      : return 16'hFFFF;
+            7      : return 16'hAAAA;
+            8      : return 16'h0100;
+            9      : return 16'h8001;
+            10     : return 16'h0010;
+            11     : return 16'hF000;
+            default: return 16'h0000;
+        }
+    }
+
+    function vec_b (i: input u32) -> logic<16> {
+        case i {
+            0      : return 16'h0000;
+            1      : return 16'h0000;
+            2      : return 16'h0001;
+            3      : return 16'h1234;
+            4      : return 16'h7FFF;
+            5      : return 16'h8000;
+            6      : return 16'hFFFF;
+            7      : return 16'h5555;
+            8      : return 16'h00FF;
+            9      : return 16'h8002;
+            10     : return 16'h0008;
+            11     : return 16'h0FFF;
+            default: return 16'h0000;
+        }
+    }
+
+    var exp: logic<16>;
+
+    initial {
+        for i: u32 in 0..12 {
+            a = vec_a(i);
+            b = vec_b(i);
+            for j: u32 in 0..16 {
+                op4 = j[3:0];
+                exp = expect_y(op4, a, b);
+                $assert(y == exp);
+            }
+        }
+        $finish();
+    }
 }

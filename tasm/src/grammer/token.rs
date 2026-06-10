@@ -42,7 +42,6 @@ pub enum TokenKind {
     Pipe,      // '|'
     Caret,     // '^'
     Excl,      // '!'
-    Question,  // '?'
     Colon,     // ':'
     Semicolon, // ';'
     Comma,     // ','
