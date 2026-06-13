@@ -76,36 +76,36 @@ impl Hook for Dump {
 
 impl Dump {
     fn print_reg(&self, cpu: &State) {
-        println!(" +------------+----------+----------+----------+");
+        println!(" +-----------+-----------+-----------+-----------+");
         println!(
-            " | zero: {:0>4X} | ra: {:0>4X} | t0: {:0>4X} | t5: {:0>4X} |",
+            " | zero:{:0>4X} | ira: {:0>4X} | pc:  {:0>4X} | csr: {:0>4X} |",
             cpu.get(Reg::Z),
-            cpu.get(Reg::RA),
-            cpu.get(Reg::T0),
-            cpu.get(Reg::T5)
-        );
-        println!(
-            " |  ira: {:0>4X} | sp: {:0>4X} | t1: {:0>4X} | t6: {:0>4X} |",
             cpu.get(Reg::IRA),
-            cpu.get(Reg::SP),
-            cpu.get(Reg::T1),
-            cpu.get(Reg::T6)
-        );
-        println!(
-            " |   pc: {:0>4X} | t2: {:0>4X} | t3: {:0>4X} | t7: {:0>4X} |",
             cpu.get(Reg::PC),
-            cpu.get(Reg::T2),
-            cpu.get(Reg::T3),
-            cpu.get(Reg::T7)
+            cpu.get(Reg::CSR)
         );
         println!(
-            " |  csr: {:0>4X} | t4: {:0>4X} | t8: {:0>4X} | t9: {:0>4X} |",
-            cpu.get(Reg::CSR),
-            cpu.get(Reg::T4),
-            cpu.get(Reg::T8),
-            cpu.get(Reg::T9)
+            " | ra:  {:0>4X} | sp:  {:0>4X} | a0:  {:0>4X} | a1:  {:0>4X} |",
+            cpu.get(Reg::RA),
+            cpu.get(Reg::SP),
+            cpu.get(Reg::A0),
+            cpu.get(Reg::A1)
         );
-        println!(" +------------+----------+----------+----------+");
+        println!(
+            " | t0:  {:0>4X} | t1:  {:0>4X} | t2:  {:0>4X} | t3:  {:0>4X} |",
+            cpu.get(Reg::T0),
+            cpu.get(Reg::T1),
+            cpu.get(Reg::T2),
+            cpu.get(Reg::T3)
+        );
+        println!(
+            " | s0:  {:0>4X} | s1:  {:0>4X} | s2:  {:0>4X} | s3:  {:0>4X} |",
+            cpu.get(Reg::S0),
+            cpu.get(Reg::S1),
+            cpu.get(Reg::S2),
+            cpu.get(Reg::S3)
+        );
+        println!(" +-----------+-----------+-----------+-----------+");
     }
 
     fn print_stack(&self, cpu: &State) {

@@ -29,6 +29,9 @@ pub fn genibin<'a>(
                 Imm::ScopeExit(id) | Imm::ScopeEntry(id) => {
                     panic!("internal error: unpatched scope placeholder (id={})", id)
                 }
+                Imm::FrameRel(_) => {
+                    panic!("internal error: unresolved frame placeholder reached linker")
+                }
             });
             let bytes = resolved.encode().to_le_bytes();
             if offset + 4 <= binary.len() {

@@ -7,23 +7,23 @@ asm @ 0x0000 reset {
 }
 
 asm main {
-    loadi(t2, msg@);         // t2: Addr
-    loadi(t3, sizeof(msg));  // t3: Size
-    loadi(t4, serial_tx@);   // t4: Serial TX address
-    loadi(t6, 0);            // t6: Counter
+    loadi(t0, msg@);         // t0: Addr
+    loadi(t1, sizeof(msg));  // t1: Size
+    loadi(t2, serial_tx@);   // t2: Serial TX address
+    loadi(s0, 0);            // s0: Counter
 
   loop:
-    lt(t7, t6, t3);        // t7 = (t6 < t3): 1 if まだ送信文字あり
-    eqi(t8, t7, 0);        // t8 = (t7 == 0): 送信終了なら 1
-    jumpifr(t8, exit);     // jumpifr は jump-if-nonzero。t8!=0 で exit へ
+    lt(s1, s0, t1);        // s1 = (s0 < t1): 1 if まだ送信文字あり
+    eqi(s2, s1, 0);        // s2 = (s1 == 0): 送信終了なら 1
+    jumpifr(s2, exit);     // jumpifr は jump-if-nonzero。s2!=0 で exit へ
 
     // Load char
-    add(t7, t2, t6);
-    load(t8, t7, 0);
-    store(t8, t4, 0);
+    add(s1, t0, s0);
+    load(s2, s1, 0);
+    store(s2, t2, 0);
 
     // Increment
-    addi(t6, t6, 1);
+    addi(s0, s0, 1);
     jumpr(loop);
 
   exit:

@@ -1,0 +1,40 @@
+// 09_heap — free 可能なヒープ (フリーリスト) の確保/解放/再利用デモ
+//
+// a, b を確保 → a を free → c を確保。c は free した a のブロックを再利用するので
+// c == a になる (フリーリストが機能している証拠)。
+
+const user_global_size = 0;
+
+const s_a  = "a=";
+const s_b  = "b=";
+const s_c  = "c=";
+const s_nl = "\n";
+
+fn intr0() { return; }
+fn intr1() { return; }
+fn intr2() { return; }
+fn intr3() { return; }
+
+fn heap_test() {
+    var a: *int = os_heap_aloc(4);
+    var b: *int = os_heap_aloc(4);
+    print_str(s_a@ as *int);
+    print_hex(a as int);
+    print_str(s_nl@ as *int);
+    print_str(s_b@ as *int);
+    print_hex(b as int);
+    print_str(s_nl@ as *int);
+
+    os_heap_free(a);              // a を解放 → フリーリストへ
+    var c: *int = os_heap_aloc(4); // 同じ 4 word を要求 → a のブロックを再利用
+    print_str(s_c@ as *int);
+    print_hex(c as int);          // c == a になるはず
+    print_str(s_nl@ as *int);
+
+    os_task_exit();
+}
+
+fn init_tasks() {
+    os_heap_init();
+    os_task_setup(task_state_ready, 0x100, heap_test as int);
+}

@@ -13,6 +13,8 @@ pub enum Imm {
     Symbol(String, usize), // Address of data (name, offset)
     ScopeExit(usize),      // Placeholder: jump past labeled scope with given id (break)
     ScopeEntry(usize),     // Placeholder: jump to start of labeled scope with given id (continue)
+    FrameRel(i32),         // Frame reference: signed offset from function-entry SP.
+                           // Resolved to Lit((N + off) as u16) once frame size N is fixed.
 }
 
 impl Imm {

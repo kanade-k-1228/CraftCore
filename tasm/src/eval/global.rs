@@ -578,7 +578,8 @@ impl<'a> Global<'a> {
     }
 
     /// Walk a function body and produce a map of (local var name → SP-relative
-    /// offset). 新 ABI (SP 下向き): args は SP+0..SP-(args_total-1)、locals はその直下の負方向。
+    /// offset)。RISC-V 風 ABI: arg0/arg1 は a0/a1 spill (off -1,-2)、arg2+ は呼出側
+    /// スタック (off +0,+1)。locals は arg-spill の直下 (負方向)。デバッグ map 用。
     pub fn get_func_locals(&'a self, name: &str) -> Option<IndexMap<String, i32>> {
         let def = self.defs.get(name).copied()?;
         let (params, _ret_ty, body) = match def {
@@ -586,11 +587,8 @@ impl<'a> Global<'a> {
             _ => return None,
         };
         let mut local = super::local::Local::fork(self);
-        // 引数の総サイズを計算 (locals の開始位置を決めるため)
-        let mut args_total: i32 = 0;
-        for (_, ty) in params {
-            args_total += self.normtype(ty).ok()?.sizeof() as i32;
-        }
+        // a0/a1 にスピルする引数の数 (フレーム最上位を占有)。locals はその下に積む。
+        let argc_spilled = params.len().min(2) as i32;
         local.insert_args(params).ok()?;
         // Walk statements to collect every Var declaration in source order.
         fn walk<'a>(
@@ -615,16 +613,17 @@ impl<'a> Global<'a> {
                 ast::Stmt::Var(ident, ty, _) => {
                     let nty = global.normtype(ty)?;
                     let size = nty.sizeof() as i32;
-                    let head = *next - size + 1;
-                    *next -= size;
+                    // current_bottom (= *next) を size 進め、field0 (最深) を head とする。
+                    *next += size;
+                    let head = -*next;
                     let _ = local.insert(ident, nty, head);
                 }
                 _ => {}
             }
             Ok(())
         }
-        // 新 ABI: locals は args 直下 (= SP - args_total) から負方向に伸びる。
-        let mut next: i32 = -args_total;
+        // locals は a0/a1 spill の直下 (current_bottom = argc_spilled) から下方向へ。
+        let mut next: i32 = argc_spilled;
         for s in body {
             walk(self, &mut local, &mut next, s).ok()?;
         }

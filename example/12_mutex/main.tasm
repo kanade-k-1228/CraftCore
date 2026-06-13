@@ -1,0 +1,65 @@
+// 12_mutex — owner 付きミューテックスによる相互排他デモ
+//
+// A/B 2 タスクが同じミューテックスを取り、クリティカルセクション中に sleep(1) で
+// yield する。ロックを保持したまま yield しても、相手はロック取得でブロックするため、
+// "X in" と "X out" は必ずペアで出力され、相手の "in" が割り込まない。
+// 期待: "A in/A out" と "B in/B out" のペアが交互に並ぶ (in→別タスクの in は起きない)。
+
+const user_global_size = 1;
+
+static @ 0x0048 mtx : *Mutex;
+
+const s_a_in  = "A in\n";
+const s_a_out = "A out\n";
+const s_b_in  = "B in\n";
+const s_b_out = "B out\n";
+
+fn intr0() {
+    os_timer_tick();
+    csr = csr & 0xfeff;
+}
+fn intr1() { csr = csr & 0xfdff; }
+fn intr2() { csr = csr & 0xfbff; }
+fn intr3() { csr = csr & 0xf7ff; }
+
+fn task_a() {
+    var i: int = 0;
+    while (i < 3) {
+        os_mutex_lock(mtx);
+        print_str(s_a_in@ as *int);
+        os_task_sleep(1);              // ロック保持のまま yield (B は lock でブロック)
+        print_str(s_a_out@ as *int);
+        os_mutex_unlock(mtx);
+        os_task_sleep(1);              // ロックを離して yield (B に番を渡す)
+        i = i + 1;
+    }
+    os_task_exit();
+}
+
+fn task_b() {
+    var i: int = 0;
+    while (i < 3) {
+        os_mutex_lock(mtx);
+        print_str(s_b_in@ as *int);
+        os_task_sleep(1);
+        print_str(s_b_out@ as *int);
+        os_mutex_unlock(mtx);
+        os_task_sleep(1);
+        i = i + 1;
+    }
+    os_task_exit();
+}
+
+fn idle() {
+    while (1) {
+    }
+}
+
+fn init_tasks() {
+    mtx = os_mutex_init();
+    os_ticks = 0;
+    os_task_setup(task_state_ready, 0x100, task_a as int);
+    os_task_setup(task_state_ready, 0x100, task_b as int);
+    os_task_setup(task_state_ready, 0x100, idle as int);
+    csr = csr | INTR.ENABLE;
+}

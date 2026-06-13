@@ -5,31 +5,31 @@ asm @ 0x0000 reset {
 }
 
 asm main {
-    loadi(t2, 'H');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'e');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'l');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'l');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'o');
-    store(t2, z, serial_tx@);
-    loadi(t2, ' ');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'W');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'o');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'r');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'l');
-    store(t2, z, serial_tx@);
-    loadi(t2, 'd');
-    store(t2, z, serial_tx@);
-    loadi(t2, '!');
-    store(t2, z, serial_tx@);
-    loadi(t2, '\n');
-    store(t2, z, serial_tx@);
+    loadi(t0, 'H');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'e');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'l');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'l');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'o');
+    store(t0, z, serial_tx@);
+    loadi(t0, ' ');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'W');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'o');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'r');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'l');
+    store(t0, z, serial_tx@);
+    loadi(t0, 'd');
+    store(t0, z, serial_tx@);
+    loadi(t0, '!');
+    store(t0, z, serial_tx@);
+    loadi(t0, '\n');
+    store(t0, z, serial_tx@);
     jump(main);
 }

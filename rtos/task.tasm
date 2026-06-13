@@ -3,7 +3,7 @@
 //
 // ABI:
 //   - スタックポインタは SP (旧 FP)。
-//   - レジスタは全て caller-save (T0..T9)。callee-saved は無い。
+//   - レジスタは全て caller-save (a0..s3)。callee-saved は無い。
 //   - 引数・戻り値は全て stack で渡す。 callee 視点で
 //       SP+2+ret_size .. SP+3 : 戻り値スロット (head = SP+3, field i = SP+3+i)
 //       SP+2   : saved RA          (callee の prologue で書く)
@@ -39,11 +39,13 @@ static @ 0x0043 task_list   : *TCB;  // タスク(TCB)連結リストの先頭
 // Task Context Block
 // next フィールドは自己参照を避けるため *void として持つ
 type TCB = {
-    next:  *void, // 次のタスク（実体は *TCB、cast で復元する）
-    sp:    *int,  // 中断時の SP (= 退避領域の下端)
-    bp:    *int,  // スタック上端 (allocated 領域の終端)
-    ra:    *int,  // 中断時の IRA (= 再開時の PC)
-    state: int,   // タスクの状態
+    next:     *void, // 次のタスク（実体は *TCB、cast で復元する）
+    sp:       *int,  // 中断時の SP (= 退避領域の下端)
+    bp:       *int,  // スタック上端 (allocated 領域の終端)
+    ra:       *int,  // 中断時の IRA (= 再開時の PC)
+    state:     int,   // タスクの状態
+    wait_obj:  int,   // 待機中の同期オブジェクト(Sem)のアドレス。0 = 非ブロック。
+    wake_tick: int,   // != 0 ならスリープ中。os_ticks がこの値以上で起床。
 };
 
 // Task state constants
@@ -55,16 +57,16 @@ const task_state_exit    = 2;
 // 退避領域レイアウト (SP 相対、12 word):
 //   SP+0  RA
 //   SP+1  旧 SP (中断時の SP = 復帰時に書き戻す)
-//   SP+2  T0
-//   SP+3  T1
-//   SP+4  T2
-//   SP+5  T3
-//   SP+6  T4
-//   SP+7  T5
-//   SP+8  T6
-//   SP+9  T7
-//   SP+10 T8
-//   SP+11 T9
+//   SP+2  a0
+//   SP+3  a1
+//   SP+4  t0
+//   SP+5  t1
+//   SP+6  t2
+//   SP+7  t3
+//   SP+8  s0
+//   SP+9  s1
+//   SP+10 s2
+//   SP+11 s3
 
 // --------------------------------------------------------
 // 割り込みプロローグ
@@ -75,25 +77,25 @@ asm _intr {
     subi(sp, sp, 12);
 
     store(ra, sp, 0);
-    store(t0, sp, 2);
-    store(t1, sp, 3);
-    store(t2, sp, 4);
-    store(t3, sp, 5);
-    store(t4, sp, 6);
-    store(t5, sp, 7);
-    store(t6, sp, 8);
-    store(t7, sp, 9);
-    store(t8, sp, 10);
-    store(t9, sp, 11);
+    store(a0, sp, 2);
+    store(a1, sp, 3);
+    store(t0, sp, 4);
+    store(t1, sp, 5);
+    store(t2, sp, 6);
+    store(t3, sp, 7);
+    store(s0, sp, 8);
+    store(s1, sp, 9);
+    store(s2, sp, 10);
+    store(s3, sp, 11);
 
-    // 旧 SP を slot 1 へ。 t0 を scratch にしてよい (すでに退避済)。
-    addi(t0, sp, 12);
-    store(t0, sp, 1);
+    // 旧 SP を slot 1 へ。 a0 を scratch にしてよい (すでに退避済)。
+    addi(a0, sp, 12);
+    store(a0, sp, 1);
 
     // TCB に sp / ra を保存
-    load(t0, z, task_running@);
-    store(ira, t0, (@(0 as *TCB)).ra@);
-    store(sp,  t0, (@(0 as *TCB)).sp@);
+    load(a0, z, task_running@);
+    store(ira, a0, (@(0 as *TCB)).ra@);
+    store(sp,  a0, (@(0 as *TCB)).sp@);
 
     jump(intr_dispatch);
 }
@@ -155,23 +157,25 @@ fn os_task_setup(
     (@new_tcb).next  = 0 as *void;
     (@new_tcb).sp    = sp_init as *int;
     (@new_tcb).bp    = stack_top as *int;
-    (@new_tcb).ra    = entry_address as *int;
-    (@new_tcb).state = initial_state;
+    (@new_tcb).ra        = entry_address as *int;
+    (@new_tcb).state     = initial_state;
+    (@new_tcb).wait_obj  = 0;  // 同期待ちなし
+    (@new_tcb).wake_tick = 0;  // スリープなし
 
     // 退避領域 [sp_init+0..sp_init+11] に初期コンテキストを仕込む。
     var slot_ptr: *int = sp_init as *int;
     slot_ptr[0]  = entry_address; // RA (resume 時 iret で entry へ)
     slot_ptr[1]  = stack_top;     // 旧 SP = タスクスタック上端
-    slot_ptr[2]  = 0;             // T0
-    slot_ptr[3]  = 0;             // T1
-    slot_ptr[4]  = 0;             // T2
-    slot_ptr[5]  = 0;             // T3
-    slot_ptr[6]  = 0;             // T4
-    slot_ptr[7]  = 0;             // T5
-    slot_ptr[8]  = 0;             // T6
-    slot_ptr[9]  = 0;             // T7
-    slot_ptr[10] = 0;             // T8
-    slot_ptr[11] = 0;             // T9
+    slot_ptr[2]  = 0;             // a0
+    slot_ptr[3]  = 0;             // a1
+    slot_ptr[4]  = 0;             // t0
+    slot_ptr[5]  = 0;             // t1
+    slot_ptr[6]  = 0;             // t2
+    slot_ptr[7]  = 0;             // t3
+    slot_ptr[8]  = 0;             // s0
+    slot_ptr[9]  = 0;             // s1
+    slot_ptr[10] = 0;             // s2
+    slot_ptr[11] = 0;             // s3
     return new_tcb;
 }
 
@@ -186,18 +190,18 @@ fn os_task_setup(
 //     ret=0, 各 arg 1word)。
 //   - 退避領域の slot 1 (saved old SP) には caller_SP を入れる必要がある。
 //     caller_SP は caller が new_SP+1 に書いてあるので、subi(sp,sp,12) で退避領域を
-//     切ったあと、SP+13 (= new_SP+1) から読み取る。 ★ T9 をその slot (SP+11) に
+//     切ったあと、SP+13 (= new_SP+1) から読み取る。 ★ s3 をその slot (SP+11) に
 //     上書きする前ではなく、SP+13 は退避領域の外なので読み取りタイミングは任意。
 //   - 一方、_intr は割り込み起因で「caller」概念が無いので、退避時の SP がそのまま
-//     「再開時に書き戻す SP」になる。 addi(t0, sp, 12) のままで良い。
+//     「再開時に書き戻す SP」になる。 addi(a0, sp, 12) のままで良い。
 
 // タスクの終了
 asm os_task_exit {
     andi(csr, csr, 0xfffe);   // 1 命令で割り込み禁止
 
-    load(t0, z, task_running@);
-    loadi(t1, task_state_exit);
-    store(t1, t0, (@(0 as *TCB)).state@);
+    load(a0, z, task_running@);
+    loadi(a1, task_state_exit);
+    store(a1, a0, (@(0 as *TCB)).state@);
 
     jump(os_task_scheduler);
 }
@@ -207,25 +211,25 @@ asm os_task_wait {
     andi(csr, csr, 0xfffe);
 
     subi(sp, sp, 12);
-    store(t0, sp, 2);     // 元 T0 を保存
-    load(t0, sp, 13);     // ★ SP+13 = new_SP+1 に caller_SP がある
-    store(t0, sp, 1);     // saved old SP = caller_SP
+    store(a0, sp, 2);     // 元 a0 を保存
+    addi(a0, sp, 12);     // saved sp = 呼ばれた瞬間の sp (新 ABI: sp は callee-save、トリック廃止)
+    store(a0, sp, 1);     // saved old SP
     store(ra, sp, 0);
-    store(t1, sp, 3);
-    store(t2, sp, 4);
-    store(t3, sp, 5);
-    store(t4, sp, 6);
-    store(t5, sp, 7);
-    store(t6, sp, 8);
-    store(t7, sp, 9);
-    store(t8, sp, 10);
-    store(t9, sp, 11);
+    store(a1, sp, 3);
+    store(t0, sp, 4);
+    store(t1, sp, 5);
+    store(t2, sp, 6);
+    store(t3, sp, 7);
+    store(s0, sp, 8);
+    store(s1, sp, 9);
+    store(s2, sp, 10);
+    store(s3, sp, 11);
 
-    load(t0, z, task_running@);
-    store(sp, t0, (@(0 as *TCB)).sp@);
-    store(ra, t0, (@(0 as *TCB)).ra@);
-    loadi(t1, task_state_waiting);
-    store(t1, t0, (@(0 as *TCB)).state@);
+    load(a0, z, task_running@);
+    store(sp, a0, (@(0 as *TCB)).sp@);
+    store(ra, a0, (@(0 as *TCB)).ra@);
+    loadi(a1, task_state_waiting);
+    store(a1, a0, (@(0 as *TCB)).state@);
 
     jump(os_task_scheduler);
 }
@@ -235,48 +239,48 @@ asm os_task_wait {
 asm os_task_ready {
     andi(csr, csr, 0xfffe);
 
-    // 引数 0 (= target) を t1 に読み込む。 SP を動かす前に。
-    load(t1, sp, 0);
+    // 第1引数 (= target) は a0。a1 へ退避してから保存する。
+    mov(a1, a0);
 
     subi(sp, sp, 12);
-    store(t0, sp, 2);   // 元 T0 を保存
-    load(t0, sp, 13);   // ★ caller_SP (= new_SP+1) を読む
-    store(t0, sp, 1);   // saved old SP = caller_SP
+    store(a0, sp, 2);   // 元 a0 (= target) を保存
+    addi(a0, sp, 12);   // saved sp = 呼ばれた瞬間の sp (新 ABI、トリック廃止)
+    store(a0, sp, 1);   // saved old SP
     store(ra, sp, 0);
-    store(t1, sp, 3);   // 旧 t1 (= target) を save する。 t1 自体は値を保持
-    store(t2, sp, 4);
-    store(t3, sp, 5);
-    store(t4, sp, 6);
-    store(t5, sp, 7);
-    store(t6, sp, 8);
-    store(t7, sp, 9);
-    store(t8, sp, 10);
-    store(t9, sp, 11);
+    store(a1, sp, 3);   // a1 (= target) を save。 a1 自体は値を保持
+    store(t0, sp, 4);
+    store(t1, sp, 5);
+    store(t2, sp, 6);
+    store(t3, sp, 7);
+    store(s0, sp, 8);
+    store(s1, sp, 9);
+    store(s2, sp, 10);
+    store(s3, sp, 11);
 
-    load(t0, z, task_running@);
-    store(sp, t0, (@(0 as *TCB)).sp@);
-    store(ra, t0, (@(0 as *TCB)).ra@);
+    load(a0, z, task_running@);
+    store(sp, a0, (@(0 as *TCB)).sp@);
+    store(ra, a0, (@(0 as *TCB)).ra@);
 
     // target.state = ready
-    loadi(t2, task_state_ready);
-    store(t2, t1, (@(0 as *TCB)).state@);
+    loadi(t0, task_state_ready);
+    store(t0, a1, (@(0 as *TCB)).state@);
 
     jump(os_task_scheduler);
 }
 
 // 次の Ready タスクを探して切り替える
 asm os_task_scheduler {
-    load(t0, z, task_list@);     // cur = task_list
+    load(a0, z, task_list@);     // cur = task_list
   sched_next:
-    eqi(t1, t0, 0);
-    jumpifr(t1, sched_no_ready);
-    load(t2, t0, (@(0 as *TCB)).state@);
-    eqi(t3, t2, 0);              // ready (=0) か?
-    jumpifr(t3, sched_found);
-    load(t0, t0, (@(0 as *TCB)).next@);
+    eqi(a1, a0, 0);
+    jumpifr(a1, sched_no_ready);
+    load(t0, a0, (@(0 as *TCB)).state@);
+    eqi(t1, t0, 0);              // ready (=0) か?
+    jumpifr(t1, sched_found);
+    load(a0, a0, (@(0 as *TCB)).next@);
     jumpr(sched_next);
   sched_found:
-    store(t0, z, task_running@);
+    store(a0, z, task_running@);
     jump(os_restore_context);
   sched_no_ready:
     jump(_exit);
@@ -287,38 +291,202 @@ asm os_restore_context {
     ori(csr, csr, 0x0001);       // 割り込み許可
 
     // TCB から SP と IRA を復元
-    load(t0, z, task_running@);
-    load(sp,  t0, (@(0 as *TCB)).sp@);
-    load(ira, t0, (@(0 as *TCB)).ra@);
+    load(a0, z, task_running@);
+    load(sp,  a0, (@(0 as *TCB)).sp@);
+    load(ira, a0, (@(0 as *TCB)).ra@);
 
     // 退避領域 sp+0..sp+11 から 12 word を復元する。
     // 最後の `load(sp, sp, 1)` で SP 自身を旧 SP に書き換える。
     load(ra, sp, 0);
-    load(t0, sp, 2);
-    load(t1, sp, 3);
-    load(t2, sp, 4);
-    load(t3, sp, 5);
-    load(t4, sp, 6);
-    load(t5, sp, 7);
-    load(t6, sp, 8);
-    load(t7, sp, 9);
-    load(t8, sp, 10);
-    load(t9, sp, 11);
+    load(a0, sp, 2);
+    load(a1, sp, 3);
+    load(t0, sp, 4);
+    load(t1, sp, 5);
+    load(t2, sp, 6);
+    load(t3, sp, 7);
+    load(s0, sp, 8);
+    load(s1, sp, 9);
+    load(s2, sp, 10);
+    load(s3, sp, 11);
     load(sp, sp, 1);     // ★ 最後に SP 自身を旧 SP で書き換える
     iret();
 }
 
 // --------------------------------------------------------
-// 排他制御（未実装）
+// 排他制御 — カウンティングセマフォ (ブロッキング)
+//
+//   count は常に >= 0 (取得可能なトークン数)。トークンが無い (count==0) 間は
+//   待機タスクを WAITING にして scheduler へ切り替え、signal 時に起こして再チェック
+//   させる (Mesa スタイル)。tasm の `<` は符号無し比較なので count を負にしない。
+//
+// count 操作と待ち/起こしの間にプリエンプトが入ると壊れるため、割込を
+// マスクして atomic にする (協調スケジュールだけなら不要だが安全側に倒す)。
+// CSR bit0 = 割込 ENABLE。
 
-fn os_lock_init() {
-    return;
+type Sem = {
+    count: int,
+};
+
+// セマフォを確保し初期カウントで初期化する
+fn os_sem_init(count: int) -> *Sem {
+    var s: *Sem = malloc(sizeof<Sem>) as *Sem;
+    (@s).count = count;
+    return s;
 }
 
-fn os_lock_aloc(initial_state: int) -> int {
-    return 0;
+// P 操作: トークンを 1 つ取得。無ければ取得可能になるまでブロックする。
+fn os_sem_wait(sem: *Sem) {
+    csr = csr & 0xfffe;                       // 割込禁止
+    // count==0 の間はこのセマフォで待つ。起こされたら再チェック (Mesa スタイル)。
+    while ((@sem).count == 0) {
+        (@task_running).wait_obj = sem as int;
+        os_task_wait();                       // ブロック; 再開時 restore が割込を許可
+        csr = csr & 0xfffe;                   // 再チェックのため再度禁止
+    }
+    (@sem).count = (@sem).count - 1;          // トークン取得
+    csr = csr | 0x0001;                       // 割込許可
 }
 
-fn os_lock_free(lock_id: int) {
-    return;
+// V 操作: トークンを 1 つ返し、待機タスクがいれば 1 つ起こして再チェックさせる。
+fn os_sem_signal(sem: *Sem) {
+    csr = csr & 0xfffe;                       // 割込禁止
+    (@sem).count = (@sem).count + 1;          // トークン追加
+    os_sem_wake(sem as int);                  // 待機タスクを 1 つ READY に (いなければ無処理)
+    csr = csr | 0x0001;                       // 割込許可
+}
+
+// 指定セマフォで待っているタスクを 1 つ READY にする (見つからなければ何もしない)
+fn os_sem_wake(obj: int) {
+    var cur: *TCB = task_list;
+    while (cur != (0 as *TCB)) {
+        if (((@cur).state == task_state_waiting) & ((@cur).wait_obj == obj)) {
+            (@cur).state    = task_state_ready;
+            (@cur).wait_obj = 0;
+            return;
+        }
+        cur = (@cur).next as *TCB;
+    }
+}
+
+// --------------------------------------------------------
+// メッセージキュー (IPC) — FIFO リングバッファ
+//
+// free/used の 2 セマフォで空き/充填スロットを数え、満杯で send が、空で recv が
+// ブロックする。単一 producer / 単一 consumer 前提 (協調スケジュール下では sem の
+// 同期だけで buf/head/tail へのアクセスが直列化される)。
+
+type MQ = {
+    buf:  *int,   // リングバッファ本体 (cap word)
+    cap:  int,    // 容量
+    head: int,    // recv 位置
+    tail: int,    // send 位置
+    free: *Sem,   // 空きスロット数 (初期 cap)
+    used: *Sem,   // 充填スロット数 (初期 0)
+};
+
+// 容量 cap のメッセージキューを確保する
+fn os_mq_init(cap: int) -> *MQ {
+    var m: *MQ = malloc(sizeof<MQ>) as *MQ;
+    (@m).buf  = malloc(cap);
+    (@m).cap  = cap;
+    (@m).head = 0;
+    (@m).tail = 0;
+    (@m).free = os_sem_init(cap);
+    (@m).used = os_sem_init(0);
+    return m;
+}
+
+// 値を送る (満杯ならブロック)
+fn os_mq_send(m: *MQ, val: int) {
+    os_sem_wait((@m).free);          // 空きスロットを待つ
+    var t: int = (@m).tail;
+    (@m).buf[t] = val;
+    t = t + 1;
+    if (t >= (@m).cap) { t = 0; }
+    (@m).tail = t;
+    os_sem_signal((@m).used);        // 充填を通知
+}
+
+// 値を受け取る (空ならブロック)
+fn os_mq_recv(m: *MQ) -> int {
+    os_sem_wait((@m).used);          // 充填スロットを待つ
+    var h:   int = (@m).head;
+    var val: int = (@m).buf[h];
+    h = h + 1;
+    if (h >= (@m).cap) { h = 0; }
+    (@m).head = h;
+    os_sem_signal((@m).free);        // 空きを通知
+    return val;
+}
+
+// --------------------------------------------------------
+// タスクスリープ — タイマ tick による時間待ち
+//
+// タイマ割込ハンドラ (ユーザの intr0 等) から os_timer_tick() を毎 tick 呼ぶと
+// os_ticks が増え、wake_tick に達したスリープ中タスクを READY に戻す。
+// 全タスクがスリープ中になると ready が無くなるので、利用側は idle タスク
+// (常時 ready の無限ループ) を 1 つ用意しておくこと。
+
+static os_ticks : int;   // システム tick カウンタ (タイマ割込で加算、利用前に 0 初期化)
+
+// 指定 tick 数だけ現タスクをスリープさせる
+fn os_task_sleep(ticks: int) {
+    csr = csr & 0xfffe;                           // 割込禁止 (設定と block を atomic に)
+    (@task_running).wake_tick = os_ticks + ticks; // 起床 tick を記録
+    os_task_wait();                               // ブロック (再開時 restore が割込許可)
+}
+
+// タイマ割込ごとに呼ぶ: tick を進め、起床時刻に達したタスクを READY にする
+fn os_timer_tick() {
+    os_ticks = os_ticks + 1;
+    var cur: *TCB = task_list;
+    while (cur != (0 as *TCB)) {
+        if ((@cur).wake_tick != 0) {
+            if ((@cur).wake_tick <= os_ticks) {
+                (@cur).state     = task_state_ready;
+                (@cur).wake_tick = 0;
+            }
+        }
+        cur = (@cur).next as *TCB;
+    }
+}
+
+// --------------------------------------------------------
+// ミューテックス (owner 付きバイナリ排他ロック)
+//
+// セマフォ(count)と違い「所有者」を記録する。lock は保持されている間ブロックし、
+// unlock で待機タスクを 1 つ起こす (待ち/起こしの仕組みは os_sem_wake を共用)。
+
+type Mutex = {
+    locked: int,   // 0 = 空き, 1 = 保持中
+    owner:  int,   // 保持中タスクの TCB アドレス (0 = なし)
+};
+
+fn os_mutex_init() -> *Mutex {
+    var m: *Mutex = malloc(sizeof<Mutex>) as *Mutex;
+    (@m).locked = 0;
+    (@m).owner  = 0;
+    return m;
+}
+
+// ロック取得。保持中なら空くまでブロックする。
+fn os_mutex_lock(m: *Mutex) {
+    csr = csr & 0xfffe;                  // 割込禁止
+    while ((@m).locked != 0) {
+        (@task_running).wait_obj = m as int;
+        os_task_wait();                  // ブロック (再開時 restore が割込許可)
+        csr = csr & 0xfffe;              // 再チェックのため再度禁止
+    }
+    (@m).locked = 1;
+    (@m).owner  = task_running as int;
+    csr = csr | 0x0001;                  // 割込許可
+}
+
+// ロック解放。待機タスクがいれば 1 つ起こす。
+fn os_mutex_unlock(m: *Mutex) {
+    csr = csr & 0xfffe;                  // 割込禁止
+    (@m).locked = 0;
+    (@m).owner  = 0;
+    os_sem_wake(m as int);               // 待機タスクを 1 つ READY に
+    csr = csr | 0x0001;                  // 割込許可
 }

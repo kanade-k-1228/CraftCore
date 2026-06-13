@@ -3,8 +3,9 @@
 // ============================================================
 
 // ヒープ管理用のポインタは固定アドレスに置く
-static @ 0x0040 heap_top    : *int;  // ヒープメモリの先頭
+static @ 0x0040 heap_top    : *int;  // ヒープメモリの先頭 (bump allocator の次の空き)
 static @ 0x0041 heap_bottom : *int;  // ヒープメモリの末尾
+static          heap_free_list : *int; // フリーリスト先頭ブロック (os_heap_free で繋ぐ。0=空)
 
 // 単純な bump allocator
 fn malloc(size: int) -> *int {
@@ -14,17 +15,44 @@ fn malloc(size: int) -> *int {
 }
 
 // --------------------------------------------------------
-// 高機能ヒープ管理（未実装）
+// free 可能なヒープ管理 — first-fit フリーリスト + bump フォールバック
+//
+// ブロックレイアウト: [0]=size (payload word 数), [1..]=payload。
+// フリーブロックは payload[0] (= block[1]) に次フリーブロックのアドレスを持つ。
+// 分割・併合はしない簡易実装 (size 以上の最初のブロックを丸ごと再利用)。
 
 fn os_heap_init() {
-    // TODO: Implement heap initialization
+    heap_free_list = 0 as *int;
 }
 
+// size word を確保し payload 先頭を返す
 fn os_heap_aloc(size: int) -> *int {
-    // TODO: Implement heap allocation
-    return 0 as *int;
+    // フリーリストを first-fit 探索
+    var prev: *int = 0 as *int;
+    var cur:  *int = heap_free_list;
+    while (cur != (0 as *int)) {
+        if (cur[0] >= size) {
+            // cur をフリーリストから外して payload を返す
+            if (prev == (0 as *int)) {
+                heap_free_list = cur[1] as *int;
+            } else {
+                prev[1] = cur[1];
+            }
+            return (cur as int + 1) as *int;
+        }
+        prev = cur;
+        cur = cur[1] as *int;
+    }
+    // 適合ブロックが無ければ heap_top から bump 確保
+    var hdr: *int = heap_top;
+    heap_top = (heap_top as int + 1 + size) as *int;
+    hdr[0] = size;
+    return (hdr as int + 1) as *int;
 }
 
+// os_heap_aloc で確保したブロックを解放してフリーリストへ繋ぐ
 fn os_heap_free(addr: *int) {
-    // TODO: Implement heap free
+    var hdr: *int = (addr as int - 1) as *int;  // payload の 1 つ手前がヘッダ
+    hdr[1] = heap_free_list as int;             // フリーリスト先頭へ push
+    heap_free_list = hdr;
 }

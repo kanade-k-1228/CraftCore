@@ -13,45 +13,82 @@ code:
     stacks: {}
   init_tasks:
     addr: 0x1f
-    size: 0x29
+    size: 0x20
     stacks: {}
-  task_a:
-    addr: 0x48
-    size: 0x13
-    stacks: {}
-  print_str:
-    addr: 0x5b
+  os_mq_init:
+    addr: 0x3f
+    size: 0x3e
+    stacks:
+      cap: 0xffff
+      m: 0xfffe
+  malloc:
+    addr: 0x7d
+    size: 0x11
+    stacks:
+      size: 0xffff
+      addr: 0xfffe
+  os_sem_init:
+    addr: 0x8e
     size: 0x17
     stacks:
-      s: 0xffff
-      p: 0xfffe
+      count: 0xffff
+      s: 0xfffe
+  producer:
+    addr: 0xa5
+    size: 0x2e
+    stacks:
+      i: 0xffff
+  os_mq_send:
+    addr: 0xd3
+    size: 0x38
+    stacks:
+      m: 0xffff
+      val: 0xfffe
+      t: 0xfffd
+  os_sem_wait:
+    addr: 0x10b
+    size: 0x32
+    stacks:
+      sem: 0xffff
   os_task_wait:
-    addr: 0x72
+    addr: 0x13d
     size: 0x15
     stacks: {}
   os_task_scheduler:
-    addr: 0x87
+    addr: 0x152
     size: 0xb
     stacks: {}
   os_restore_context:
-    addr: 0x92
+    addr: 0x15d
     size: 0x11
     stacks: {}
   _exit:
-    addr: 0xa3
+    addr: 0x16e
     size: 0x2
     stacks: {}
-  os_task_ready:
-    addr: 0xa5
-    size: 0x16
-    stacks: {}
+  os_sem_signal:
+    addr: 0x170
+    size: 0x20
+    stacks:
+      sem: 0xffff
+  os_sem_wake:
+    addr: 0x190
+    size: 0x34
+    stacks:
+      obj: 0xffff
+      cur: 0xfffe
+  print_char:
+    addr: 0x1c4
+    size: 0x6
+    stacks:
+      c: 0xffff
   os_task_exit:
-    addr: 0xbb
+    addr: 0x1ca
     size: 0x5
     stacks: {}
   os_task_setup:
-    addr: 0xc0
-    size: 0xdf
+    addr: 0x1cf
+    size: 0xd9
     stacks:
       initial_state: 0xffff
       stack_size: 0xfffe
@@ -63,53 +100,46 @@ code:
       stack_top: 0xfff9
       sp_init: 0xfff8
       slot_ptr: 0xfff7
-  malloc:
-    addr: 0x19f
-    size: 0x11
+  consumer:
+    addr: 0x2a8
+    size: 0x2e
     stacks:
-      size: 0xffff
-      addr: 0xfffe
-  task_b:
-    addr: 0x1b0
-    size: 0xf
-    stacks: {}
-  task_c:
-    addr: 0x1bf
-    size: 0x12
-    stacks: {}
+      i: 0xffff
+      v: 0xfffe
+  os_mq_recv:
+    addr: 0x2d6
+    size: 0x3c
+    stacks:
+      m: 0xffff
+      h: 0xfffe
+      val: 0xfffd
   _intr:
-    addr: 0x1d1
+    addr: 0x312
     size: 0x12
     stacks: {}
   intr_dispatch:
-    addr: 0x1e3
+    addr: 0x324
     size: 0x36
     stacks: {}
   intr0:
-    addr: 0x219
+    addr: 0x35a
     size: 0x5
     stacks: {}
   intr1:
-    addr: 0x21e
+    addr: 0x35f
     size: 0x5
     stacks: {}
   intr2:
-    addr: 0x223
+    addr: 0x364
     size: 0x5
     stacks: {}
   intr3:
-    addr: 0x228
+    addr: 0x369
     size: 0x5
     stacks: {}
 data:
-  task_id_a:
-    addr: 0x44
-    size: 0x1
-  task_id_b:
-    addr: 0x45
-    size: 0x1
-  task_id_c:
-    addr: 0x46
+  mq:
+    addr: 0x48
     size: 0x1
   heap_top:
     addr: 0x40
@@ -129,45 +159,30 @@ data:
   user_global_size:
     addr: 0x3000
     size: 0x1
-  s_start_a:
-    addr: 0x3001
-    size: 0x8
-  s_start_b:
-    addr: 0x300a
-    size: 0x8
-  s_start_c:
-    addr: 0x3013
-    size: 0x8
-  s_resume_a:
-    addr: 0x301c
-    size: 0x9
-  s_resume_b:
-    addr: 0x3026
-    size: 0x9
-  s_resume_c:
-    addr: 0x3030
-    size: 0x9
   os_global_size:
-    addr: 0x303a
+    addr: 0x3001
     size: 0x1
   mem_top:
-    addr: 0x303b
+    addr: 0x3002
     size: 0x1
   mem_bottom:
-    addr: 0x303c
+    addr: 0x3003
     size: 0x1
   intr0_flag:
-    addr: 0x303d
+    addr: 0x3004
     size: 0x1
   intr1_flag:
-    addr: 0x303e
+    addr: 0x3005
     size: 0x1
   intr2_flag:
-    addr: 0x303f
+    addr: 0x3006
     size: 0x1
   intr3_flag:
-    addr: 0x3040
+    addr: 0x3007
     size: 0x1
   task_state_ready:
-    addr: 0x3041
+    addr: 0x3008
+    size: 0x1
+  task_state_waiting:
+    addr: 0x3009
     size: 0x1

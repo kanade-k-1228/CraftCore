@@ -293,8 +293,8 @@ impl ast::Expr {
                 }
                 Imm::Const(_, _) => Err(Error::CannotAccessFieldOfImmediate(loc.clone())),
                 Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel(loc.clone())),
-                Imm::ScopeExit(_) | Imm::ScopeEntry(_) => {
-                    unreachable!("scope placeholders are only produced inside fn bodies")
+                Imm::ScopeExit(_) | Imm::ScopeEntry(_) | Imm::FrameRel(_) => {
+                    unreachable!("scope/frame placeholders are only produced inside fn bodies")
                 }
             },
 
@@ -326,8 +326,8 @@ impl ast::Expr {
                 }
                 Imm::Lit(_) | Imm::Const(_, _) => Err(Error::CannotIndexImmediate(loc.clone())),
                 Imm::Label(_) => Err(Error::CannotIndexLabel(loc.clone())),
-                Imm::ScopeExit(_) | Imm::ScopeEntry(_) => {
-                    unreachable!("scope placeholders are only produced inside fn bodies")
+                Imm::ScopeExit(_) | Imm::ScopeEntry(_) | Imm::FrameRel(_) => {
+                    unreachable!("scope/frame placeholders are only produced inside fn bodies")
                 }
             },
 

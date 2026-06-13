@@ -1,0 +1,44 @@
+// 10_mqueue — メッセージキュー (IPC) による producer-consumer
+//
+// 容量 3 のリングバッファに producer が 0..5 を送り、consumer が受信して表示する。
+// 満杯/空でブロックするので producer は先に数個送れ、consumer は FIFO 順 (R0..R5) で
+// 受け取る。送信 "Sn"、受信 "Rn" を出力。
+
+const user_global_size = 1;
+
+static @ 0x0048 mq : *MQ;
+
+fn intr0() { return; }
+fn intr1() { return; }
+fn intr2() { return; }
+fn intr3() { return; }
+
+fn producer() {
+    var i: int = 0;
+    while (i < 6) {
+        os_mq_send(mq, i);
+        print_char('S');
+        print_char(i + '0');
+        print_char('\n');
+        i = i + 1;
+    }
+    os_task_exit();
+}
+
+fn consumer() {
+    var i: int = 0;
+    while (i < 6) {
+        var v: int = os_mq_recv(mq);
+        print_char('R');
+        print_char(v + '0');
+        print_char('\n');
+        i = i + 1;
+    }
+    os_task_exit();
+}
+
+fn init_tasks() {
+    mq = os_mq_init(3);
+    os_task_setup(task_state_ready, 0x100, producer as int);
+    os_task_setup(task_state_ready, 0x100, consumer as int);
+}

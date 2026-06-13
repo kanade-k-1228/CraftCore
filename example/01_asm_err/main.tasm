@@ -3,7 +3,7 @@
 asm @ 0x0000 reset {
     hoge(fuga, fuga);  // Unknown operation `hoge`
     add(z, z);         // More argument required
-    add(t0, t1, hoge); // Unknown register name
+    add(a0, a1, hoge); // Unknown register name
     call(hoge);        // Undefined label
   a:                   // Defined here
     nop();

@@ -19,6 +19,7 @@ fn fmt_imm(imm: &Imm, dmap: &IndexMap<String, usize>) -> String {
         }
         Imm::ScopeExit(id) => format!("<exit scope#{}>", id),
         Imm::ScopeEntry(id) => format!("<entry scope#{}>", id),
+        Imm::FrameRel(off) => format!("<frame{:+}>", off),
     }
 }
 
@@ -86,6 +87,7 @@ fn resolve_imm(imm: Imm, dmap: &IndexMap<String, usize>) -> u16 {
         Imm::Const(_, val) => val as u16,
         Imm::Symbol(name, offset) => dmap.get(&name).map_or(0, |&a| (a + offset) as u16),
         Imm::ScopeExit(_) | Imm::ScopeEntry(_) => 0,
+        Imm::FrameRel(_) => 0,
     }
 }
 

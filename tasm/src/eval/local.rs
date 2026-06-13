@@ -58,22 +58,29 @@ impl<'a> Local<'a> {
         Ok(())
     }
 
-    /// 引数を全て登録する。新 ABI:
-    ///   arg_0 (size S0) は SP+0 .. SP-(S0-1) を占有 (head = SP-(S0-1))。
-    ///   arg_i は arg_{i-1} の直下のスロットに連続配置。
-    ///   各 arg 内では head + j が field j (低アドレス = field 0)。
+    /// 引数を登録する (RISC-V 風 ABI)。offset は「関数エントリ時 SP 基準」の符号付き値。
+    ///   arg_0 → a0, arg_1 → a1: レジスタ渡しだが Phase1 では prologue でフレームにスピルし、
+    ///     エントリ SP 基準オフセット -1, -2 (a0_spill, a1_spill) で参照する。
+    ///   arg_2 以降 → caller が積むスタック引数。エントリ SP 基準の正オフセット 0, 1, ... 。
+    ///   (多 word 引数は pass-by-pointer なので各 arg は 1 word。)
     pub fn insert_args(
         &mut self,
         args: &'a [(ast::Ident, ast::Type)],
     ) -> Result<(), Error> {
-        // top = この arg の最上位スロット offset。初期値は 0 (SP+0)。
-        let mut top: i32 = 0;
+        let mut reg_idx = 0; // a0/a1 に乗せた数
+        let mut spill_off: i32 = -1; // 次の a0/a1 スピル先 (-1, -2)
+        let mut caller_off: i32 = 0; // 次のスタック引数 (エントリ SP +0, +1, ...)
         for (ident, ty) in args {
             let nty = self.global.normtype(ty)?;
             let sz = nty.sizeof() as i32;
-            let head = top - sz + 1;
-            self.insert(ident, nty, head)?;
-            top -= sz;
+            if reg_idx < 2 {
+                self.insert(ident, nty, spill_off)?;
+                spill_off -= sz;
+                reg_idx += 1;
+            } else {
+                self.insert(ident, nty, caller_off)?;
+                caller_off += sz;
+            }
         }
         Ok(())
     }
