@@ -1,4 +1,6 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::Path;
 
 use clap::Parser;
 use indexmap::{IndexMap, IndexSet};
@@ -22,6 +24,11 @@ struct Args {
     #[clap(short = 'm', long = "map", num_args = 0..=1, default_missing_value = "map.yaml", value_name = "FILE")]
     map: Option<String>,
 
+    /// Module include directories (repeatable). The directory's basename becomes
+    /// the module root name; `<DIR>/a/b.tasm` is module `<basename>::a::b`.
+    #[clap(short = 'I', long = "include", value_name = "DIR")]
+    include: Vec<String>,
+
     /// Enable verbose output
     #[clap(short, long)]
     verbose: bool,
@@ -30,12 +37,35 @@ struct Args {
 fn main() -> Result<(), tasm::Error> {
     let args = Args::parse();
 
-    // 1. Read source files
+    // 1. Read source files (+ module files discovered under each `-I <DIR>`).
+    //    Build a path → module-prefix map; root sources have no prefix.
+    let mut modmap: HashMap<String, String> = HashMap::new();
     let sources = {
-        let mut sources = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut sources: Vec<(String, String)> = vec![];
+        // Root sources (explicit src args): no module prefix.
         for path in &args.src {
-            let content = fs::read_to_string(path)?;
-            sources.push((path, content));
+            if seen.insert(path.clone()) {
+                let content = fs::read_to_string(path)?;
+                sources.push((path.clone(), content));
+            }
+        }
+        // Module files from `-I`: basename(DIR) is the module root name.
+        let mut module_files: Vec<(String, String)> = vec![];
+        for inc in &args.include {
+            let dir = Path::new(inc);
+            let root = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            collect_module_files(dir, &root, &mut module_files)?;
+        }
+        for (path, prefix) in module_files {
+            if seen.insert(path.clone()) {
+                let content = fs::read_to_string(&path)?;
+                modmap.insert(path.clone(), prefix);
+                sources.push((path, content));
+            }
         }
         sources
     };
@@ -51,7 +81,7 @@ fn main() -> Result<(), tasm::Error> {
     };
 
     // 3. Parse tokens into AST
-    let (ast, errors) = tasm::Parser::new(tokens.into_iter()).parse();
+    let (mut ast, errors) = tasm::Parser::new(tokens.into_iter()).parse();
     if !errors.is_empty() {
         for e in &errors {
             eprintln!("error: {}", e);
@@ -59,12 +89,19 @@ fn main() -> Result<(), tasm::Error> {
         std::process::exit(-1);
     }
 
-    // 4. Evaluator Database
-    let global = tasm::Global::new(&ast)?;
+    // 3.5. Apply module prefixes to top-level definition names (FQN).
+    tasm::apply_module_prefixes(&mut ast, &modmap);
 
-    // 5. Resolve dependencies from entry points
-    let (labels, symbols) =
-        global.deps(&["reset", "irq", "main"], IndexSet::new(), IndexSet::new())?;
+    // 4. Evaluator Database
+    let global = tasm::Global::new(&ast, modmap)?;
+
+    // 5. Resolve dependencies from entry points (resolve names to FQN first).
+    let entries: Vec<String> = ["reset", "irq", "main"]
+        .into_iter()
+        .filter_map(|e| global.resolve_entry(e))
+        .collect();
+    let entry_refs: Vec<&str> = entries.iter().map(|s| s.as_str()).collect();
+    let (labels, symbols) = global.deps(&entry_refs, IndexSet::new(), IndexSet::new())?;
 
     // 6-1. Allocate code objects
     let mut ialoc = tasm::Memory::new(0, 0x10000)
@@ -123,6 +160,36 @@ fn main() -> Result<(), tasm::Error> {
     fs::write(&args.rom, const_bin)?;
     if let Some(ref file) = args.map {
         fs::write(&file, symbol_map.to_yaml())?;
+    }
+    Ok(())
+}
+
+/// `-I <DIR>` 配下の .tasm を再帰収集し、(path, module_prefix) を out へ積む。
+/// prefix は親までのモジュールパス (`rtos`, `rtos::sub` など)。
+fn collect_module_files(
+    dir: &Path,
+    prefix: &str,
+    out: &mut Vec<(String, String)>,
+) -> std::io::Result<()> {
+    let mut entries: Vec<_> = fs::read_dir(dir)?.collect::<Result<_, _>>()?;
+    entries.sort_by_key(|e| e.path());
+    for e in entries {
+        let p = e.path();
+        if p.is_dir() {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let sub = format!("{}::{}", prefix, name);
+            collect_module_files(&p, &sub, out)?;
+        } else if p.extension().and_then(|s| s.to_str()) == Some("tasm") {
+            let stem = p
+                .file_stem()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let mod_prefix = format!("{}::{}", prefix, stem);
+            out.push((p.to_string_lossy().into_owned(), mod_prefix));
+        }
     }
     Ok(())
 }

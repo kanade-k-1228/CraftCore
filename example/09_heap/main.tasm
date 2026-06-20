@@ -16,25 +16,25 @@ fn intr2() { return; }
 fn intr3() { return; }
 
 fn heap_test() {
-    var a: *int = os_heap_aloc(4);
-    var b: *int = os_heap_aloc(4);
-    print_str(s_a@ as *int);
-    print_hex(a as int);
-    print_str(s_nl@ as *int);
-    print_str(s_b@ as *int);
-    print_hex(b as int);
-    print_str(s_nl@ as *int);
+    var a: *int = rtos::heap::os_heap_aloc(4);
+    var b: *int = rtos::heap::os_heap_aloc(4);
+    rtos::serial::print_str(s_a@ as *int);
+    rtos::serial::print_hex(a as int);
+    rtos::serial::print_str(s_nl@ as *int);
+    rtos::serial::print_str(s_b@ as *int);
+    rtos::serial::print_hex(b as int);
+    rtos::serial::print_str(s_nl@ as *int);
 
-    os_heap_free(a);              // a を解放 → フリーリストへ
-    var c: *int = os_heap_aloc(4); // 同じ 4 word を要求 → a のブロックを再利用
-    print_str(s_c@ as *int);
-    print_hex(c as int);          // c == a になるはず
-    print_str(s_nl@ as *int);
+    rtos::heap::os_heap_free(a);              // a を解放 → フリーリストへ
+    var c: *int = rtos::heap::os_heap_aloc(4); // 同じ 4 word を要求 → a のブロックを再利用
+    rtos::serial::print_str(s_c@ as *int);
+    rtos::serial::print_hex(c as int);          // c == a になるはず
+    rtos::serial::print_str(s_nl@ as *int);
 
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn init_tasks() {
-    os_heap_init();
-    os_task_setup(task_state_ready, 0x100, heap_test as int);
+    rtos::heap::os_heap_init();
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, heap_test as int);
 }

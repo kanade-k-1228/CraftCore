@@ -1,6 +1,7 @@
 TASM ?= tasm
 CEMU ?= cemu
 SRCS ?= main.tasm
+INCLUDES ?=
 ARGS ?=
 
 .PHONY: run clean
@@ -13,7 +14,7 @@ run: out/main.bin
 
 out/main.bin out/const.bin out/map.yaml &: $(SRCS)
 	@mkdir -p out
-	@$(TASM) $(SRCS) -o out/main.bin -r out/const.bin -m out/map.yaml
+	@$(TASM) $(SRCS) $(INCLUDES) -o out/main.bin -r out/const.bin -m out/map.yaml
 
 clean:
 	rm -rf out

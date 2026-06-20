@@ -10,7 +10,7 @@ pub use eval::{
     code::{Code, Imm},
     constexpr::ConstExpr,
     func,
-    global::Global,
+    global::{apply_module_prefixes, Global},
 };
 pub use grammer::lexer::Lexer;
 pub use grammer::parsercore::Parser;

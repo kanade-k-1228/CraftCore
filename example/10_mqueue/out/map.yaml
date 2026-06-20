@@ -1,13 +1,13 @@
 code:
-  reset:
+  rtos::init::reset:
     addr: 0x0
     size: 0x3
     stacks: {}
-  irq:
+  rtos::init::irq:
     addr: 0x4
     size: 0x1
     stacks: {}
-  init:
+  rtos::init::init:
     addr: 0x8
     size: 0x17
     stacks: {}
@@ -15,19 +15,19 @@ code:
     addr: 0x1f
     size: 0x20
     stacks: {}
-  os_mq_init:
+  rtos::task::os_mq_init:
     addr: 0x3f
     size: 0x3e
     stacks:
       cap: 0xffff
       m: 0xfffe
-  malloc:
+  rtos::heap::malloc:
     addr: 0x7d
     size: 0x11
     stacks:
       size: 0xffff
       addr: 0xfffe
-  os_sem_init:
+  rtos::task::os_sem_init:
     addr: 0x8e
     size: 0x17
     stacks:
@@ -38,57 +38,57 @@ code:
     size: 0x2e
     stacks:
       i: 0xffff
-  os_mq_send:
+  rtos::task::os_mq_send:
     addr: 0xd3
     size: 0x38
     stacks:
       m: 0xffff
       val: 0xfffe
       t: 0xfffd
-  os_sem_wait:
+  rtos::task::os_sem_wait:
     addr: 0x10b
     size: 0x32
     stacks:
       sem: 0xffff
-  os_task_wait:
+  rtos::task::os_task_wait:
     addr: 0x13d
     size: 0x15
     stacks: {}
-  os_task_scheduler:
+  rtos::task::os_task_scheduler:
     addr: 0x152
     size: 0xb
     stacks: {}
-  os_restore_context:
+  rtos::task::os_restore_context:
     addr: 0x15d
     size: 0x11
     stacks: {}
-  _exit:
+  rtos::init::_exit:
     addr: 0x16e
     size: 0x2
     stacks: {}
-  os_sem_signal:
+  rtos::task::os_sem_signal:
     addr: 0x170
     size: 0x20
     stacks:
       sem: 0xffff
-  os_sem_wake:
+  rtos::task::os_sem_wake:
     addr: 0x190
     size: 0x34
     stacks:
       obj: 0xffff
       cur: 0xfffe
-  print_char:
+  rtos::serial::print_char:
     addr: 0x1c4
     size: 0x6
     stacks:
       c: 0xffff
-  os_task_exit:
+  rtos::task::os_task_exit:
     addr: 0x1ca
     size: 0x5
     stacks: {}
-  os_task_setup:
+  rtos::task::os_task_setup:
     addr: 0x1cf
-    size: 0xd9
+    size: 0xdf
     stacks:
       initial_state: 0xffff
       stack_size: 0xfffe
@@ -101,88 +101,88 @@ code:
       sp_init: 0xfff8
       slot_ptr: 0xfff7
   consumer:
-    addr: 0x2a8
+    addr: 0x2ae
     size: 0x2e
     stacks:
       i: 0xffff
       v: 0xfffe
-  os_mq_recv:
-    addr: 0x2d6
+  rtos::task::os_mq_recv:
+    addr: 0x2dc
     size: 0x3c
     stacks:
       m: 0xffff
       h: 0xfffe
       val: 0xfffd
-  _intr:
-    addr: 0x312
+  rtos::task::_intr:
+    addr: 0x318
     size: 0x12
     stacks: {}
-  intr_dispatch:
-    addr: 0x324
+  rtos::task::intr_dispatch:
+    addr: 0x32a
     size: 0x36
     stacks: {}
   intr0:
-    addr: 0x35a
+    addr: 0x360
     size: 0x5
     stacks: {}
   intr1:
-    addr: 0x35f
+    addr: 0x365
     size: 0x5
     stacks: {}
   intr2:
-    addr: 0x364
+    addr: 0x36a
     size: 0x5
     stacks: {}
   intr3:
-    addr: 0x369
+    addr: 0x36f
     size: 0x5
     stacks: {}
 data:
   mq:
     addr: 0x48
     size: 0x1
-  heap_top:
+  rtos::heap::heap_top:
     addr: 0x40
     size: 0x1
-  heap_bottom:
+  rtos::heap::heap_bottom:
     addr: 0x41
     size: 0x1
-  serial_tx:
+  rtos::serial::serial_tx:
     addr: 0x100
     size: 0x1
-  task_running:
+  rtos::task::task_running:
     addr: 0x42
     size: 0x1
-  task_list:
+  rtos::task::task_list:
     addr: 0x43
     size: 0x1
   user_global_size:
     addr: 0x3000
     size: 0x1
-  os_global_size:
+  rtos::init::os_global_size:
     addr: 0x3001
     size: 0x1
-  mem_top:
+  rtos::init::mem_top:
     addr: 0x3002
     size: 0x1
-  mem_bottom:
+  rtos::init::mem_bottom:
     addr: 0x3003
     size: 0x1
-  intr0_flag:
+  rtos::task::intr0_flag:
     addr: 0x3004
     size: 0x1
-  intr1_flag:
+  rtos::task::intr1_flag:
     addr: 0x3005
     size: 0x1
-  intr2_flag:
+  rtos::task::intr2_flag:
     addr: 0x3006
     size: 0x1
-  intr3_flag:
+  rtos::task::intr3_flag:
     addr: 0x3007
     size: 0x1
-  task_state_ready:
+  rtos::task::task_state_ready:
     addr: 0x3008
     size: 0x1
-  task_state_waiting:
+  rtos::task::task_state_waiting:
     addr: 0x3009
     size: 0x1

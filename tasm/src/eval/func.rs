@@ -608,7 +608,7 @@ impl<'a> Context<'a> {
                 ));
             }
 
-            ast::Expr::Ident((name, _)) => {
+            ast::Expr::Ident((name, pos)) => {
                 if let Some(r) = self.reg_vars.get(name.as_str()).copied() {
                     // s-reg 常駐変数: 命令不要、その s-reg をそのまま結果として返す。
                     (Vec::new(), r)
@@ -626,16 +626,16 @@ impl<'a> Context<'a> {
                     } else if name == "csr" {
                         insts.push(Op::mov(target, Reg::CSR));
                     } else {
-                        match self.local.global_def(name) {
-                            Some(ast::Def::Static(..)) | Some(ast::Def::Const(..)) => {
+                        match self.local.resolve(name, pos) {
+                            Some((ast::Def::Static(..) | ast::Def::Const(..), fqn)) => {
                                 if multi_word {
-                                    insts.push(Op::loadi(target, Imm::Symbol(name.clone(), 0)));
+                                    insts.push(Op::loadi(target, Imm::Symbol(fqn, 0)));
                                 } else {
-                                    insts.push(Op::load(target, Reg::Z, Imm::Symbol(name.clone(), 0)));
+                                    insts.push(Op::load(target, Reg::Z, Imm::Symbol(fqn, 0)));
                                 }
                             }
-                            Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)) => {
-                                insts.push(Op::loadi(target, Imm::Label(name.clone())));
+                            Some((ast::Def::Func(..) | ast::Def::Asm(..), fqn)) => {
+                                insts.push(Op::loadi(target, Imm::Label(fqn)));
                             }
                             _ => {
                                 insts.push(Op::load(target, Reg::Z, Imm::Symbol(name.clone(), 0)));
@@ -891,9 +891,9 @@ impl<'a> Context<'a> {
             }
         }
 
-        let direct = if let ast::Expr::Ident((name, _)) = func_expr {
+        let direct = if let ast::Expr::Ident((name, pos)) = func_expr {
             matches!(
-                self.local.global_def(name),
+                self.local.resolve(name, pos).map(|(d, _)| d),
                 Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)),
             )
         } else {
@@ -953,8 +953,11 @@ impl<'a> Context<'a> {
 
         // call / callr (sp は触らない。callee が prologue/epilogue で subi/addi する)。
         if direct {
-            let name = if let ast::Expr::Ident((n, _)) = func_expr {
-                n.clone()
+            let name = if let ast::Expr::Ident((n, pos)) = func_expr {
+                self.local
+                    .resolve(n, pos)
+                    .map(|(_, fqn)| fqn)
+                    .unwrap_or_else(|| n.clone())
             } else {
                 unreachable!()
             };
@@ -987,7 +990,7 @@ impl<'a> Context<'a> {
         target: Reg,
     ) -> Result<Vec<Op<Reg, Imm>>, Error> {
         match expr {
-            ast::Expr::Ident((name, _)) => {
+            ast::Expr::Ident((name, pos)) => {
                 // s-reg 常駐変数はアドレスを取れない (割付時に address-taken を除外済み)。
                 if self.reg_vars.contains_key(name.as_str()) {
                     return Err(Error::NotAddressable(
@@ -999,11 +1002,14 @@ impl<'a> Context<'a> {
                 if let Some(offset) = self.local.offset(name) {
                     insts.push(Op::addi(target, Reg::SP, sp_off(offset)));
                 } else {
-                    match self.local.global_def(name) {
-                        Some(ast::Def::Func(..)) | Some(ast::Def::Asm(..)) => {
-                            insts.push(Op::loadi(target, Imm::Label(name.clone())));
+                    match self.local.resolve(name, pos) {
+                        Some((ast::Def::Func(..) | ast::Def::Asm(..), fqn)) => {
+                            insts.push(Op::loadi(target, Imm::Label(fqn)));
                         }
-                        _ => {
+                        Some((_, fqn)) => {
+                            insts.push(Op::loadi(target, Imm::Symbol(fqn, 0)));
+                        }
+                        None => {
                             insts.push(Op::loadi(target, Imm::Symbol(name.clone(), 0)));
                         }
                     }
@@ -1078,7 +1084,7 @@ impl<'a> Context<'a> {
         value_reg: Reg,
     ) -> Result<Vec<Op<Reg, Imm>>, Error> {
         match lvalue {
-            ast::Expr::Ident((name, _)) => {
+            ast::Expr::Ident((name, pos)) => {
                 // s-reg 常駐変数への代入は mov で済む。
                 if let Some(r) = self.reg_vars.get(name.as_str()).copied() {
                     let mut insts = Vec::new();
@@ -1093,7 +1099,12 @@ impl<'a> Context<'a> {
                 } else if name == "csr" {
                     insts.push(Op::mov(Reg::CSR, value_reg));
                 } else {
-                    insts.push(Op::store(value_reg, Reg::Z, Imm::Symbol(name.clone(), 0)));
+                    let fqn = self
+                        .local
+                        .resolve(name, pos)
+                        .map(|(_, f)| f)
+                        .unwrap_or_else(|| name.clone());
+                    insts.push(Op::store(value_reg, Reg::Z, Imm::Symbol(fqn, 0)));
                 }
                 Ok(insts)
             }

@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::{
     error::Error,
     eval::{global::Global, normtype::NormType},
-    grammer::ast,
+    grammer::{ast, token::Pos},
 };
 
 // 関数のフレーム (SP 下向き ABI)
@@ -147,8 +147,9 @@ impl<'a> Local<'a> {
         }
     }
 
-    pub fn global_def(&self, name: &str) -> Option<&'a ast::Def> {
-        self.global.get(name)
+    /// 参照名をモジュール文脈で解決し (def, canonical FQN) を返す。
+    pub fn resolve(&self, name: &str, pos: &Pos) -> Option<(&'a ast::Def, String)> {
+        self.global.resolve(name, pos)
     }
 
     /// (name → FP+offset) を挿入順で返す。
@@ -170,8 +171,8 @@ impl<'a> Local<'a> {
         func_expr: &'a ast::Expr,
         args: &'a [ast::Expr],
     ) -> Result<(usize, Vec<usize>), Error> {
-        if let ast::Expr::Ident((name, _)) = func_expr {
-            match self.global.get(name) {
+        if let ast::Expr::Ident((name, pos)) = func_expr {
+            match self.global.resolve(name, pos).map(|(d, _)| d) {
                 Some(ast::Def::Func(_, fargs, fret, _)) => {
                     let ret_size = self.global.normtype(fret)?.sizeof();
                     let mut arg_sizes = Vec::new();

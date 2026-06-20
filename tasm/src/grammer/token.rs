@@ -29,6 +29,7 @@ pub enum TokenKind {
     LAngleLAngle, // '<<'
     RAngleRAngle, // '>>'
     Arrow,        // '->'
+    ColonColon,   // '::'
 
     // Single character tokens
     Equal,     // '='
@@ -92,6 +93,11 @@ pub struct Pos(Rc<str>, usize, usize);
 impl Pos {
     pub fn new(file: Rc<str>, row: usize, col: usize) -> Self {
         Pos(file, row, col)
+    }
+
+    /// 参照元ファイルのパス文字列 (Lexer に渡した path)。モジュール解決に使う。
+    pub fn file(&self) -> &str {
+        &self.0
     }
 }
 

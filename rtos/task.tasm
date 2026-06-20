@@ -140,8 +140,8 @@ fn os_task_setup(
     }
 
     // 新しい TCB と専用スタックを確保
-    var new_tcb:    *TCB = malloc(sizeof<TCB>) as *TCB;
-    var stack_base: *int = malloc(stack_size);
+    var new_tcb:    *TCB = rtos::heap::malloc(sizeof<TCB>) as *TCB;
+    var stack_base: *int = rtos::heap::malloc(stack_size);
     var stack_top:  int  = (stack_base as int) + stack_size;
     // 退避領域 12 word ぶんを stack の上端から下に取った位置を SP の初期値とする。
     var sp_init:    int  = stack_top - 12;
@@ -283,7 +283,7 @@ asm os_task_scheduler {
     store(a0, z, task_running@);
     jump(os_restore_context);
   sched_no_ready:
-    jump(_exit);
+    jump(rtos::init::_exit);
 }
 
 // 中断していたタスクを再開して iret
@@ -329,7 +329,7 @@ type Sem = {
 
 // セマフォを確保し初期カウントで初期化する
 fn os_sem_init(count: int) -> *Sem {
-    var s: *Sem = malloc(sizeof<Sem>) as *Sem;
+    var s: *Sem = rtos::heap::malloc(sizeof<Sem>) as *Sem;
     (@s).count = count;
     return s;
 }
@@ -386,8 +386,8 @@ type MQ = {
 
 // 容量 cap のメッセージキューを確保する
 fn os_mq_init(cap: int) -> *MQ {
-    var m: *MQ = malloc(sizeof<MQ>) as *MQ;
-    (@m).buf  = malloc(cap);
+    var m: *MQ = rtos::heap::malloc(sizeof<MQ>) as *MQ;
+    (@m).buf  = rtos::heap::malloc(cap);
     (@m).cap  = cap;
     (@m).head = 0;
     (@m).tail = 0;
@@ -463,7 +463,7 @@ type Mutex = {
 };
 
 fn os_mutex_init() -> *Mutex {
-    var m: *Mutex = malloc(sizeof<Mutex>) as *Mutex;
+    var m: *Mutex = rtos::heap::malloc(sizeof<Mutex>) as *Mutex;
     (@m).locked = 0;
     (@m).owner  = 0;
     return m;

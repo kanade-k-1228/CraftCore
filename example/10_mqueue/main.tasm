@@ -6,7 +6,7 @@
 
 const user_global_size = 1;
 
-static @ 0x0048 mq : *MQ;
+static @ 0x0048 mq : *rtos::task::MQ;
 
 fn intr0() { return; }
 fn intr1() { return; }
@@ -16,29 +16,29 @@ fn intr3() { return; }
 fn producer() {
     var i: int = 0;
     while (i < 6) {
-        os_mq_send(mq, i);
-        print_char('S');
-        print_char(i + '0');
-        print_char('\n');
+        rtos::task::os_mq_send(mq, i);
+        rtos::serial::print_char('S');
+        rtos::serial::print_char(i + '0');
+        rtos::serial::print_char('\n');
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn consumer() {
     var i: int = 0;
     while (i < 6) {
-        var v: int = os_mq_recv(mq);
-        print_char('R');
-        print_char(v + '0');
-        print_char('\n');
+        var v: int = rtos::task::os_mq_recv(mq);
+        rtos::serial::print_char('R');
+        rtos::serial::print_char(v + '0');
+        rtos::serial::print_char('\n');
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn init_tasks() {
-    mq = os_mq_init(3);
-    os_task_setup(task_state_ready, 0x100, producer as int);
-    os_task_setup(task_state_ready, 0x100, consumer as int);
+    mq = rtos::task::os_mq_init(3);
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, producer as int);
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, consumer as int);
 }

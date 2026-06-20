@@ -313,6 +313,7 @@ fn double_char_token(ch0: char, ch1: char) -> Option<TokenKind> {
         ('<', '<') => Some(TokenKind::LAngleLAngle),
         ('>', '>') => Some(TokenKind::RAngleRAngle),
         ('-', '>') => Some(TokenKind::Arrow),
+        (':', ':') => Some(TokenKind::ColonColon),
         _ => None,
     }
 }

@@ -14,6 +14,8 @@ use super::{code::Code, constexpr::ConstExpr, normtype::NormType};
 
 pub struct Global<'a> {
     defs: IndexMap<&'a str, &'a ast::Def>,
+    /// ファイルパス → モジュール prefix ("" or 未登録 = ルート)。素名解決のフォールバックに使う。
+    modmap: HashMap<String, String>,
     _normtype: RwLock<HashMap<&'a ast::Type, NormType>>,
     _constexpr: RwLock<HashMap<&'a ast::Expr, ConstExpr>>,
     _typeinfer: RwLock<HashMap<&'a ast::Expr, NormType>>,
@@ -21,7 +23,7 @@ pub struct Global<'a> {
 }
 
 impl<'a> Global<'a> {
-    pub fn new(ast: &'a ast::AST) -> Result<Self, Error> {
+    pub fn new(ast: &'a ast::AST, modmap: HashMap<String, String>) -> Result<Self, Error> {
         let mut defs = IndexMap::new();
         for def in &ast.0 {
             let (name, pos) = match def {
@@ -41,6 +43,7 @@ impl<'a> Global<'a> {
 
         Ok(Global {
             defs,
+            modmap,
             _normtype: RwLock::new(HashMap::new()),
             _constexpr: RwLock::new(HashMap::new()),
             _typeinfer: RwLock::new(HashMap::new()),
@@ -94,6 +97,59 @@ impl<'a> Global<'a> {
     pub fn get(&self, name: &str) -> Option<&'a ast::Def> {
         self.defs.get(name).copied()
     }
+
+    /// 参照名 name を、参照元 pos のモジュール文脈で解決する。
+    /// 返り値の String は解決後の完全修飾名 (Imm に格納する canonical name)。
+    /// 1. `::` を含む → 絶対ルックアップ
+    /// 2. 素名 → 参照元モジュール prefix を付けて解決 (同一ファイル内)
+    /// 3. 無ければ素名のまま (ルート / グローバル層へフォールバック)
+    pub fn resolve(&self, name: &str, pos: &Pos) -> Option<(&'a ast::Def, String)> {
+        if name.contains("::") {
+            return self.defs.get(name).map(|&d| (d, name.to_string()));
+        }
+        if let Some(prefix) = self.modmap.get(pos.file()) {
+            if !prefix.is_empty() {
+                let local = format!("{}::{}", prefix, name);
+                if let Some(&d) = self.defs.get(local.as_str()) {
+                    return Some((d, local));
+                }
+            }
+        }
+        self.defs.get(name).map(|&d| (d, name.to_string()))
+    }
+
+    /// エントリポイント名 (reset/irq/main) を FQN に解決する。
+    /// ルートにあればそれ、無ければ末尾一致 (`::name`) の最初のものを使う。
+    pub fn resolve_entry(&self, name: &str) -> Option<String> {
+        if self.defs.contains_key(name) {
+            return Some(name.to_string());
+        }
+        let suffix = format!("::{}", name);
+        self.defs
+            .keys()
+            .copied()
+            .find(|k| k.ends_with(suffix.as_str()))
+            .map(|k| k.to_string())
+    }
+}
+
+/// パース直後の AST に対し、各トップレベル定義名へモジュール prefix を付与する。
+/// modmap: ファイルパス → モジュール prefix ("" or 未登録 = ルート)。
+pub fn apply_module_prefixes(ast: &mut ast::AST, modmap: &HashMap<String, String>) {
+    for def in &mut ast.0 {
+        let ident = match def {
+            ast::Def::Type(id, _) => id,
+            ast::Def::Const(id, _, _) => id,
+            ast::Def::Static(id, _, _) => id,
+            ast::Def::Asm(id, _, _) => id,
+            ast::Def::Func(id, _, _, _) => id,
+        };
+        if let Some(prefix) = modmap.get(ident.1.file()) {
+            if !prefix.is_empty() {
+                ident.0 = format!("{}::{}", prefix, ident.0);
+            }
+        }
+    }
 }
 
 impl<'a> Global<'a> {
@@ -111,7 +167,7 @@ impl<'a> Global<'a> {
             ast::Type::Int => Ok(NormType::Int),
             ast::Type::Void => Ok(NormType::Void),
             ast::Type::Custom((name, pos)) => {
-                if let Some(&def) = self.defs.get(name.as_str()) {
+                if let Some((def, _)) = self.resolve(name, pos) {
                     match def {
                         ast::Def::Type(_, type_def) => self.normtype(type_def),
                         ast::Def::Const((_, pos), _, _)
@@ -196,7 +252,7 @@ impl<'a> Global<'a> {
             }
             ast::Expr::Ident((name, pos)) => {
                 // Look up constant value
-                if let Some(&def) = self.defs.get(name.as_str()) {
+                if let Some((def, _)) = self.resolve(name, pos) {
                     match def {
                         ast::Def::Const(_, _, const_expr) => self.constexpr(const_expr),
                         ast::Def::Type((_, pos), _)
@@ -321,7 +377,7 @@ impl<'a> Global<'a> {
             }
             ast::Expr::Ident((name, pos)) => {
                 // Look up the identifier in definitions
-                if let Some(&def) = self.defs.get(name.as_str()) {
+                if let Some((def, _)) = self.resolve(name, pos) {
                     match def {
                         ast::Def::Static(_, _, ty) => self.normtype(ty),
                         ast::Def::Const((_, pos), _, expr) => {
@@ -473,12 +529,12 @@ impl<'a> Global<'a> {
     /// Infer address of expr with unresolved symbol (symbol, offset)
     pub fn addrexpr(&self, expr: &'a ast::Expr) -> Result<(String, usize), Error> {
         match expr {
-            ast::Expr::Ident((name, pos)) => match self.defs.get(name.as_str()) {
-                Some(&def) => match def {
+            ast::Expr::Ident((name, pos)) => match self.resolve(name, pos) {
+                Some((def, fqn)) => match def {
                     ast::Def::Static(_, _, _)
                     | ast::Def::Const(_, _, _)
                     | ast::Def::Func(_, _, _, _)
-                    | ast::Def::Asm(_, _, _) => Ok((name.clone(), 0)),
+                    | ast::Def::Asm(_, _, _) => Ok((fqn, 0)),
                     ast::Def::Type((_, pos), _) => {
                         Err(Error::NotAddressable(pos.clone(), name.clone()))
                     }

@@ -1,13 +1,13 @@
 code:
-  reset:
+  rtos::init::reset:
     addr: 0x0
     size: 0x3
     stacks: {}
-  irq:
+  rtos::init::irq:
     addr: 0x4
     size: 0x1
     stacks: {}
-  init:
+  rtos::init::init:
     addr: 0x8
     size: 0x17
     stacks: {}
@@ -15,12 +15,12 @@ code:
     addr: 0x1f
     size: 0x31
     stacks: {}
-  os_mutex_init:
+  rtos::task::os_mutex_init:
     addr: 0x50
     size: 0x1c
     stacks:
       m: 0xffff
-  malloc:
+  rtos::heap::malloc:
     addr: 0x6c
     size: 0x11
     stacks:
@@ -31,54 +31,54 @@ code:
     size: 0x2f
     stacks:
       i: 0xffff
-  os_mutex_lock:
+  rtos::task::os_mutex_lock:
     addr: 0xac
     size: 0x33
     stacks:
       m: 0xffff
-  os_task_wait:
+  rtos::task::os_task_wait:
     addr: 0xdf
     size: 0x15
     stacks: {}
-  os_task_scheduler:
+  rtos::task::os_task_scheduler:
     addr: 0xf4
     size: 0xb
     stacks: {}
-  os_restore_context:
+  rtos::task::os_restore_context:
     addr: 0xff
     size: 0x11
     stacks: {}
-  _exit:
+  rtos::init::_exit:
     addr: 0x110
     size: 0x2
     stacks: {}
-  print_str:
+  rtos::serial::print_str:
     addr: 0x112
     size: 0x17
     stacks:
       s: 0xffff
       p: 0xfffe
-  os_task_sleep:
+  rtos::task::os_task_sleep:
     addr: 0x129
     size: 0x17
     stacks:
       ticks: 0xffff
-  os_mutex_unlock:
+  rtos::task::os_mutex_unlock:
     addr: 0x140
     size: 0x21
     stacks:
       m: 0xffff
-  os_sem_wake:
+  rtos::task::os_sem_wake:
     addr: 0x161
     size: 0x34
     stacks:
       obj: 0xffff
       cur: 0xfffe
-  os_task_exit:
+  rtos::task::os_task_exit:
     addr: 0x195
     size: 0x5
     stacks: {}
-  os_task_setup:
+  rtos::task::os_task_setup:
     addr: 0x19a
     size: 0xdf
     stacks:
@@ -101,11 +101,11 @@ code:
     addr: 0x2a8
     size: 0x7
     stacks: {}
-  _intr:
+  rtos::task::_intr:
     addr: 0x2af
     size: 0x12
     stacks: {}
-  intr_dispatch:
+  rtos::task::intr_dispatch:
     addr: 0x2c1
     size: 0x36
     stacks: {}
@@ -113,7 +113,7 @@ code:
     addr: 0x2f7
     size: 0xc
     stacks: {}
-  os_timer_tick:
+  rtos::task::os_timer_tick:
     addr: 0x303
     size: 0x36
     stacks:
@@ -134,22 +134,22 @@ data:
   mtx:
     addr: 0x48
     size: 0x1
-  heap_top:
+  rtos::heap::heap_top:
     addr: 0x40
     size: 0x1
-  heap_bottom:
+  rtos::heap::heap_bottom:
     addr: 0x41
     size: 0x1
-  serial_tx:
+  rtos::serial::serial_tx:
     addr: 0x100
     size: 0x1
-  task_running:
+  rtos::task::task_running:
     addr: 0x42
     size: 0x1
-  task_list:
+  rtos::task::task_list:
     addr: 0x43
     size: 0x1
-  os_ticks:
+  rtos::task::os_ticks:
     addr: 0x5000
     size: 0x1
   user_global_size:
@@ -167,33 +167,33 @@ data:
   s_b_out:
     addr: 0x3014
     size: 0x6
-  os_global_size:
+  rtos::init::os_global_size:
     addr: 0x301b
     size: 0x1
-  mem_top:
+  rtos::init::mem_top:
     addr: 0x301c
     size: 0x1
-  mem_bottom:
+  rtos::init::mem_bottom:
     addr: 0x301d
     size: 0x1
-  INTR:
+  rtos::task::INTR:
     addr: 0x301e
     size: 0x5
-  intr0_flag:
+  rtos::task::intr0_flag:
     addr: 0x3023
     size: 0x1
-  intr1_flag:
+  rtos::task::intr1_flag:
     addr: 0x3024
     size: 0x1
-  intr2_flag:
+  rtos::task::intr2_flag:
     addr: 0x3025
     size: 0x1
-  intr3_flag:
+  rtos::task::intr3_flag:
     addr: 0x3026
     size: 0x1
-  task_state_ready:
+  rtos::task::task_state_ready:
     addr: 0x3027
     size: 0x1
-  task_state_waiting:
+  rtos::task::task_state_waiting:
     addr: 0x3028
     size: 0x1

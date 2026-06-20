@@ -1,6 +1,6 @@
 // 01_time_slice — 3 タスク X/Y/Z を intr0 で時分割実行
 //
-// intr0 が来るたびに task_list を 1 つだけ回転させる:
+// intr0 が来るたびに rtos::task::task_list を 1 つだけ回転させる:
 //   [head, A, B, tail]  →  [A, B, tail, head]
 // scheduler は list 先頭から ready を探すので、回転で別タスクが選ばれる。
 //
@@ -8,9 +8,9 @@
 
 const user_global_size = 3;
 
-static @ 0x0048 task_id_x : *TCB;
-static @ 0x0049 task_id_y : *TCB;
-static @ 0x004A task_id_z : *TCB;
+static @ 0x0048 task_id_x : *rtos::task::TCB;
+static @ 0x0049 task_id_y : *rtos::task::TCB;
+static @ 0x004A task_id_z : *rtos::task::TCB;
 
 const s_switch = "<SwitchTask>\n";
 const s_label_x = "X:";
@@ -20,22 +20,22 @@ const s_newline = "\n";
 
 // 1 命令スロットで完結する asm では難しいので、ローテートは intr0() fn で書く
 fn intr0() {
-    print_str(s_switch@ as *int);
+    rtos::serial::print_str(s_switch@ as *int);
 
-    // task_list が空 / 単一なら回転しない
-    if (task_list != (0 as *TCB)) {
-        var head: *TCB = task_list;
-        var second: *TCB = (@head).next as *TCB;
-        if (second != (0 as *TCB)) {
+    // rtos::task::task_list が空 / 単一なら回転しない
+    if (rtos::task::task_list != (0 as *rtos::task::TCB)) {
+        var head: *rtos::task::TCB = rtos::task::task_list;
+        var second: *rtos::task::TCB = (@head).next as *rtos::task::TCB;
+        if (second != (0 as *rtos::task::TCB)) {
             // 末尾 tail を探す
-            var tail: *TCB = head;
+            var tail: *rtos::task::TCB = head;
             while ((@tail).next != (0 as *void)) {
-                tail = (@tail).next as *TCB;
+                tail = (@tail).next as *rtos::task::TCB;
             }
-            // tail.next = head;  head.next = 0;  task_list = second;
+            // tail.next = head;  head.next = 0;  rtos::task::task_list = second;
             (@tail).next = head as *void;
             (@head).next = 0 as *void;
-            task_list = second;
+            rtos::task::task_list = second;
         }
     }
 
@@ -50,41 +50,41 @@ fn intr3() { csr = csr & 0xf7ff; }
 fn task_x() {
     var i: int = 0;
     while (i < 10) {
-        print_str(s_label_x@ as *int);
-        print_hex(i);
-        print_str(s_newline@ as *int);
+        rtos::serial::print_str(s_label_x@ as *int);
+        rtos::serial::print_hex(i);
+        rtos::serial::print_str(s_newline@ as *int);
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn task_y() {
     var i: int = 0;
     while (i < 10) {
-        print_str(s_label_y@ as *int);
-        print_hex(i);
-        print_str(s_newline@ as *int);
+        rtos::serial::print_str(s_label_y@ as *int);
+        rtos::serial::print_hex(i);
+        rtos::serial::print_str(s_newline@ as *int);
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn task_z() {
     var i: int = 0;
     while (i < 10) {
-        print_str(s_label_z@ as *int);
-        print_hex(i);
-        print_str(s_newline@ as *int);
+        rtos::serial::print_str(s_label_z@ as *int);
+        rtos::serial::print_hex(i);
+        rtos::serial::print_str(s_newline@ as *int);
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn init_tasks() {
-    task_id_x = os_task_setup(task_state_ready, 0x100, task_x as int);
-    task_id_y = os_task_setup(task_state_ready, 0x100, task_y as int);
-    task_id_z = os_task_setup(task_state_ready, 0x100, task_z as int);
+    task_id_x = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_x as int);
+    task_id_y = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_y as int);
+    task_id_z = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_z as int);
 
     // 割り込みを許可しておく (csr の bit0)
-    csr = csr | INTR.ENABLE;
+    csr = csr | rtos::task::INTR.ENABLE;
 }

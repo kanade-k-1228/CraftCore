@@ -1,13 +1,13 @@
 code:
-  reset:
+  rtos::init::reset:
     addr: 0x0
     size: 0x3
     stacks: {}
-  irq:
+  rtos::init::irq:
     addr: 0x4
     size: 0x1
     stacks: {}
-  init:
+  rtos::init::init:
     addr: 0x8
     size: 0x17
     stacks: {}
@@ -15,7 +15,7 @@ code:
     addr: 0x1f
     size: 0x11
     stacks: {}
-  os_heap_init:
+  rtos::heap::os_heap_init:
     addr: 0x30
     size: 0x5
     stacks: {}
@@ -26,7 +26,7 @@ code:
       a: 0xffff
       b: 0xfffe
       c: 0xfffd
-  os_heap_aloc:
+  rtos::heap::os_heap_aloc:
     addr: 0x78
     size: 0x6e
     stacks:
@@ -34,13 +34,13 @@ code:
       prev: 0xfffe
       cur: 0xfffd
       hdr: 0xfffc
-  print_str:
+  rtos::serial::print_str:
     addr: 0xe6
     size: 0x17
     stacks:
       s: 0xffff
       p: 0xfffe
-  print_hex:
+  rtos::serial::print_hex:
     addr: 0xfd
     size: 0x4e
     stacks:
@@ -48,31 +48,31 @@ code:
       i: 0xfffe
       shift: 0xfffd
       nibble: 0xfffc
-  os_heap_free:
+  rtos::heap::os_heap_free:
     addr: 0x14b
     size: 0x15
     stacks:
       addr: 0xffff
       hdr: 0xfffe
-  os_task_exit:
+  rtos::task::os_task_exit:
     addr: 0x160
     size: 0x5
     stacks: {}
-  os_task_scheduler:
+  rtos::task::os_task_scheduler:
     addr: 0x165
     size: 0xb
     stacks: {}
-  os_restore_context:
+  rtos::task::os_restore_context:
     addr: 0x170
     size: 0x11
     stacks: {}
-  _exit:
+  rtos::init::_exit:
     addr: 0x181
     size: 0x2
     stacks: {}
-  os_task_setup:
+  rtos::task::os_task_setup:
     addr: 0x183
-    size: 0xd9
+    size: 0xdf
     stacks:
       initial_state: 0xffff
       stack_size: 0xfffe
@@ -84,53 +84,53 @@ code:
       stack_top: 0xfff9
       sp_init: 0xfff8
       slot_ptr: 0xfff7
-  malloc:
-    addr: 0x25c
+  rtos::heap::malloc:
+    addr: 0x262
     size: 0x11
     stacks:
       size: 0xffff
       addr: 0xfffe
-  _intr:
-    addr: 0x26d
+  rtos::task::_intr:
+    addr: 0x273
     size: 0x12
     stacks: {}
-  intr_dispatch:
-    addr: 0x27f
+  rtos::task::intr_dispatch:
+    addr: 0x285
     size: 0x36
     stacks: {}
   intr0:
-    addr: 0x2b5
+    addr: 0x2bb
     size: 0x5
     stacks: {}
   intr1:
-    addr: 0x2ba
+    addr: 0x2c0
     size: 0x5
     stacks: {}
   intr2:
-    addr: 0x2bf
+    addr: 0x2c5
     size: 0x5
     stacks: {}
   intr3:
-    addr: 0x2c4
+    addr: 0x2ca
     size: 0x5
     stacks: {}
 data:
-  heap_top:
+  rtos::heap::heap_top:
     addr: 0x40
     size: 0x1
-  heap_bottom:
+  rtos::heap::heap_bottom:
     addr: 0x41
     size: 0x1
-  heap_free_list:
+  rtos::heap::heap_free_list:
     addr: 0x5000
     size: 0x1
-  serial_tx:
+  rtos::serial::serial_tx:
     addr: 0x100
     size: 0x1
-  task_running:
+  rtos::task::task_running:
     addr: 0x42
     size: 0x1
-  task_list:
+  rtos::task::task_list:
     addr: 0x43
     size: 0x1
   user_global_size:
@@ -148,27 +148,27 @@ data:
   s_nl:
     addr: 0x300a
     size: 0x1
-  os_global_size:
+  rtos::init::os_global_size:
     addr: 0x300c
     size: 0x1
-  mem_top:
+  rtos::init::mem_top:
     addr: 0x300d
     size: 0x1
-  mem_bottom:
+  rtos::init::mem_bottom:
     addr: 0x300e
     size: 0x1
-  intr0_flag:
+  rtos::task::intr0_flag:
     addr: 0x300f
     size: 0x1
-  intr1_flag:
+  rtos::task::intr1_flag:
     addr: 0x3010
     size: 0x1
-  intr2_flag:
+  rtos::task::intr2_flag:
     addr: 0x3011
     size: 0x1
-  intr3_flag:
+  rtos::task::intr3_flag:
     addr: 0x3012
     size: 0x1
-  task_state_ready:
+  rtos::task::task_state_ready:
     addr: 0x3013
     size: 0x1

@@ -14,7 +14,7 @@ asm @ 0x0000 reset {
 }
 
 asm @ 0x0004 irq {
-    jump(_intr);
+    jump(rtos::task::_intr);
 }
 
 // --------------------------------------------------------
@@ -40,18 +40,18 @@ const clock_stop = 0x0100; // CPU クロック停止
 
 fn init() {
     // ヒープの初期化
-    heap_top    = (mem_top + os_global_size + user_global_size) as *int;
-    heap_bottom = mem_bottom as *int;
+    rtos::heap::heap_top    = (mem_top + os_global_size + user_global_size) as *int;
+    rtos::heap::heap_bottom = mem_bottom as *int;
 
     // タスク管理構造の初期化
-    task_running = 0 as *TCB;
-    task_list    = 0 as *TCB;
+    rtos::task::task_running = 0 as *rtos::task::TCB;
+    rtos::task::task_list    = 0 as *rtos::task::TCB;
 
     // 各種オブジェクトの初期化
     init_tasks();
 
     // スケジューラを起動
-    os_task_scheduler();
+    rtos::task::os_task_scheduler();
 }
 
 // --------------------------------------------------------

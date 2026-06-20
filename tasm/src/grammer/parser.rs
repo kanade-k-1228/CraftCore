@@ -46,9 +46,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Type::Void)
                 }
 
-                // Custom type: ident
+                // Custom type: qualified-ident
                 Ident(_) => {
-                    let name = self.parse_ident()?;
+                    let name = self.parse_qualified_ident()?;
                     Ok(Type::Custom(name))
                 }
 
@@ -591,9 +591,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(inner)
                 }
 
-                // Identifier: ident
+                // Identifier: qualified-ident
                 Ident(_) => {
-                    let name = self.parse_ident()?;
+                    let name = self.parse_qualified_ident()?;
                     Ok(Expr::Ident(name))
                 }
 
@@ -664,6 +664,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             Some(token) => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
             None => Err(Error::UnexpectedEOF(Pos::default())),
         }
+    }
+
+    /// qualified-ident = ident { "::" ident }
+    /// 参照名を "rtos::serial::print_char" のように `::` 連結した 1 つの Ident 文字列に
+    /// する (定義名は単一 ident のまま)。Pos は先頭 ident のもの。
+    fn parse_qualified_ident(&mut self) -> Result<Ident, Error> {
+        let (mut name, pos) = self.parse_ident()?;
+        while check!(self, ColonColon) {
+            expect!(self, ColonColon)?;
+            let (seg, _) = self.parse_ident()?;
+            name.push_str("::");
+            name.push_str(&seg);
+        }
+        Ok((name, pos))
     }
 
     /// ident ":" type

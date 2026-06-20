@@ -7,7 +7,7 @@
 
 const user_global_size = 1;
 
-static @ 0x0048 mtx : *Mutex;
+static @ 0x0048 mtx : *rtos::task::Mutex;
 
 const s_a_in  = "A in\n";
 const s_a_out = "A out\n";
@@ -15,7 +15,7 @@ const s_b_in  = "B in\n";
 const s_b_out = "B out\n";
 
 fn intr0() {
-    os_timer_tick();
+    rtos::task::os_timer_tick();
     csr = csr & 0xfeff;
 }
 fn intr1() { csr = csr & 0xfdff; }
@@ -25,29 +25,29 @@ fn intr3() { csr = csr & 0xf7ff; }
 fn task_a() {
     var i: int = 0;
     while (i < 3) {
-        os_mutex_lock(mtx);
-        print_str(s_a_in@ as *int);
-        os_task_sleep(1);              // ロック保持のまま yield (B は lock でブロック)
-        print_str(s_a_out@ as *int);
-        os_mutex_unlock(mtx);
-        os_task_sleep(1);              // ロックを離して yield (B に番を渡す)
+        rtos::task::os_mutex_lock(mtx);
+        rtos::serial::print_str(s_a_in@ as *int);
+        rtos::task::os_task_sleep(1);              // ロック保持のまま yield (B は lock でブロック)
+        rtos::serial::print_str(s_a_out@ as *int);
+        rtos::task::os_mutex_unlock(mtx);
+        rtos::task::os_task_sleep(1);              // ロックを離して yield (B に番を渡す)
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn task_b() {
     var i: int = 0;
     while (i < 3) {
-        os_mutex_lock(mtx);
-        print_str(s_b_in@ as *int);
-        os_task_sleep(1);
-        print_str(s_b_out@ as *int);
-        os_mutex_unlock(mtx);
-        os_task_sleep(1);
+        rtos::task::os_mutex_lock(mtx);
+        rtos::serial::print_str(s_b_in@ as *int);
+        rtos::task::os_task_sleep(1);
+        rtos::serial::print_str(s_b_out@ as *int);
+        rtos::task::os_mutex_unlock(mtx);
+        rtos::task::os_task_sleep(1);
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn idle() {
@@ -56,10 +56,10 @@ fn idle() {
 }
 
 fn init_tasks() {
-    mtx = os_mutex_init();
-    os_ticks = 0;
-    os_task_setup(task_state_ready, 0x100, task_a as int);
-    os_task_setup(task_state_ready, 0x100, task_b as int);
-    os_task_setup(task_state_ready, 0x100, idle as int);
-    csr = csr | INTR.ENABLE;
+    mtx = rtos::task::os_mutex_init();
+    rtos::task::os_ticks = 0;
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_a as int);
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_b as int);
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, idle as int);
+    csr = csr | rtos::task::INTR.ENABLE;
 }

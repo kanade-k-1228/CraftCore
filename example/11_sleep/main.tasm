@@ -1,7 +1,7 @@
-// 11_sleep — タイマ tick による os_task_sleep のデモ
+// 11_sleep — タイマ tick による rtos::task::os_task_sleep のデモ
 //
 // fast (2 tick 周期) と slow (5 tick 周期) が異なる間隔で出力する。
-// intr0 が来るたびに os_timer_tick() で tick を進め、起床時刻のタスクを起こす。
+// intr0 が来るたびに rtos::task::os_timer_tick() で tick を進め、起床時刻のタスクを起こす。
 // 全タスクがスリープ中の間も回せるよう idle タスク (常時 ready) を 1 つ置く。
 // 期待出力 (tick 順): F0 F1 S0 F2 F3 F4 S1 S2
 
@@ -9,7 +9,7 @@ const user_global_size = 0;
 
 // intr0 = システムタイマ。tick を進めてフラグをクリア。
 fn intr0() {
-    os_timer_tick();
+    rtos::task::os_timer_tick();
     csr = csr & 0xfeff;   // intr0 フラグ (bit8) をクリア
 }
 fn intr1() { csr = csr & 0xfdff; }
@@ -19,25 +19,25 @@ fn intr3() { csr = csr & 0xf7ff; }
 fn task_fast() {
     var i: int = 0;
     while (i < 5) {
-        os_task_sleep(2);
-        print_char('F');
-        print_char(i + '0');
-        print_char('\n');
+        rtos::task::os_task_sleep(2);
+        rtos::serial::print_char('F');
+        rtos::serial::print_char(i + '0');
+        rtos::serial::print_char('\n');
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn task_slow() {
     var i: int = 0;
     while (i < 3) {
-        os_task_sleep(5);
-        print_char('S');
-        print_char(i + '0');
-        print_char('\n');
+        rtos::task::os_task_sleep(5);
+        rtos::serial::print_char('S');
+        rtos::serial::print_char(i + '0');
+        rtos::serial::print_char('\n');
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 // 全タスクがスリープ中でも CPU を回すための idle タスク (常時 ready)
@@ -47,9 +47,9 @@ fn idle() {
 }
 
 fn init_tasks() {
-    os_ticks = 0;
-    os_task_setup(task_state_ready, 0x100, task_fast as int);
-    os_task_setup(task_state_ready, 0x100, task_slow as int);
-    os_task_setup(task_state_ready, 0x100, idle as int);   // idle は最後 (tail = 最低優先)
-    csr = csr | INTR.ENABLE;                                 // 割込許可
+    rtos::task::os_ticks = 0;
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_fast as int);
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_slow as int);
+    rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, idle as int);   // idle は最後 (tail = 最低優先)
+    csr = csr | rtos::task::INTR.ENABLE;                                 // 割込許可
 }

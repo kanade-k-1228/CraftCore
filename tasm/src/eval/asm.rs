@@ -199,8 +199,8 @@ impl ast::Expr {
 
     fn global(&self, global: &Global, loc: &Pos) -> Result<Imm, Error> {
         match self {
-            ast::Expr::Ident((label, _)) => match global.get(label.as_str()) {
-                Some(ast::Def::Asm(..) | ast::Def::Func(..)) => Ok(Imm::Label(label.clone())),
+            ast::Expr::Ident((label, pos)) => match global.resolve(label, pos) {
+                Some((ast::Def::Asm(..) | ast::Def::Func(..), fqn)) => Ok(Imm::Label(fqn)),
                 Some(_) => Err(Error::NotGlobalLabel(loc.clone(), label.clone())),
                 None => Err(Error::UndefinedGlobalLabel(loc.clone(), label.clone())),
             },
@@ -222,15 +222,15 @@ impl ast::Expr {
         match self {
             ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
             ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
-            ast::Expr::Ident((name, _)) => match global.get(name.as_str()) {
-                Some(ast::Def::Const(_, _, expr)) => {
+            ast::Expr::Ident((name, pos)) => match global.resolve(name, pos) {
+                Some((ast::Def::Const(_, _, expr), fqn)) => {
                     let value = global.constexpr(expr)?;
-                    Ok(Imm::Const(name.clone(), value.to_usize()))
+                    Ok(Imm::Const(fqn, value.to_usize()))
                 }
-                Some(ast::Def::Static(..)) => {
+                Some((ast::Def::Static(..), _)) => {
                     Err(Error::StaticRequiresAddressOf(loc.clone(), name.clone()))
                 }
-                Some(ast::Def::Asm(..) | ast::Def::Func(..) | ast::Def::Type(..)) => {
+                Some((ast::Def::Asm(..) | ast::Def::Func(..) | ast::Def::Type(..), _)) => {
                     Err(Error::InvalidImmediateValue(loc.clone(), name.clone()))
                 }
                 None => Err(Error::UnknownIdentifier(loc.clone(), name.clone())),
@@ -248,9 +248,9 @@ impl ast::Expr {
                 },
             },
             ast::Expr::Addr(inner) => match inner.as_ref() {
-                ast::Expr::Ident((name, _)) => match global.get(name.as_str()) {
-                    Some(ast::Def::Static(..)) => Ok(Imm::Symbol(name.clone(), 0)),
-                    Some(ast::Def::Const(..)) => Ok(Imm::Symbol(name.clone(), 0)),
+                ast::Expr::Ident((name, pos)) => match global.resolve(name, pos) {
+                    Some((ast::Def::Static(..), fqn)) => Ok(Imm::Symbol(fqn, 0)),
+                    Some((ast::Def::Const(..), fqn)) => Ok(Imm::Symbol(fqn, 0)),
                     _ => Err(Error::InvalidImmediateValue(
                         loc.clone(),
                         format!("{}*", name),

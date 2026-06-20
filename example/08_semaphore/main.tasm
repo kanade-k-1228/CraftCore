@@ -9,10 +9,10 @@
 
 const user_global_size = 5;
 
-static @ 0x0044 task_id_p : *TCB;
-static @ 0x0045 task_id_c : *TCB;
-static @ 0x0046 sem_empty : *Sem;   // 空きスロット数 (初期 1)
-static @ 0x0047 sem_full  : *Sem;   // 充填スロット数 (初期 0)
+static @ 0x0044 task_id_p : *rtos::task::TCB;
+static @ 0x0045 task_id_c : *rtos::task::TCB;
+static @ 0x0046 sem_empty : *rtos::task::Sem;   // 空きスロット数 (初期 1)
+static @ 0x0047 sem_full  : *rtos::task::Sem;   // 充填スロット数 (初期 0)
 static @ 0x0048 buffer    : int;    // 1 word バッファ
 
 // 本サンプルは協調スケジュール (タイマ割込は使わない)
@@ -24,33 +24,33 @@ fn intr3() { return; }
 fn producer() {
     var i: int = 0;
     while (i < 5) {
-        os_sem_wait(sem_empty);     // 空きスロットを待つ
+        rtos::task::os_sem_wait(sem_empty);     // 空きスロットを待つ
         buffer = i;
-        print_char('P');
-        print_char(i + '0');
-        print_char('\n');
-        os_sem_signal(sem_full);    // 充填を通知 (consumer を起こす)
+        rtos::serial::print_char('P');
+        rtos::serial::print_char(i + '0');
+        rtos::serial::print_char('\n');
+        rtos::task::os_sem_signal(sem_full);    // 充填を通知 (consumer を起こす)
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn consumer() {
     var i: int = 0;
     while (i < 5) {
-        os_sem_wait(sem_full);      // 充填を待つ
-        print_char('C');
-        print_char(buffer + '0');
-        print_char('\n');
-        os_sem_signal(sem_empty);   // 空きを通知 (producer を起こす)
+        rtos::task::os_sem_wait(sem_full);      // 充填を待つ
+        rtos::serial::print_char('C');
+        rtos::serial::print_char(buffer + '0');
+        rtos::serial::print_char('\n');
+        rtos::task::os_sem_signal(sem_empty);   // 空きを通知 (producer を起こす)
         i = i + 1;
     }
-    os_task_exit();
+    rtos::task::os_task_exit();
 }
 
 fn init_tasks() {
-    sem_empty = os_sem_init(1);
-    sem_full  = os_sem_init(0);
-    task_id_p = os_task_setup(task_state_ready, 0x100, producer as int);
-    task_id_c = os_task_setup(task_state_ready, 0x100, consumer as int);
+    sem_empty = rtos::task::os_sem_init(1);
+    sem_full  = rtos::task::os_sem_init(0);
+    task_id_p = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, producer as int);
+    task_id_c = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, consumer as int);
 }

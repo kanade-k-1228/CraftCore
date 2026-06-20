@@ -13,9 +13,9 @@
 
 const user_global_size = 3;
 
-static @ 0x0044 task_id_a : *TCB;
-static @ 0x0045 task_id_b : *TCB;
-static @ 0x0046 task_id_c : *TCB;
+static @ 0x0044 task_id_a : *rtos::task::TCB;
+static @ 0x0045 task_id_b : *rtos::task::TCB;
+static @ 0x0046 task_id_c : *rtos::task::TCB;
 
 const s_start_a  = "Start A\n";
 const s_start_b  = "Start B\n";
@@ -31,29 +31,29 @@ fn intr2() { return; }
 fn intr3() { return; }
 
 fn task_a() {
-    print_str(s_start_a@ as *int);
-    os_task_wait();
-    print_str(s_resume_a@ as *int);
-    os_task_ready(task_id_b);
-    os_task_exit();
+    rtos::serial::print_str(s_start_a@ as *int);
+    rtos::task::os_task_wait();
+    rtos::serial::print_str(s_resume_a@ as *int);
+    rtos::task::os_task_ready(task_id_b);
+    rtos::task::os_task_exit();
 }
 
 fn task_b() {
-    print_str(s_start_b@ as *int);
-    os_task_wait();
-    print_str(s_resume_b@ as *int);
-    os_task_exit();
+    rtos::serial::print_str(s_start_b@ as *int);
+    rtos::task::os_task_wait();
+    rtos::serial::print_str(s_resume_b@ as *int);
+    rtos::task::os_task_exit();
 }
 
 fn task_c() {
-    print_str(s_start_c@ as *int);
-    os_task_ready(task_id_a);
-    print_str(s_resume_c@ as *int);
-    os_task_exit();
+    rtos::serial::print_str(s_start_c@ as *int);
+    rtos::task::os_task_ready(task_id_a);
+    rtos::serial::print_str(s_resume_c@ as *int);
+    rtos::task::os_task_exit();
 }
 
 fn init_tasks() {
-    task_id_a = os_task_setup(task_state_ready, 0x100, task_a as int);
-    task_id_b = os_task_setup(task_state_ready, 0x100, task_b as int);
-    task_id_c = os_task_setup(task_state_ready, 0x100, task_c as int);
+    task_id_a = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_a as int);
+    task_id_b = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_b as int);
+    task_id_c = rtos::task::os_task_setup(rtos::task::task_state_ready, 0x100, task_c as int);
 }
