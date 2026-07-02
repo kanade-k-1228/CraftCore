@@ -28,13 +28,9 @@ impl<'a> Global<'a> {
             return Ok((labels, symbols));
         }
 
-        // Silently skip undefined entry points (e.g. an unused "irq" vector);
-        // any other code-gen error should still propagate.
-        let code = match self.code(entry) {
-            Ok(code) => code,
-            Err(Error::UnknownIdentifier(_, _)) => return Ok((labels, symbols)),
-            Err(e) => return Err(e),
-        };
+        // Undefined entry points (e.g. an unused "irq" vector) are already
+        // filtered out by resolve_entry, so any error here is a real one.
+        let code = self.code(entry)?;
         labels.insert(entry.to_string());
 
         for inst in &code.0 {

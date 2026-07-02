@@ -1,0 +1,5 @@
+src:
+  - main.tasm
+test:
+  default:
+    tmax: 10

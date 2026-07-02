@@ -9,6 +9,56 @@ VSCode extension for TASM (Typed Assembly) language syntax highlighting and lang
 - Comment toggling support
 - Code folding
 - Indentation rules
+- Language server integration (`tasm-lsp`):
+  - Diagnostics (parse / semantic errors)
+  - Go to definition (globals across modules, local vars, asm labels)
+  - Hover (type signatures, const values, addresses)
+  - Document symbols (outline)
+
+## Language Server Setup
+
+1. Build and install the server:
+   ```bash
+   cargo install --path tasm-lsp   # or: make i
+   ```
+2. Dependencies are resolved from `project.yaml` automatically. For each
+   opened file the server walks up the directory tree and uses the first
+   `project.yaml` it finds (the shared definition of the `proj` crate,
+   also read by the `tasm` / `cemu` CLIs):
+   ```yaml
+   src:
+     - main.tasm        # root sources (default: main.tasm)
+   include:
+     rtos: ../../rtos   # module name -> directory (tasm -I NAME=DIR)
+   ```
+   The compile unit becomes `src` + all module files under `include`.
+   Each `include` key is the module root name used in references
+   (`rtos::task::...`); the directory name itself does not matter.
+   Opening a module file (e.g. `rtos/task.tasm` of an example project)
+   analyzes it in the context of that project.
+3. Fallback configuration in `.vscode/settings.json` (used only when no
+   `project.yaml` is found):
+   ```json
+   {
+     "tasm.includeDirs": ["rtos"],
+     "tasm.lsp.path": "tasm-lsp"
+   }
+   ```
+   - `tasm.includeDirs`: module include directories (`tasm -I` equivalent),
+     relative to the workspace root. `name=dir` entries set the module root
+     name explicitly; a bare `dir` uses its basename. `${workspaceFolder}`
+     is supported in `tasm.lsp.path`.
+   - Without `includeDirs`, each file is analyzed standalone.
+
+## Development
+
+```bash
+npm install
+npm run compile     # build extension.js
+npm run package     # build .vsix
+```
+
+Press F5 in VS Code to launch an Extension Development Host.
 
 ## Syntax Highlighting
 

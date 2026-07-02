@@ -232,17 +232,17 @@ impl<'a> Global<'a> {
         }
 
         let result = match expr {
-            ast::Expr::NumberLit(n) => Ok(ConstExpr::Number(*n)),
-            ast::Expr::CharLit(c) => Ok(ConstExpr::Char(*c)),
-            ast::Expr::StringLit(s) => Ok(ConstExpr::String(s.clone())),
-            ast::Expr::ArrayLit(elems) => {
+            ast::Expr::NumberLit(n, _) => Ok(ConstExpr::Number(*n)),
+            ast::Expr::CharLit(c, _) => Ok(ConstExpr::Char(*c)),
+            ast::Expr::StringLit(s, _) => Ok(ConstExpr::String(s.clone())),
+            ast::Expr::ArrayLit(elems, _) => {
                 let mut const_elems = Vec::new();
                 for elem in elems {
                     const_elems.push(self.constexpr(elem)?);
                 }
                 Ok(ConstExpr::Array(const_elems))
             }
-            ast::Expr::StructLit(fields) => {
+            ast::Expr::StructLit(fields, _) => {
                 let mut const_fields = Vec::new();
                 for ((name, _), field_expr) in fields {
                     let const_val = self.constexpr(field_expr)?;
@@ -317,12 +317,12 @@ impl<'a> Global<'a> {
                     _ => Err(Error::NonNumericUnaryOperand(inner.pos_or_default())),
                 }
             }
-            ast::Expr::SizeofType(ty) => {
+            ast::Expr::SizeofType(ty, _) => {
                 // Calculate size of type
                 let norm_ty = self.normtype(ty)?;
                 Ok(ConstExpr::Number(norm_ty.sizeof()))
             }
-            ast::Expr::SizeofExpr(inner) => {
+            ast::Expr::SizeofExpr(inner, _) => {
                 // Calculate size of expression's type
                 let norm_ty = self.typeinfer(inner)?;
                 Ok(ConstExpr::Number(norm_ty.sizeof()))
@@ -355,19 +355,19 @@ impl<'a> Global<'a> {
         }
 
         let result = match expr {
-            ast::Expr::NumberLit(_) => Ok(NormType::Int),
-            ast::Expr::CharLit(_) => Ok(NormType::Int),
-            ast::Expr::StringLit(s) => {
+            ast::Expr::NumberLit(_, _) => Ok(NormType::Int),
+            ast::Expr::CharLit(_, _) => Ok(NormType::Int),
+            ast::Expr::StringLit(s, _) => {
                 Ok(NormType::Array(s.len() + 1, Box::new(NormType::Int))) // +1 for null terminator
             }
-            ast::Expr::ArrayLit(elems) => {
+            ast::Expr::ArrayLit(elems, _) => {
                 if elems.is_empty() {
                     return Err(Error::EmptyArrayTypeInference(expr.pos_or_default()));
                 }
                 let elem_ty = self.typeinfer(&elems[0])?;
                 Ok(NormType::Array(elems.len(), Box::new(elem_ty)))
             }
-            ast::Expr::StructLit(fields) => {
+            ast::Expr::StructLit(fields, _) => {
                 let mut field_types = Vec::new();
                 for ((name, _), field_expr) in fields {
                     let field_ty = self.typeinfer(field_expr)?;
@@ -514,7 +514,7 @@ impl<'a> Global<'a> {
                     ))
                 }
             }
-            ast::Expr::SizeofType(_) | ast::Expr::SizeofExpr(_) => Ok(NormType::Int),
+            ast::Expr::SizeofType(_, _) | ast::Expr::SizeofExpr(_, _) => Ok(NormType::Int),
         };
 
         // Store with write lock if successful

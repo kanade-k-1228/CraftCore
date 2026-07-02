@@ -220,8 +220,8 @@ impl ast::Expr {
 
     fn imm<'a>(&'a self, global: &'a Global<'a>, loc: &Pos) -> Result<Imm, Error> {
         match self {
-            ast::Expr::NumberLit(n) => Ok(Imm::Lit(*n as usize)),
-            ast::Expr::CharLit(ch) => Ok(Imm::Lit(*ch as usize)),
+            ast::Expr::NumberLit(n, _) => Ok(Imm::Lit(*n as usize)),
+            ast::Expr::CharLit(ch, _) => Ok(Imm::Lit(*ch as usize)),
             ast::Expr::Ident((name, pos)) => match global.resolve(name, pos) {
                 Some((ast::Def::Const(_, _, expr), fqn)) => {
                     let value = global.constexpr(expr)?;
@@ -300,7 +300,7 @@ impl ast::Expr {
 
             ast::Expr::Index(expr, index) => match expr.imm(global, loc)? {
                 Imm::Symbol(ident, base) => {
-                    if let ast::Expr::NumberLit(idx) = index.as_ref() {
+                    if let ast::Expr::NumberLit(idx, _) = index.as_ref() {
                         let offset = match global.get(ident.as_str()) {
                             Some(ast::Def::Static(_, _, ty)) => {
                                 let ty = global.normtype(ty)?;
@@ -384,12 +384,12 @@ impl ast::Expr {
                 }
             }
 
-            ast::Expr::SizeofType(ty) => match global.normtype(ty) {
+            ast::Expr::SizeofType(ty, _) => match global.normtype(ty) {
                 Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
                 Err(e) => Err(Error::CannotEvaluateSizeofType(loc.clone(), e.to_string())),
             },
 
-            ast::Expr::SizeofExpr(inner) => match global.typeinfer(inner) {
+            ast::Expr::SizeofExpr(inner, _) => match global.typeinfer(inner) {
                 Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
                 Err(e) => Err(Error::CannotEvaluateSizeofExpr(loc.clone(), e.to_string())),
             },

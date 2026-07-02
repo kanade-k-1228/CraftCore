@@ -83,9 +83,9 @@ fn expr_has_call(e: &ast::Expr) -> bool {
         | ast::Expr::Deref(a)
         | ast::Expr::Cast(a, _)
         | ast::Expr::Member(a, _)
-        | ast::Expr::SizeofExpr(a) => expr_has_call(a),
-        ast::Expr::ArrayLit(es) => es.iter().any(expr_has_call),
-        ast::Expr::StructLit(fs) => fs.iter().any(|(_, e)| expr_has_call(e)),
+        | ast::Expr::SizeofExpr(a, _) => expr_has_call(a),
+        ast::Expr::ArrayLit(es, _) => es.iter().any(expr_has_call),
+        ast::Expr::StructLit(fs, _) => fs.iter().any(|(_, e)| expr_has_call(e)),
         _ => false,
     }
 }
@@ -121,15 +121,15 @@ fn collect_idents(e: &ast::Expr, out: &mut HashSet<String>) {
         | ast::Expr::Deref(a)
         | ast::Expr::Cast(a, _)
         | ast::Expr::Member(a, _)
-        | ast::Expr::SizeofExpr(a) => collect_idents(a, out),
+        | ast::Expr::SizeofExpr(a, _) => collect_idents(a, out),
         ast::Expr::Call(f, args) => {
             collect_idents(f, out);
             for a in args {
                 collect_idents(a, out);
             }
         }
-        ast::Expr::ArrayLit(es) => es.iter().for_each(|x| collect_idents(x, out)),
-        ast::Expr::StructLit(fs) => fs.iter().for_each(|(_, x)| collect_idents(x, out)),
+        ast::Expr::ArrayLit(es, _) => es.iter().for_each(|x| collect_idents(x, out)),
+        ast::Expr::StructLit(fs, _) => fs.iter().for_each(|(_, x)| collect_idents(x, out)),
         _ => {}
     }
 }
@@ -149,15 +149,15 @@ fn scan_expr_addr(e: &ast::Expr, taken: &mut HashSet<String>) {
         | ast::Expr::Deref(a)
         | ast::Expr::Cast(a, _)
         | ast::Expr::Member(a, _)
-        | ast::Expr::SizeofExpr(a) => scan_expr_addr(a, taken),
+        | ast::Expr::SizeofExpr(a, _) => scan_expr_addr(a, taken),
         ast::Expr::Call(f, args) => {
             scan_expr_addr(f, taken);
             for a in args {
                 scan_expr_addr(a, taken);
             }
         }
-        ast::Expr::ArrayLit(es) => es.iter().for_each(|x| scan_expr_addr(x, taken)),
-        ast::Expr::StructLit(fs) => fs.iter().for_each(|(_, x)| scan_expr_addr(x, taken)),
+        ast::Expr::ArrayLit(es, _) => es.iter().for_each(|x| scan_expr_addr(x, taken)),
+        ast::Expr::StructLit(fs, _) => fs.iter().for_each(|(_, x)| scan_expr_addr(x, taken)),
         _ => {}
     }
 }
@@ -246,7 +246,11 @@ impl<'a> Context<'a> {
         }
         // 使用する s-reg (caller の値) をフレームへ退避。
         for k in 0..self.reg_vars.len() {
-            v.push(Op::store(S_REGS[k], Reg::SP, Imm::FrameRel(self.saved_s_off(k))));
+            v.push(Op::store(
+                S_REGS[k],
+                Reg::SP,
+                Imm::FrameRel(self.saved_s_off(k)),
+            ));
         }
         if self.argc >= 1 {
             v.push(Op::store(Reg::A0, Reg::SP, Imm::FrameRel(-1)));
@@ -266,7 +270,11 @@ impl<'a> Context<'a> {
         let mut v = Vec::new();
         // 使用した s-reg を caller の値へ復元。
         for k in 0..self.reg_vars.len() {
-            v.push(Op::load(S_REGS[k], Reg::SP, Imm::FrameRel(self.saved_s_off(k))));
+            v.push(Op::load(
+                S_REGS[k],
+                Reg::SP,
+                Imm::FrameRel(self.saved_s_off(k)),
+            ));
         }
         if self.nonleaf {
             v.push(Op::load(Reg::RA, Reg::SP, Imm::FrameRel(self.ra_off())));
@@ -589,19 +597,19 @@ impl<'a> Context<'a> {
         target: Reg,
     ) -> Result<(Vec<Op<Reg, Imm>>, Reg), Error> {
         let (insts, result_reg) = match expr {
-            ast::Expr::NumberLit(n) => {
+            ast::Expr::NumberLit(n, _) => {
                 let mut insts = Vec::new();
                 insts.push(Op::loadi(target, Imm::Lit(*n as usize)));
                 (insts, target)
             }
 
-            ast::Expr::CharLit(c) => {
+            ast::Expr::CharLit(c, _) => {
                 let mut insts = Vec::new();
                 insts.push(Op::loadi(target, Imm::Lit(*c as usize)));
                 (insts, target)
             }
 
-            ast::Expr::StringLit(_s) => {
+            ast::Expr::StringLit(_s, _) => {
                 return Err(Error::UnsupportedExpression(
                     expr.pos_or_default(),
                     "string literal as runtime value; use a named const instead".to_string(),
@@ -825,7 +833,7 @@ impl<'a> Context<'a> {
 
             ast::Expr::Call(func_expr, args) => self.compile_call(expr, func_expr, args, target)?,
 
-            ast::Expr::SizeofType(typ) => {
+            ast::Expr::SizeofType(typ, _) => {
                 let mut insts = Vec::new();
                 let norm_type = self.local.normtype(typ).map_err(|_| {
                     Error::TypeCollectionFailed(Pos::default(), "sizeof".to_string())

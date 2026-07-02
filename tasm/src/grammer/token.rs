@@ -87,23 +87,42 @@ pub enum TokenKind {
     Error(String),   // Error
 }
 
+/// (file, row, col, end_col)。row/col は 1-indexed、col は byte 単位。
+/// end_col は排他的終端 (トークンは行をまたがない)。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Pos(Rc<str>, usize, usize);
+pub struct Pos(Rc<str>, usize, usize, usize);
 
 impl Pos {
     pub fn new(file: Rc<str>, row: usize, col: usize) -> Self {
-        Pos(file, row, col)
+        Pos(file, row, col, col + 1)
     }
 
     /// 参照元ファイルのパス文字列 (Lexer に渡した path)。モジュール解決に使う。
     pub fn file(&self) -> &str {
         &self.0
     }
+
+    pub fn row(&self) -> usize {
+        self.1
+    }
+
+    pub fn col(&self) -> usize {
+        self.2
+    }
+
+    pub fn end_col(&self) -> usize {
+        self.3
+    }
+
+    pub fn with_end(mut self, end_col: usize) -> Self {
+        self.3 = end_col;
+        self
+    }
 }
 
 impl Default for Pos {
     fn default() -> Self {
-        Pos(Rc::from(""), 0, 0)
+        Pos(Rc::from(""), 0, 0, 0)
     }
 }
 

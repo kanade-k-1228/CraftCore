@@ -5,10 +5,14 @@
   "version": "1.0.0",
   "publisher": "craftcore",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:tasm"
   ],
   "contributes": {
     "languages": [
@@ -30,9 +34,30 @@
         "scopeName": "source.tasm",
         "path": "./syntaxes/tasm.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "TASM",
+      "properties": {
+        "tasm.includeDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Module include directories (tasm -I). Relative paths are resolved against the workspace root."
+        },
+        "tasm.lsp.path": {
+          "type": "string",
+          "default": "tasm-lsp",
+          "description": "Path to the tasm-lsp language server binary."
+        }
+      }
+    }
   },
   "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
     "build": "vsce package",
     "package": "vsce package"
   },
@@ -43,7 +68,13 @@
     "type": "git",
     "url": "https://github.com/craftcore/tasm"
   },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
   "devDependencies": {
-    "@vscode/vsce": "^3.7.1"
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^3.7.1",
+    "typescript": "^5.4.0"
   }
 }

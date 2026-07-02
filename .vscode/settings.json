@@ -1,3 +1,5 @@
 {
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "tasm.includeDirs": ["rtos"],
+    "tasm.lsp.path": "${workspaceFolder}/target/release/tasm-lsp"
 }

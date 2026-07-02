@@ -1,0 +1,13 @@
+[package]
+name = "tasm-lsp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tasm = { path = "../tasm" }
+proj = { path = "../proj" }
+lsp-server = "0.7"
+# 0.97 以降は Url が fluent-uri 製 Uri に置き換わり to_file_path が使えない
+lsp-types = "0.95"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

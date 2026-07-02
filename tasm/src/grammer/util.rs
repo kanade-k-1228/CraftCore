@@ -13,11 +13,13 @@ impl Expr {
             Expr::Addr(inner) => inner.pos(),
             Expr::Deref(inner) => inner.pos(),
             Expr::Cast(inner, _) => inner.pos(),
-            Expr::SizeofExpr(inner) => inner.pos(),
-            Expr::SizeofType(ty) => ty.pos(),
-            Expr::ArrayLit(elems) => elems.first().and_then(|e| e.pos()),
-            Expr::StructLit(fields) => fields.first().map(|((_, pos), _)| pos),
-            _ => None,
+            Expr::SizeofExpr(_, pos) => Some(pos),
+            Expr::SizeofType(_, pos) => Some(pos),
+            Expr::NumberLit(_, pos) => Some(pos),
+            Expr::CharLit(_, pos) => Some(pos),
+            Expr::StringLit(_, pos) => Some(pos),
+            Expr::ArrayLit(_, pos) => Some(pos),
+            Expr::StructLit(_, pos) => Some(pos),
         }
     }
 

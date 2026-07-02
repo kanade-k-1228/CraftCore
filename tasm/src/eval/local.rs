@@ -63,10 +63,7 @@ impl<'a> Local<'a> {
     ///     エントリ SP 基準オフセット -1, -2 (a0_spill, a1_spill) で参照する。
     ///   arg_2 以降 → caller が積むスタック引数。エントリ SP 基準の正オフセット 0, 1, ... 。
     ///   (多 word 引数は pass-by-pointer なので各 arg は 1 word。)
-    pub fn insert_args(
-        &mut self,
-        args: &'a [(ast::Ident, ast::Type)],
-    ) -> Result<(), Error> {
+    pub fn insert_args(&mut self, args: &'a [(ast::Ident, ast::Type)]) -> Result<(), Error> {
         let mut reg_idx = 0; // a0/a1 に乗せた数
         let mut spill_off: i32 = -1; // 次の a0/a1 スピル先 (-1, -2)
         let mut caller_off: i32 = 0; // 次のスタック引数 (エントリ SP +0, +1, ...)

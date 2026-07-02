@@ -28,6 +28,7 @@ impl Lexer {
 
 struct LineLexer<'a> {
     iter: Peekable<CharIndices<'a>>,
+    line: &'a str,
     file: Rc<str>,
     row: usize,
 }
@@ -35,7 +36,12 @@ struct LineLexer<'a> {
 impl<'a> LineLexer<'a> {
     fn new(line: &'a str, file: Rc<str>, row: usize) -> Self {
         let iter = line.char_indices().peekable();
-        Self { iter, file, row }
+        Self {
+            iter,
+            line,
+            file,
+            row,
+        }
     }
 }
 
@@ -49,6 +55,15 @@ impl<'a> LineLexer<'a> {
     }
     fn consume(&mut self) -> Option<(usize, char)> {
         self.iter.next()
+    }
+    /// 現在のイテレータ位置 (byte index)。行末なら line.len()。
+    fn cur_byte(&mut self) -> usize {
+        self.iter.peek().map(|(i, _)| *i).unwrap_or(self.line.len())
+    }
+    /// 消費済み範囲を終端としてトークンを積む
+    fn push(&mut self, tokens: &mut Vec<Token>, kind: TokenKind, pos: Pos) {
+        let end = self.cur_byte() + 1;
+        tokens.push(Token::new(kind, pos.with_end(end)));
     }
 }
 
@@ -76,15 +91,15 @@ impl<'a> LineLexer<'a> {
                     self.consume(); // consume '/'
                     self.consume(); // consume '/'
                     while let Some(_) = self.iter.next_if(|(_, c)| c.is_whitespace()) {}
-                    let comment = self.iter.map(|(_, ch)| ch).collect::<String>();
-                    tokens.push(Token::new(TokenKind::Comment(comment), pos));
+                    let comment = self.iter.by_ref().map(|(_, ch)| ch).collect::<String>();
+                    self.push(&mut tokens, TokenKind::Comment(comment), pos);
                     break;
                 }
 
                 if let Some(kind) = double_char_token(ch0, ch1) {
                     self.consume(); // consume
                     self.consume(); // consume second char
-                    tokens.push(Token::new(kind, pos));
+                    self.push(&mut tokens, kind, pos);
                     continue;
                 }
             }
@@ -92,13 +107,14 @@ impl<'a> LineLexer<'a> {
             // 2. Single character token
             if let Some(kind) = single_char_token(ch0) {
                 self.consume();
-                tokens.push(Token::new(kind, pos));
+                self.push(&mut tokens, kind, pos);
                 continue;
             }
 
             // 3. Number literal
             if ch0.is_ascii_digit() {
-                tokens.push(Token::new(self.parse_number(), pos));
+                let kind = self.parse_number();
+                self.push(&mut tokens, kind, pos);
                 continue;
             }
 
@@ -121,7 +137,7 @@ impl<'a> LineLexer<'a> {
                             Err(e) => {
                                 // Resync on the closing quote if present
                                 self.iter.next_if(|(_, ch)| *ch == '\'');
-                                tokens.push(Token::new(TokenKind::Error(e), pos));
+                                self.push(&mut tokens, TokenKind::Error(e), pos);
                                 continue;
                             }
                         }
@@ -130,9 +146,12 @@ impl<'a> LineLexer<'a> {
                     };
 
                     match self.consume() {
-                        Some((_, '\'')) => tokens.push(Token::new(TokenKind::Char(ch_value), pos)),
-                        _ => tokens
-                            .push(Token::new(TokenKind::Error(format!("'{}", ch_value)), pos)),
+                        Some((_, '\'')) => {
+                            self.push(&mut tokens, TokenKind::Char(ch_value), pos);
+                        }
+                        _ => {
+                            self.push(&mut tokens, TokenKind::Error(format!("'{}", ch_value)), pos);
+                        }
                     }
                     continue;
                 }
@@ -148,28 +167,30 @@ impl<'a> LineLexer<'a> {
                 }
                 let lexeme: String = lexeme.into_iter().collect();
                 if lexeme.is_empty() {
-                    tokens.push(Token::new(TokenKind::Error("'".to_string()), pos));
+                    self.push(&mut tokens, TokenKind::Error("'".to_string()), pos);
                 } else {
-                    tokens.push(Token::new(TokenKind::Scope(lexeme), pos));
+                    self.push(&mut tokens, TokenKind::Scope(lexeme), pos);
                 }
                 continue;
             }
 
             // 5. String literal
             if ch0 == '"' {
-                tokens.push(Token::new(self.parse_text(), pos));
+                let kind = self.parse_text();
+                self.push(&mut tokens, kind, pos);
                 continue;
             }
 
             // 6. Identifier or keyword
             if ch0.is_ascii_alphabetic() || ch0 == '_' {
-                tokens.push(Token::new(self.parse_string(ch0), pos));
+                let kind = self.parse_string(ch0);
+                self.push(&mut tokens, kind, pos);
                 continue;
             }
 
             // Error
             self.iter.next();
-            tokens.push(Token::new(TokenKind::Error(format!("{ch0}")), pos));
+            self.push(&mut tokens, TokenKind::Error(format!("{ch0}")), pos);
         }
         tokens
     }
@@ -344,6 +365,69 @@ fn single_char_token(ch: char) -> Option<TokenKind> {
         '<' => Some(TokenKind::LAngle),
         '>' => Some(TokenKind::RAngle),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spans(code: &str) -> Vec<(TokenKind, usize, usize, usize)> {
+        Lexer::new("test.tasm", code)
+            .parse()
+            .into_iter()
+            .map(|t| (t.kind, t.pos.row(), t.pos.col(), t.pos.end_col()))
+            .collect()
+    }
+
+    #[test]
+    fn ascii_token_spans() {
+        let toks = spans("fn main() {");
+        assert_eq!(toks[0], (TokenKind::KwFunc, 1, 1, 3));
+        assert_eq!(toks[1], (TokenKind::Ident("main".into()), 1, 4, 8));
+        assert_eq!(toks[2], (TokenKind::LParen, 1, 8, 9));
+        assert_eq!(toks[3], (TokenKind::RParen, 1, 9, 10));
+        assert_eq!(toks[4], (TokenKind::LCurly, 1, 11, 12));
+    }
+
+    #[test]
+    fn multiline_rows() {
+        let toks = spans("var x: int;\n  x = 1;");
+        let x2 = &toks[5];
+        assert_eq!(*x2, (TokenKind::Ident("x".into()), 2, 3, 4));
+    }
+
+    #[test]
+    fn double_char_and_number_spans() {
+        let toks = spans("a == 0x1_F");
+        assert_eq!(toks[1], (TokenKind::EqualEqual, 1, 3, 5));
+        assert_eq!(toks[2], (TokenKind::Number("0x1_F".into(), 0x1F), 1, 6, 11));
+    }
+
+    #[test]
+    fn multibyte_string_byte_cols() {
+        // "あ" は UTF-8 で 3 byte。後続トークンの col は byte 単位でずれる。
+        let toks = spans(r#"x = "あ";"#);
+        assert_eq!(toks[0], (TokenKind::Ident("x".into()), 1, 1, 2));
+        // 文字列リテラル: 開始 col 5 ('"')、中身 3 byte + 引用符 2 = 終端 col 10
+        assert_eq!(toks[2], (TokenKind::Text("あ".into()), 1, 5, 10));
+        assert_eq!(toks[3], (TokenKind::Semicolon, 1, 10, 11));
+    }
+
+    #[test]
+    fn comment_span_to_eol() {
+        let toks = spans("x; // コメント");
+        let (kind, row, col, end) = &toks[2];
+        assert!(matches!(kind, TokenKind::Comment(_)));
+        assert_eq!((*row, *col), (1, 4));
+        assert_eq!(*end, "x; // コメント".len() + 1);
+    }
+
+    #[test]
+    fn escaped_string_span() {
+        // エスケープを含む文字列: lexeme 長 ≠ ソース長でも終端はソース位置基準
+        let toks = spans(r#""a\n""#);
+        assert_eq!(toks[0], (TokenKind::Text("a\n".into()), 1, 1, 6));
     }
 }
 

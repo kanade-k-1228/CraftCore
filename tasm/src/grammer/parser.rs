@@ -567,19 +567,19 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             match &token.kind {
                 // Sizeof
                 KwSizeof => {
-                    expect!(self, KwSizeof)?;
+                    let tok = expect!(self, KwSizeof)?;
                     if check!(self, LAngle) {
                         // Sizeof type: "sizeof" "<" type ">"
                         expect!(self, LAngle)?;
                         let ty = self.parse_type()?;
                         expect!(self, RAngle)?;
-                        Ok(Expr::SizeofType(Box::new(ty)))
+                        Ok(Expr::SizeofType(Box::new(ty), tok.pos))
                     } else {
                         // Sizeof expr: "sizeof" "<" expr ">"
                         expect!(self, LParen)?;
                         let expr = self.parse_expr()?;
                         expect!(self, RParen)?;
-                        Ok(Expr::SizeofExpr(Box::new(expr)))
+                        Ok(Expr::SizeofExpr(Box::new(expr), tok.pos))
                     }
                 }
 
@@ -600,38 +600,38 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 // Number literal: num-lit
                 Number(_, val) => {
                     let val = *val;
-                    expect!(self, Number(_, _))?;
-                    Ok(Expr::NumberLit(val))
+                    let tok = expect!(self, Number(_, _))?;
+                    Ok(Expr::NumberLit(val, tok.pos))
                 }
 
                 // Character literal: char-lit
                 Char(ch) => {
                     let ch = *ch;
-                    expect!(self, Char(_))?;
-                    Ok(Expr::CharLit(ch))
+                    let tok = expect!(self, Char(_))?;
+                    Ok(Expr::CharLit(ch, tok.pos))
                 }
 
                 // Struct literal: "{" [ ident ":" expr { "," ident ":" expr } ] "}"
                 LCurly => {
-                    expect!(self, LCurly)?;
+                    let tok = expect!(self, LCurly)?;
                     let fields = repeat!(self, self.parse_field_expr(), Comma, RCurly);
                     expect!(self, RCurly)?;
-                    return Ok(Expr::StructLit(fields));
+                    return Ok(Expr::StructLit(fields, tok.pos));
                 }
 
                 // Array literal: "[" [ expr { "," expr } ] "]"
                 LBracket => {
-                    expect!(self, LBracket)?;
+                    let tok = expect!(self, LBracket)?;
                     let items = repeat!(self, self.parse_expr(), Comma, RBracket);
                     expect!(self, RBracket)?;
-                    return Ok(Expr::ArrayLit(items));
+                    return Ok(Expr::ArrayLit(items, tok.pos));
                 }
 
                 // String literal: string-lit
                 Text(s) => {
                     let s = s.clone();
-                    expect!(self, Text(_))?;
-                    return Ok(Expr::StringLit(s));
+                    let tok = expect!(self, Text(_))?;
+                    return Ok(Expr::StringLit(s, tok.pos));
                 }
 
                 _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
@@ -669,13 +669,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// qualified-ident = ident { "::" ident }
     /// 参照名を "rtos::serial::print_char" のように `::` 連結した 1 つの Ident 文字列に
     /// する (定義名は単一 ident のまま)。Pos は先頭 ident のもの。
+    /// 同一行で続く限り span を最終セグメントの終端まで拡張する。
     fn parse_qualified_ident(&mut self) -> Result<Ident, Error> {
-        let (mut name, pos) = self.parse_ident()?;
+        let (mut name, mut pos) = self.parse_ident()?;
         while check!(self, ColonColon) {
             expect!(self, ColonColon)?;
-            let (seg, _) = self.parse_ident()?;
+            let (seg, seg_pos) = self.parse_ident()?;
             name.push_str("::");
             name.push_str(&seg);
+            if seg_pos.row() == pos.row() {
+                pos = pos.with_end(seg_pos.end_col());
+            }
         }
         Ok((name, pos))
     }
@@ -694,5 +698,46 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         expect!(self, Colon)?;
         let expr = self.parse_expr()?;
         Ok((name, expr))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::ast::{Def, Expr, Stmt};
+    use super::super::lexer::Lexer;
+    use super::super::parsercore::Parser;
+
+    #[test]
+    fn qualified_ident_span_covers_all_segments() {
+        let code = "fn f() { rtos::serial::print_char(0); }";
+        let tokens = Lexer::new("test.tasm", code).parse();
+        let (ast, errors) = Parser::new(tokens.into_iter()).parse();
+        assert!(errors.is_empty(), "{errors:?}");
+        let Def::Func(_, _, _, stmts) = &ast.0[0] else {
+            panic!("expected fn def");
+        };
+        let Stmt::Expr(Expr::Call(callee, _)) = &stmts[0] else {
+            panic!("expected call stmt");
+        };
+        let Expr::Ident((name, pos)) = callee.as_ref() else {
+            panic!("expected ident callee");
+        };
+        assert_eq!(name, "rtos::serial::print_char");
+        // "rtos" は col 10 開始、"print_char" は col 24..34 → span は全体を覆う
+        assert_eq!((pos.row(), pos.col()), (1, 10));
+        assert_eq!(pos.end_col(), 34);
+    }
+
+    #[test]
+    fn leaf_literals_have_pos() {
+        let code = "const N = 42;";
+        let tokens = Lexer::new("test.tasm", code).parse();
+        let (ast, errors) = Parser::new(tokens.into_iter()).parse();
+        assert!(errors.is_empty(), "{errors:?}");
+        let Def::Const(_, _, expr) = &ast.0[0] else {
+            panic!("expected const def");
+        };
+        let pos = expr.pos().expect("literal should carry pos");
+        assert_eq!((pos.row(), pos.col(), pos.end_col()), (1, 11, 13));
     }
 }

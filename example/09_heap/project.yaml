@@ -1,0 +1,4 @@
+src:
+  - main.tasm
+include:
+  rtos: ../../rtos

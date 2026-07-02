@@ -45,21 +45,21 @@ pub struct Asm(pub Ident, pub Vec<Expr>, pub Vec<Ident>, pub Pos); // { ident ":
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
     Binary(BinaryOp, Box<Expr>, Box<Expr>), // expr (binop) expr
-    Unary(UnaryOp, Box<Expr>),             // ( "+" | "-" | "!" ) expr
-    Call(Box<Expr>, Vec<Expr>),            // expr "(" [ expr { "," expr } ] ")"
-    Index(Box<Expr>, Box<Expr>),           // expr "[" expr "]"
-    Member(Box<Expr>, Ident),              // expr "." ident
-    Addr(Box<Expr>),                       // expr "@"        (postfix, address-of)
-    Deref(Box<Expr>),                      // "@" expr        (prefix, dereference)
-    Cast(Box<Expr>, Box<Type>),            // expr "as" type
-    Ident(Ident),                          // ident
-    NumberLit(usize),                      // num-lit
-    CharLit(char),                         // char-lit
-    StringLit(String),                     // string-lit
-    ArrayLit(Vec<Expr>),                   // "[" [ expr { "," expr } ] "]"
-    StructLit(Vec<(Ident, Expr)>),         // "{" [ ident ":" expr { "," ident ":" expr } ] "}"
-    SizeofType(Box<Type>),                 // "sizeof" "<" type ">"
-    SizeofExpr(Box<Expr>),                 // "sizeof" "(" expr ")"
+    Unary(UnaryOp, Box<Expr>),              // ( "+" | "-" | "!" ) expr
+    Call(Box<Expr>, Vec<Expr>),             // expr "(" [ expr { "," expr } ] ")"
+    Index(Box<Expr>, Box<Expr>),            // expr "[" expr "]"
+    Member(Box<Expr>, Ident),               // expr "." ident
+    Addr(Box<Expr>),                        // expr "@"        (postfix, address-of)
+    Deref(Box<Expr>),                       // "@" expr        (prefix, dereference)
+    Cast(Box<Expr>, Box<Type>),             // expr "as" type
+    Ident(Ident),                           // ident
+    NumberLit(usize, Pos),                  // num-lit
+    CharLit(char, Pos),                     // char-lit
+    StringLit(String, Pos),                 // string-lit
+    ArrayLit(Vec<Expr>, Pos),               // "[" [ expr { "," expr } ] "]"
+    StructLit(Vec<(Ident, Expr)>, Pos),     // "{" [ ident ":" expr { "," ident ":" expr } ] "}"
+    SizeofType(Box<Type>, Pos),             // "sizeof" "<" type ">"
+    SizeofExpr(Box<Expr>, Pos),             // "sizeof" "(" expr ")"
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

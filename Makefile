@@ -12,15 +12,18 @@ help:
 	@echo "  make *  : Run example"
 	@echo "    $(EXAMPLES)"
 
-b: target/release/tasm target/release/cemu
+b: target/release/tasm target/release/cemu target/release/tasm-lsp
 target/release/tasm:
 	cargo build -p tasm --release
 target/release/cemu:
 	cargo build -p cemu --release
+target/release/tasm-lsp:
+	cargo build -p tasm-lsp --release
 
 i:
 	cargo install --path tasm
 	cargo install --path cemu
+	cargo install --path tasm-lsp
 
 t:
 	cargo test --all
@@ -33,6 +36,4 @@ c:
 	cargo clippy --all
 
 $(EXAMPLES): target/release/tasm target/release/cemu
-	@$(MAKE) --no-print-directory -C example/$@ \
-		TASM=$(CURDIR)/target/release/tasm \
-		CEMU=$(CURDIR)/target/release/cemu
+	@cd example/$@ && $(CURDIR)/target/release/tasm && $(CURDIR)/target/release/cemu
