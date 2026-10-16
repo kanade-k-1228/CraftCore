@@ -69,6 +69,12 @@ impl State {
     }
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         State {
@@ -113,7 +119,7 @@ impl State {
             Op::STORE(rs2, rs1, imm) => self.store(rs2, rs1, imm),
             Op::CTRL(rd, rs1, rs2, imm) => self.ctrl(rd, rs1, rs2, imm),
         };
-        return (pc, bin, op);
+        (pc, bin, op)
     }
 
     fn calc(&mut self, alu: ALU, rd: Reg, rs1: Reg, rs2: Reg) {

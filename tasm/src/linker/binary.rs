@@ -45,12 +45,14 @@ pub fn genibin<'a>(
 }
 
 pub fn gencbin(global: &Global, dmmap: &IndexMap<String, usize>) -> Result<Vec<u8>, Error> {
+    // サイズはシリアライズ長 (bin().len()) 基準。文字列は NUL 終端込みなので
+    // typeinfer().sizeof() (= 文字数) より 1 word 大きい。
     let max_words = dmmap
         .iter()
         .filter_map(|(name, addr)| {
             global
                 .get_const_resolved(name.as_str())
-                .map(|(norm_type, _, _)| addr + norm_type.sizeof())
+                .map(|(_, value, _)| addr + value.bin().len())
         })
         .max()
         .unwrap_or(0);

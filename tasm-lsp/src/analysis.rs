@@ -8,6 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 use tasm::{apply_module_prefixes, ast, collect_module_files, Error, Global, Token};
@@ -65,6 +66,22 @@ impl Snapshot {
     pub fn global(&self) -> Result<Global<'_>, Error> {
         Global::new(&self.ast, self.modmap.clone())
     }
+}
+
+/// build_snapshot の revision キャッシュ付きエントリポイント。同一 target への
+/// 連続リクエスト (definition / hover / 診断) で全ファイル再パースを避ける。
+/// docs / config の変更は ServerState::bump_revision で無効化される。
+/// (エディタ外でのディスク変更は次の編集イベントまで反映されない。)
+pub fn snapshot(state: &mut ServerState, target: &Path) -> Rc<Snapshot> {
+    let target = normalize_path(target);
+    if let Some((rev, path, snap)) = &state.snapshot_cache {
+        if *rev == state.revision && *path == target {
+            return Rc::clone(snap);
+        }
+    }
+    let snap = Rc::new(build_snapshot(state, &target));
+    state.snapshot_cache = Some((state.revision, target, Rc::clone(&snap)));
+    snap
 }
 
 /// 対象ファイルのコンパイルユニットを構築して全ファイルを字句・構文解析する

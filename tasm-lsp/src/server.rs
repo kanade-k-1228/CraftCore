@@ -12,7 +12,7 @@ use lsp_types::{
     TextDocumentSyncKind, Url,
 };
 
-use crate::analysis::{build_snapshot, diagnostics};
+use crate::analysis::{diagnostics, snapshot};
 use crate::convert::{path_to_url, url_to_path};
 use crate::features;
 use crate::state::ServerState;
@@ -68,19 +68,19 @@ fn handle_request(state: &mut ServerState, req: Request) -> Response {
             let uri = &params.text_document_position_params.text_document.uri;
             let position = params.text_document_position_params.position;
             let path = url_to_path(uri)?;
-            let snap = build_snapshot(state, &path);
+            let snap = snapshot(state, &path);
             features::definition(&snap, &path, position).map(GotoDefinitionResponse::Scalar)
         }),
         HoverRequest::METHOD => typed_request::<HoverRequest, _>(req, |params| {
             let uri = &params.text_document_position_params.text_document.uri;
             let position = params.text_document_position_params.position;
             let path = url_to_path(uri)?;
-            let snap = build_snapshot(state, &path);
+            let snap = snapshot(state, &path);
             features::hover(&snap, &path, position)
         }),
         DocumentSymbolRequest::METHOD => typed_request::<DocumentSymbolRequest, _>(req, |params| {
             let path = url_to_path(&params.text_document.uri)?;
-            let snap = build_snapshot(state, &path);
+            let snap = snapshot(state, &path);
             Some(DocumentSymbolResponse::Nested(features::document_symbols(
                 &snap, &path,
             )))
@@ -124,6 +124,7 @@ fn handle_notification(
                 serde_json::from_value(notif.params)?;
             if let Some(path) = url_to_path(&params.text_document.uri) {
                 state.docs.insert(path.clone(), params.text_document.text);
+                state.bump_revision();
                 publish_diagnostics(connection, state, &path)?;
             }
         }
@@ -134,6 +135,7 @@ fn handle_notification(
                 // FULL 同期: 最後の変更が全文
                 if let Some(change) = params.content_changes.into_iter().last() {
                     state.docs.insert(path.clone(), change.text);
+                    state.bump_revision();
                 }
                 publish_diagnostics(connection, state, &path)?;
             }
@@ -149,6 +151,7 @@ fn handle_notification(
                 .cloned()
                 .unwrap_or(params.settings);
             state.config.update(&settings);
+            state.bump_revision();
             let open_docs: Vec<PathBuf> = state.docs.keys().cloned().collect();
             for path in open_docs {
                 publish_diagnostics(connection, state, &path)?;
@@ -166,7 +169,7 @@ fn publish_diagnostics(
     state: &mut ServerState,
     target: &Path,
 ) -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
-    let snap = build_snapshot(state, target);
+    let snap = snapshot(state, target);
     let by_file = diagnostics(&snap, target);
 
     let mut current: std::collections::HashSet<PathBuf> = by_file.keys().cloned().collect();

@@ -1,13 +1,13 @@
 use super::ast::{Asm, BinaryOp, Def, Expr, Ident, Stmt, Type, UnaryOp, AST};
 use super::parsercore::Parser;
 use super::token::{Pos, Token, TokenKind::*};
-use crate::error::Error;
+use crate::error::{Error, ErrorKind};
 use crate::{check, expect, optional, repeat};
 
 impl<I: Iterator<Item = Token>> Parser<I> {
     pub fn parse(mut self) -> (AST, Vec<Error>) {
         let program = self.parse_program();
-        return (program, self.geterrors());
+        (program, self.geterrors())
     }
 }
 
@@ -86,10 +86,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     Ok(Type::Func(args, Box::new(ret)))
                 }
 
-                _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
+                _ => Err(ErrorKind::UnexpectedToken(token.clone()).at(token.pos.clone())),
             }
         } else {
-            Err(Error::UnexpectedEOF(Pos::default()))
+            Err(ErrorKind::UnexpectedEOF.at(Pos::default()))
         }
     }
 
@@ -154,10 +154,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     expect!(self, RCurly)?;
                     Ok(Def::Func(name, args, ret, stmts))
                 }
-                _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
+                _ => Err(ErrorKind::UnexpectedToken(token.clone()).at(token.pos.clone())),
             }
         } else {
-            Err(Error::UnexpectedEOF(Pos::default()))
+            Err(ErrorKind::UnexpectedEOF.at(Pos::default()))
         }
     }
 
@@ -188,7 +188,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             }
         }
 
-        Err(Error::UnexpectedEOF(Pos::default()))
+        Err(ErrorKind::UnexpectedEOF.at(Pos::default()))
     }
 
     /// stmt = block | var-stmt | if-stmt | while-stmt | return-stmt | assign-stmt | expr-stmt
@@ -250,9 +250,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 // Break statement: "break" "'" scope ";"
                 KwBreak => {
                     let tok = expect!(self, KwBreak)?;
-                    let scope = self
-                        .parse_optional_scope()?
-                        .ok_or_else(|| Error::ScopeRequired(tok.pos.clone(), "break".into()))?;
+                    let scope = self.parse_optional_scope()?.ok_or_else(|| {
+                        ErrorKind::ScopeRequired("break".into()).at(tok.pos.clone())
+                    })?;
                     expect!(self, Semicolon)?;
                     return Ok(Stmt::Break(scope, tok.pos.clone()));
                 }
@@ -260,9 +260,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 // Continue statement: "continue" "'" scope ";"
                 KwContinue => {
                     let tok = expect!(self, KwContinue)?;
-                    let scope = self
-                        .parse_optional_scope()?
-                        .ok_or_else(|| Error::ScopeRequired(tok.pos.clone(), "continue".into()))?;
+                    let scope = self.parse_optional_scope()?.ok_or_else(|| {
+                        ErrorKind::ScopeRequired("continue".into()).at(tok.pos.clone())
+                    })?;
                     expect!(self, Semicolon)?;
                     return Ok(Stmt::Continue(scope, tok.pos.clone()));
                 }
@@ -296,7 +296,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 }
             }
         }
-        Err(Error::UnexpectedEOF(Pos::default()))
+        Err(ErrorKind::UnexpectedEOF.at(Pos::default()))
     }
 
     /// expr = or-expr
@@ -394,7 +394,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(Error::UnexpectedEOF(Pos::default()))
+            // lhs が読めていれば EOF でも式としては完結している (mul-expr と同じ扱い)
+            Ok(lhs)
         }
     }
 
@@ -418,7 +419,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 _ => Ok(lhs),
             }
         } else {
-            Err(Error::UnexpectedEOF(Pos::default()))
+            Ok(lhs)
         }
     }
 
@@ -442,7 +443,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 _ => break,
             }
         }
-        return Ok(lhs);
+        Ok(lhs)
     }
 
     /// mul-expr = unary-expr [ ( "*" | "/" | "%" ) unary-expr ]
@@ -616,7 +617,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     let tok = expect!(self, LCurly)?;
                     let fields = repeat!(self, self.parse_field_expr(), Comma, RCurly);
                     expect!(self, RCurly)?;
-                    return Ok(Expr::StructLit(fields, tok.pos));
+                    Ok(Expr::StructLit(fields, tok.pos))
                 }
 
                 // Array literal: "[" [ expr { "," expr } ] "]"
@@ -624,20 +625,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     let tok = expect!(self, LBracket)?;
                     let items = repeat!(self, self.parse_expr(), Comma, RBracket);
                     expect!(self, RBracket)?;
-                    return Ok(Expr::ArrayLit(items, tok.pos));
+                    Ok(Expr::ArrayLit(items, tok.pos))
                 }
 
                 // String literal: string-lit
                 Text(s) => {
                     let s = s.clone();
                     let tok = expect!(self, Text(_))?;
-                    return Ok(Expr::StringLit(s, tok.pos));
+                    Ok(Expr::StringLit(s, tok.pos))
                 }
 
-                _ => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
+                _ => Err(ErrorKind::UnexpectedToken(token.clone()).at(token.pos.clone())),
             }
         } else {
-            Err(Error::UnexpectedEOF(Pos::default()))
+            Err(ErrorKind::UnexpectedEOF.at(Pos::default()))
         }
     }
 
@@ -661,8 +662,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 kind: Ident(s),
                 pos,
             }) => Ok((s, pos)),
-            Some(token) => Err(Error::UnexpectedToken(token.pos.clone(), token.clone())),
-            None => Err(Error::UnexpectedEOF(Pos::default())),
+            Some(token) => Err(ErrorKind::UnexpectedToken(token.clone()).at(token.pos.clone())),
+            None => Err(ErrorKind::UnexpectedEOF.at(Pos::default())),
         }
     }
 

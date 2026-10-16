@@ -1,33 +1,21 @@
 use indexmap::IndexMap;
 
 use crate::{
-    error::Error,
+    error::{Error, ErrorKind},
     eval::{global::Global, normtype::NormType},
     grammer::{ast, token::Pos},
 };
 
-// 関数のフレーム (SP 下向き ABI)
+// 関数のフレーム (RISC-V 風固定フレーム ABI)。詳細は func.rs の Context を参照。
 //
-//   high addr
-//      SP + 2 + ret_size            ← ret slot 最後 (= Return[0] 相当の最上位)
-//           :
-//      SP + 3                       ← ret slot 先頭 (= 戻り値型の field 0)
-//      SP + 2                       ← saved RA          (callee の prologue で書く)
-//      SP + 1                       ← saved caller's SP (caller が書く)
-//      SP + 0                       ← arg_0 (の最上位スロット)
-//      SP - 1                       ← arg_0 続き or arg_1
-//           :                       args は宣言順にスロット下方向へ詰める
-//      SP - (args_total - 1)        ← 最後の arg スロット
-//      SP - args_total              ← local 0 (の最上位スロット)
-//           :                       locals は宣言順にスロット下方向へ
-//      SP - args_total - locals_total ← spill 0 (動的)
-//           :
-//   low addr
+// ここで扱うオフセットは「関数エントリ時 SP 基準」の符号付き値:
+//   off >= 0     : caller が積んだスタック引数 (第3引数以降)
+//   off = -1, -2 : a0/a1 spill (第1,2引数は prologue でフレームへ退避)
+//   それ以下      : saved-s / saved RA / locals / 一時 spill
 //
-// - レジスタは全て caller-save (T0-T9)
-// - 引数・戻り値は全て stack で渡す
+// - a0/a1 はレジスタ渡し、s0-s3 は callee-save (レジスタ割付済みローカルが常駐)
+// - 戻り値 (1 word) は a0 で返す。多 word 引数・戻り値は pass-by-pointer
 // - 多 word 値は head_offset (低アドレス) を基準に field i は head_offset + i に配置
-//   (= 引数 / ローカル / 戻り値とも自然な struct レイアウトに従う)
 
 /// 関数の引数 + ローカル変数のシンボルテーブル。
 pub struct Local<'a> {
@@ -52,7 +40,7 @@ impl<'a> Local<'a> {
     ) -> Result<(), Error> {
         let (name, pos) = ident;
         if self.stack.contains_key(name.as_str()) {
-            return Err(Error::DuplicateLocal(pos.clone(), name.clone()));
+            return Err(ErrorKind::DuplicateLocal(name.clone()).at(pos.clone()));
         }
         self.stack.insert(name.as_str(), (ty, offset));
         Ok(())
@@ -114,7 +102,7 @@ impl<'a> Local<'a> {
                 let ty = self.typeinfer(inner)?;
                 match ty {
                     NormType::Addr(t) => Ok(*t),
-                    _ => Err(Error::CannotDereferenceNonPointer(inner.pos_or_default())),
+                    _ => Err(ErrorKind::CannotDereferenceNonPointer.at(inner.pos_or_default())),
                 }
             }
             ast::Expr::Member(base, (field, field_pos)) => {
@@ -123,10 +111,12 @@ impl<'a> Local<'a> {
                     NormType::Struct(fields) => {
                         match fields.into_iter().find(|(n, _)| n == field) {
                             Some((_, ty)) => Ok(ty),
-                            None => Err(Error::NoSuchField(field_pos.clone(), field.clone())),
+                            None => {
+                                Err(ErrorKind::NoSuchField(field.clone()).at(field_pos.clone()))
+                            }
                         }
                     }
-                    _ => Err(Error::NotAStruct(base.pos_or_default())),
+                    _ => Err(ErrorKind::NotAStruct.at(base.pos_or_default())),
                 }
             }
             ast::Expr::Index(base, _) => {
@@ -134,7 +124,7 @@ impl<'a> Local<'a> {
                 match base_ty {
                     NormType::Array(_, elem) => Ok(*elem),
                     NormType::Addr(inner) => Ok(*inner),
-                    _ => Err(Error::NotIndexable(base.pos_or_default())),
+                    _ => Err(ErrorKind::NotIndexable.at(base.pos_or_default())),
                 }
             }
             ast::Expr::Cast(_, ty) => Ok(self.normtype(ty)?),

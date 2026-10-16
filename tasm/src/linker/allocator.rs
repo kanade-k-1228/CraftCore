@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{Error, ErrorKind};
 use std::collections::HashMap;
 
 pub struct Allocator {
@@ -34,12 +34,12 @@ impl Allocator {
     /// Allocate memory at a specific address
     pub fn allocate(&mut self, addr: usize, size: usize, name: &str) -> Result<(), Error> {
         if size == 0 {
-            return Err(Error::AddressSpaceOverflow(name.to_string(), size));
+            return Err(ErrorKind::AddressSpaceOverflow(name.to_string(), size).into());
         }
 
         let end = addr
             .checked_add(size)
-            .ok_or_else(|| Error::AddressSpaceOverflow(name.to_string(), size))?;
+            .ok_or_else(|| Error::from(ErrorKind::AddressSpaceOverflow(name.to_string(), size)))?;
 
         // Find the region(s) that overlap with the requested allocation
         for i in 0..self.segments.len() {
@@ -48,7 +48,9 @@ impl Allocator {
             // Check if this region overlaps with our allocation
             if section.overlaps(addr, end) {
                 if !section.is_free() {
-                    return Err(Error::FixedAddressOverlapped(name.to_string(), addr, end));
+                    return Err(
+                        ErrorKind::FixedAddressOverlapped(name.to_string(), addr, end).into(),
+                    );
                 }
 
                 // Replace the old region with the new split regions
@@ -58,13 +60,14 @@ impl Allocator {
             }
         }
 
-        Err(Error::AddressOutOfRange(
+        Err(ErrorKind::AddressOutOfRange(
             name.to_string(),
             addr,
             end,
             self.segments.first().map(|r| r.begin).unwrap_or(0),
             self.segments.last().map(|r| r.end).unwrap_or(0),
-        ))
+        )
+        .into())
     }
 
     /// Allocate memory within a named section
@@ -73,10 +76,10 @@ impl Allocator {
             .sections
             .get(section)
             .copied()
-            .ok_or_else(|| Error::SectionNotFound(section.to_string()))?;
+            .ok_or_else(|| Error::from(ErrorKind::SectionNotFound(section.to_string())))?;
 
         if size == 0 {
-            return Err(Error::AddressSpaceOverflow(name.to_string(), size));
+            return Err(ErrorKind::AddressSpaceOverflow(name.to_string(), size).into());
         }
 
         // Find the first free region within [start, end) that can fit the size
@@ -98,7 +101,7 @@ impl Allocator {
             }
         }
 
-        Err(Error::AddressSpaceOverflow(name.to_string(), size))
+        Err(ErrorKind::AddressSpaceOverflow(name.to_string(), size).into())
     }
 
     pub fn allocations(&self) -> Vec<(String, usize)> {
@@ -137,17 +140,18 @@ impl Segment {
     fn split(&self, addr: usize, size: usize, name: &str) -> Result<Vec<Self>, Error> {
         let end = addr
             .checked_add(size)
-            .ok_or_else(|| Error::AddressSpaceOverflow(name.to_string(), size))?;
+            .ok_or_else(|| Error::from(ErrorKind::AddressSpaceOverflow(name.to_string(), size)))?;
 
         // Check if the allocation fits within this section
         if !self.contains(addr, end) {
-            return Err(Error::AddressOutOfRange(
+            return Err(ErrorKind::AddressOutOfRange(
                 name.to_string(),
                 addr,
                 end,
                 self.begin,
                 self.end,
-            ));
+            )
+            .into());
         }
 
         let mut result = Vec::new();

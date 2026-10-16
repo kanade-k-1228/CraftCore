@@ -17,13 +17,6 @@ pub enum Imm {
                            // Resolved to Lit((N + off) as u16) once frame size N is fixed.
 }
 
-impl Imm {
-    /// SP-relative negative offset (= SP - n). Encoded as 16bit two's complement.
-    pub fn neg(n: usize) -> Self {
-        Imm::Lit(((-(n as i32)) as u16) as usize)
-    }
-}
-
 impl From<u16> for Imm {
     fn from(v: u16) -> Self {
         Imm::Lit(v as usize)

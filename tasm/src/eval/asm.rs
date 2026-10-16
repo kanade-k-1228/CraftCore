@@ -1,5 +1,5 @@
 use crate::{
-    error::Error,
+    error::{Error, ErrorKind},
     grammer::{ast, token::Pos},
 };
 
@@ -19,8 +19,8 @@ impl<'a> Global<'a> {
                 | ast::Def::Const((_, pos), _, _)
                 | ast::Def::Static((_, pos), _, _)
                 | ast::Def::Func((_, pos), _, _, _),
-            ) => Err(Error::NotAnAsm(pos.clone(), name.to_string())),
-            None => Err(Error::UnknownIdentifier(Pos::default(), name.to_string())),
+            ) => Err(ErrorKind::NotAnAsm(name.to_string()).at(pos.clone())),
+            None => Err(ErrorKind::UnknownIdentifier(name.to_string()).at(Pos::default())),
         }
     }
 }
@@ -50,139 +50,58 @@ fn parse_stmt<'a>(
     idx: usize,
     stmt: &'a ast::Asm,
 ) -> Result<Op<Reg, Imm>, Error> {
-    let g = global;
     let ast::Asm((inst, _), args, _, pos) = stmt;
     let loc = pos.clone();
+    // オペランド取り出しの短縮形。引数個数は match 側の args.len() で保証される。
+    let r = |i: usize| args[i].reg(&loc);
+    let im = |i: usize| args[i].imm(global, &loc);
+    let gl = |i: usize| args[i].global(global, &loc);
+    let lo = |i: usize| args[i].local(local, idx, &loc);
     match (inst.to_lowercase().as_str(), args.len()) {
         ("nop", 0) => Ok(Op::nop()),
-        ("mov", 2) => Ok(Op::mov(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("add", 3) => Ok(Op::add(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("addi", 3) => Ok(Op::addi(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("subi", 3) => Ok(Op::subi(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("andi", 3) => Ok(Op::andi(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("ori", 3) => Ok(Op::ori(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("xori", 3) => Ok(Op::xori(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("eqi", 3) => Ok(Op::eqi(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("neqi", 3) => Ok(Op::neqi(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("lti", 3) => Ok(Op::lti(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("ltsi", 3) => Ok(Op::ltsi(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("not", 2) => Ok(Op::not(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("loadi", 2) => Ok(Op::loadi(args[0].reg(&loc)?, args[1].imm(g, &loc)?)),
-        ("sub", 3) => Ok(Op::sub(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("and", 3) => Ok(Op::and(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("or", 3) => Ok(Op::or(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("xor", 3) => Ok(Op::xor(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("eq", 3) => Ok(Op::eq(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("neq", 3) => Ok(Op::neq(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("lt", 3) => Ok(Op::lt(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("lts", 3) => Ok(Op::lts(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].reg(&loc)?,
-        )),
-        ("sr", 2) => Ok(Op::sr(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("srs", 2) => Ok(Op::srs(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("srr", 2) => Ok(Op::srr(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("sl", 2) => Ok(Op::sl(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("slr", 2) => Ok(Op::slr(args[0].reg(&loc)?, args[1].reg(&loc)?)),
-        ("load", 2) => Ok(Op::loadi(args[0].reg(&loc)?, args[1].imm(g, &loc)?)),
-        ("load", 3) => Ok(Op::load(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
-        ("store", 2) => Ok(Op::store(args[1].reg(&loc)?, Reg::Z, args[0].imm(g, &loc)?)),
-        ("store", 3) => Ok(Op::store(
-            args[0].reg(&loc)?,
-            args[1].reg(&loc)?,
-            args[2].imm(g, &loc)?,
-        )),
+        ("mov", 2) => Ok(Op::mov(r(0)?, r(1)?)),
+        ("not", 2) => Ok(Op::not(r(0)?, r(1)?)),
 
-        ("jumpif", 2) => Ok(Op::jumpif(
-            args[0].reg(&loc)?,
-            args[1].global(global, &loc)?,
-        )),
-        ("jumpifr", 2) => Ok(Op::jumpifr(
-            args[0].reg(&loc)?,
-            args[1].local(local, idx, &loc)?,
-        )),
+        ("add", 3) => Ok(Op::add(r(0)?, r(1)?, r(2)?)),
+        ("sub", 3) => Ok(Op::sub(r(0)?, r(1)?, r(2)?)),
+        ("and", 3) => Ok(Op::and(r(0)?, r(1)?, r(2)?)),
+        ("or", 3) => Ok(Op::or(r(0)?, r(1)?, r(2)?)),
+        ("xor", 3) => Ok(Op::xor(r(0)?, r(1)?, r(2)?)),
+        ("eq", 3) => Ok(Op::eq(r(0)?, r(1)?, r(2)?)),
+        ("neq", 3) => Ok(Op::neq(r(0)?, r(1)?, r(2)?)),
+        ("lt", 3) => Ok(Op::lt(r(0)?, r(1)?, r(2)?)),
+        ("lts", 3) => Ok(Op::lts(r(0)?, r(1)?, r(2)?)),
 
-        ("jump", 1) => Ok(Op::jump(args[0].global(global, &loc)?)),
-        ("jumpr", 1) => Ok(Op::jumpr(args[0].local(local, idx, &loc)?)),
+        ("addi", 3) => Ok(Op::addi(r(0)?, r(1)?, im(2)?)),
+        ("subi", 3) => Ok(Op::subi(r(0)?, r(1)?, im(2)?)),
+        ("andi", 3) => Ok(Op::andi(r(0)?, r(1)?, im(2)?)),
+        ("ori", 3) => Ok(Op::ori(r(0)?, r(1)?, im(2)?)),
+        ("xori", 3) => Ok(Op::xori(r(0)?, r(1)?, im(2)?)),
+        ("eqi", 3) => Ok(Op::eqi(r(0)?, r(1)?, im(2)?)),
+        ("neqi", 3) => Ok(Op::neqi(r(0)?, r(1)?, im(2)?)),
+        ("lti", 3) => Ok(Op::lti(r(0)?, r(1)?, im(2)?)),
+        ("ltsi", 3) => Ok(Op::ltsi(r(0)?, r(1)?, im(2)?)),
 
-        ("call", 1) => Ok(Op::call(args[0].global(global, &loc)?)),
+        ("sr", 2) => Ok(Op::sr(r(0)?, r(1)?)),
+        ("srs", 2) => Ok(Op::srs(r(0)?, r(1)?)),
+        ("srr", 2) => Ok(Op::srr(r(0)?, r(1)?)),
+        ("sl", 2) => Ok(Op::sl(r(0)?, r(1)?)),
+        ("slr", 2) => Ok(Op::slr(r(0)?, r(1)?)),
 
+        // "load rd imm" は loadi の別名
+        ("loadi", 2) | ("load", 2) => Ok(Op::loadi(r(0)?, im(1)?)),
+        ("load", 3) => Ok(Op::load(r(0)?, r(1)?, im(2)?)),
+        ("store", 2) => Ok(Op::store(r(1)?, Reg::Z, im(0)?)),
+        ("store", 3) => Ok(Op::store(r(0)?, r(1)?, im(2)?)),
+
+        ("jump", 1) => Ok(Op::jump(gl(0)?)),
+        ("jumpr", 1) => Ok(Op::jumpr(lo(0)?)),
+        ("jumpif", 2) => Ok(Op::jumpif(r(0)?, gl(1)?)),
+        ("jumpifr", 2) => Ok(Op::jumpifr(r(0)?, lo(1)?)),
+        ("call", 1) => Ok(Op::call(gl(0)?)),
         ("ret", 0) => Ok(Op::ret()),
         ("iret", 0) => Ok(Op::iret()),
-        _ => Err(Error::InvalidInstruction(loc, inst.clone())),
+        _ => Err(ErrorKind::InvalidInstruction(inst.clone()).at(loc)),
     }
 }
 
@@ -191,9 +110,9 @@ impl ast::Expr {
         match self {
             ast::Expr::Ident((name, _)) => match Reg::parse(name) {
                 Some(r) => Ok(r),
-                None => Err(Error::InvalidRegister(loc.clone(), name.clone())),
+                None => Err(ErrorKind::InvalidRegister(name.clone()).at(loc.clone())),
             },
-            _ => Err(Error::InvalidRegister(loc.clone(), format!("{:?}", self))),
+            _ => Err(ErrorKind::InvalidRegister(format!("{:?}", self)).at(loc.clone())),
         }
     }
 
@@ -201,10 +120,10 @@ impl ast::Expr {
         match self {
             ast::Expr::Ident((label, pos)) => match global.resolve(label, pos) {
                 Some((ast::Def::Asm(..) | ast::Def::Func(..), fqn)) => Ok(Imm::Label(fqn)),
-                Some(_) => Err(Error::NotGlobalLabel(loc.clone(), label.clone())),
-                None => Err(Error::UndefinedGlobalLabel(loc.clone(), label.clone())),
+                Some(_) => Err(ErrorKind::NotGlobalLabel(label.clone()).at(loc.clone())),
+                None => Err(ErrorKind::UndefinedGlobalLabel(label.clone()).at(loc.clone())),
             },
-            _ => Err(Error::GlobalLabelExpected(loc.clone())),
+            _ => Err(ErrorKind::GlobalLabelExpected.at(loc.clone())),
         }
     }
 
@@ -212,15 +131,15 @@ impl ast::Expr {
         match self {
             ast::Expr::Ident((label, _)) => match local.get(label.as_str()) {
                 Some(&goto) => Ok(Imm::Lit((goto as i32 - idx as i32) as usize)),
-                None => Err(Error::UndefinedLocalLabel(loc.clone(), label.clone())),
+                None => Err(ErrorKind::UndefinedLocalLabel(label.clone()).at(loc.clone())),
             },
-            _ => Err(Error::LocalLabelExpected(loc.clone())),
+            _ => Err(ErrorKind::LocalLabelExpected.at(loc.clone())),
         }
     }
 
     fn imm<'a>(&'a self, global: &'a Global<'a>, loc: &Pos) -> Result<Imm, Error> {
         match self {
-            ast::Expr::NumberLit(n, _) => Ok(Imm::Lit(*n as usize)),
+            ast::Expr::NumberLit(n, _) => Ok(Imm::Lit(*n)),
             ast::Expr::CharLit(ch, _) => Ok(Imm::Lit(*ch as usize)),
             ast::Expr::Ident((name, pos)) => match global.resolve(name, pos) {
                 Some((ast::Def::Const(_, _, expr), fqn)) => {
@@ -228,33 +147,32 @@ impl ast::Expr {
                     Ok(Imm::Const(fqn, value.to_usize()))
                 }
                 Some((ast::Def::Static(..), _)) => {
-                    Err(Error::StaticRequiresAddressOf(loc.clone(), name.clone()))
+                    Err(ErrorKind::StaticRequiresAddressOf(name.clone()).at(loc.clone()))
                 }
                 Some((ast::Def::Asm(..) | ast::Def::Func(..) | ast::Def::Type(..), _)) => {
-                    Err(Error::InvalidImmediateValue(loc.clone(), name.clone()))
+                    Err(ErrorKind::InvalidImmediateValue(name.clone()).at(loc.clone()))
                 }
-                None => Err(Error::UnknownIdentifier(loc.clone(), name.clone())),
+                None => Err(ErrorKind::UnknownIdentifier(name.clone()).at(loc.clone())),
             },
             ast::Expr::Unary(op, inner) => match op {
                 ast::UnaryOp::Pos => inner.imm(global, loc),
                 ast::UnaryOp::Neg => match inner.imm(global, loc) {
                     Ok(Imm::Lit(val)) => Ok(Imm::Lit((-(val as isize)) as usize)),
-                    _ => Err(Error::CannotNegateSymbol(loc.clone())),
+                    _ => Err(ErrorKind::CannotNegateSymbol.at(loc.clone())),
                 },
                 ast::UnaryOp::Not => match inner.imm(global, loc)? {
                     Imm::Lit(val) => Ok(Imm::Lit((!(val as u16)) as usize)),
                     Imm::Const(_, val) => Ok(Imm::Lit((!(val as u16)) as usize)),
-                    _ => Err(Error::CannotNegateSymbol(loc.clone())),
+                    _ => Err(ErrorKind::CannotNegateSymbol.at(loc.clone())),
                 },
             },
             ast::Expr::Addr(inner) => match inner.as_ref() {
                 ast::Expr::Ident((name, pos)) => match global.resolve(name, pos) {
                     Some((ast::Def::Static(..), fqn)) => Ok(Imm::Symbol(fqn, 0)),
                     Some((ast::Def::Const(..), fqn)) => Ok(Imm::Symbol(fqn, 0)),
-                    _ => Err(Error::InvalidImmediateValue(
-                        loc.clone(),
-                        format!("{}*", name),
-                    )),
+                    _ => {
+                        Err(ErrorKind::InvalidImmediateValue(format!("{}*", name)).at(loc.clone()))
+                    }
                 },
                 _ => inner.imm(global, loc),
             },
@@ -266,17 +184,17 @@ impl ast::Expr {
                         Some(ast::Def::Static(_, _, ty)) => {
                             let ty = global.normtype(ty)?;
                             ty.get_field_offset(field).ok_or_else(|| {
-                                Error::FieldNotFoundInStruct(loc.clone(), field.clone())
+                                ErrorKind::FieldNotFoundInStruct(field.clone()).at(loc.clone())
                             })?
                         }
                         Some(ast::Def::Const(_, _, expr)) => {
                             let value = global.constexpr(expr)?;
                             let ty = value.typeinfer()?;
                             ty.get_field_offset(field).ok_or_else(|| {
-                                Error::FieldNotFoundInStruct(loc.clone(), field.clone())
+                                ErrorKind::FieldNotFoundInStruct(field.clone()).at(loc.clone())
                             })?
                         }
-                        _ => return Err(Error::UnknownSymbol(loc.clone(), ident)),
+                        _ => return Err(ErrorKind::UnknownSymbol(ident).at(loc.clone())),
                     };
                     Ok(Imm::Symbol(ident, base + offset))
                 }
@@ -286,13 +204,13 @@ impl ast::Expr {
                 // auto-deref はせず、ユーザが明示的に `@` deref を書く必要がある。
                 Imm::Lit(base_addr) => {
                     let base_ty = global.typeinfer(base_expr)?;
-                    let ofs = base_ty
-                        .get_field_offset(field)
-                        .ok_or_else(|| Error::FieldNotFoundInStruct(loc.clone(), field.clone()))?;
+                    let ofs = base_ty.get_field_offset(field).ok_or_else(|| {
+                        ErrorKind::FieldNotFoundInStruct(field.clone()).at(loc.clone())
+                    })?;
                     Ok(Imm::Lit(base_addr + ofs))
                 }
-                Imm::Const(_, _) => Err(Error::CannotAccessFieldOfImmediate(loc.clone())),
-                Imm::Label(_) => Err(Error::CannotAccessFieldOfLabel(loc.clone())),
+                Imm::Const(_, _) => Err(ErrorKind::CannotAccessFieldOfImmediate.at(loc.clone())),
+                Imm::Label(_) => Err(ErrorKind::CannotAccessFieldOfLabel.at(loc.clone())),
                 Imm::ScopeExit(_) | Imm::ScopeEntry(_) | Imm::FrameRel(_) => {
                     unreachable!("scope/frame placeholders are only produced inside fn bodies")
                 }
@@ -305,27 +223,29 @@ impl ast::Expr {
                             Some(ast::Def::Static(_, _, ty)) => {
                                 let ty = global.normtype(ty)?;
                                 ty.get_array_offset(*idx)
-                                    .ok_or(Error::TypeIsNotArray(loc.clone()))?
+                                    .ok_or(ErrorKind::TypeIsNotArray.at(loc.clone()))?
                             }
                             Some(ast::Def::Const(_, _, expr)) => {
                                 let value = global.constexpr(expr)?;
                                 if matches!(value, crate::eval::constexpr::ConstExpr::String(_)) {
-                                    idx * 1
+                                    *idx // 文字列は 1 word/char
                                 } else {
                                     let ty = value.typeinfer()?;
                                     ty.get_array_offset(*idx)
-                                        .ok_or(Error::TypeIsNotArray(loc.clone()))?
+                                        .ok_or(ErrorKind::TypeIsNotArray.at(loc.clone()))?
                                 }
                             }
-                            _ => return Err(Error::UnknownSymbol(loc.clone(), ident)),
+                            _ => return Err(ErrorKind::UnknownSymbol(ident).at(loc.clone())),
                         };
                         Ok(Imm::Symbol(ident, base + offset))
                     } else {
-                        Err(Error::NonConstantArrayIndex(loc.clone()))
+                        Err(ErrorKind::NonConstantArrayIndex.at(loc.clone()))
                     }
                 }
-                Imm::Lit(_) | Imm::Const(_, _) => Err(Error::CannotIndexImmediate(loc.clone())),
-                Imm::Label(_) => Err(Error::CannotIndexLabel(loc.clone())),
+                Imm::Lit(_) | Imm::Const(_, _) => {
+                    Err(ErrorKind::CannotIndexImmediate.at(loc.clone()))
+                }
+                Imm::Label(_) => Err(ErrorKind::CannotIndexLabel.at(loc.clone())),
                 Imm::ScopeExit(_) | Imm::ScopeEntry(_) | Imm::FrameRel(_) => {
                     unreachable!("scope/frame placeholders are only produced inside fn bodies")
                 }
@@ -352,7 +272,7 @@ impl ast::Expr {
                                 ident.clone(),
                                 left_offset.wrapping_sub(right_val),
                             )),
-                            _ => Err(Error::UnsupportedOperationInAddress(loc.clone())),
+                            _ => Err(ErrorKind::UnsupportedOperationInAddress.at(loc.clone())),
                         }
                     }
                     (_, Imm::Symbol(ident, right_offset)) if get_val(&lhs).is_some() => {
@@ -361,7 +281,7 @@ impl ast::Expr {
                             ast::BinaryOp::Add => {
                                 Ok(Imm::Symbol(ident.clone(), left_val + *right_offset))
                             }
-                            _ => Err(Error::InvalidSubtractionInAddress(loc.clone())),
+                            _ => Err(ErrorKind::InvalidSubtractionInAddress.at(loc.clone())),
                         }
                     }
                     _ if get_val(&lhs).is_some() && get_val(&rhs).is_some() => {
@@ -370,34 +290,31 @@ impl ast::Expr {
                         match op {
                             ast::BinaryOp::Add => Ok(Imm::Lit(left_val.wrapping_add(right_val))),
                             ast::BinaryOp::Sub => Ok(Imm::Lit(left_val.wrapping_sub(right_val))),
-                            _ => Err(Error::UnsupportedOperationInAddress(loc.clone())),
+                            _ => Err(ErrorKind::UnsupportedOperationInAddress.at(loc.clone())),
                         }
                     }
                     (Imm::Symbol(_, _), Imm::Symbol(_, _)) => match op {
-                        ast::BinaryOp::Add => Err(Error::CannotAddSymbols(loc.clone())),
-                        _ => Err(Error::InvalidSubtractionInAddress(loc.clone())),
+                        ast::BinaryOp::Add => Err(ErrorKind::CannotAddSymbols.at(loc.clone())),
+                        _ => Err(ErrorKind::InvalidSubtractionInAddress.at(loc.clone())),
                     },
                     (Imm::Label(_), _) | (_, Imm::Label(_)) => {
-                        Err(Error::CannotPerformArithmeticOnLabel(loc.clone()))
+                        Err(ErrorKind::CannotPerformArithmeticOnLabel.at(loc.clone()))
                     }
-                    _ => Err(Error::UnsupportedOperationInAddress(loc.clone())),
+                    _ => Err(ErrorKind::UnsupportedOperationInAddress.at(loc.clone())),
                 }
             }
 
             ast::Expr::SizeofType(ty, _) => match global.normtype(ty) {
                 Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
-                Err(e) => Err(Error::CannotEvaluateSizeofType(loc.clone(), e.to_string())),
+                Err(e) => Err(ErrorKind::CannotEvaluateSizeofType(e.to_string()).at(loc.clone())),
             },
 
             ast::Expr::SizeofExpr(inner, _) => match global.typeinfer(inner) {
                 Ok(ty) => Ok(Imm::Lit(ty.sizeof())),
-                Err(e) => Err(Error::CannotEvaluateSizeofExpr(loc.clone(), e.to_string())),
+                Err(e) => Err(ErrorKind::CannotEvaluateSizeofExpr(e.to_string()).at(loc.clone())),
             },
 
-            _ => Err(Error::UnsupportedExprType(
-                loc.clone(),
-                format!("{:?}", self),
-            )),
+            _ => Err(ErrorKind::UnsupportedExprType(format!("{:?}", self)).at(loc.clone())),
         }
     }
 }

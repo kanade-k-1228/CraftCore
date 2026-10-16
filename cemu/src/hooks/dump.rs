@@ -109,8 +109,8 @@ impl Dump {
     }
 
     fn print_stack(&self, cpu: &State) {
-        // SP 下向き ABI:
-        //   SP+0=Arg[0], SP-1=Arg[1]/locals, SP+1=saved caller SP, SP+2=saved RA, SP+3..=Return slots
+        // RISC-V 風固定フレーム ABI (tasm/src/eval/func.rs 参照):
+        //   SP+0.. = outgoing 引数、その上に saved RA / saved-s / a0,a1 spill / locals。
         // SP の上下両側を表示する。
         let sp_reg = cpu.get(Reg::SP);
         let lo = sp_reg.wrapping_sub(0x18);

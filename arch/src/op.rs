@@ -84,63 +84,69 @@ impl Op<Reg, u16> {
     }
 }
 
+/// encode/decode の往復一致。各フィールドは独立した bit 位置にエンコードされる
+/// ので、「レジスタ全組合せ × 境界 imm」+「imm 全域 × 固定レジスタ」で全 bit
+/// パターンを覆える (全探索 ~5 億回は不要)。
 #[test]
-fn test_op_all() {
-    // CALC: alu / rd / rs1 / rs2 を全探索
+fn test_op_roundtrip() {
+    const IMMS: [u16; 8] = [0, 1, 2, 0x00FF, 0x7FFF, 0x8000, 0xFFFE, 0xFFFF];
+    let check = |op: Op<Reg, u16>| assert_eq!(op, Op::decode(op.encode()));
+
+    // CALC: alu / rd / rs1 / rs2 を全探索 (imm フィールドなし)
     for alu in 0u8..=13 {
         for rd in 0u8..=0xF {
             for rs1 in 0u8..=0xF {
                 for rs2 in 0u8..=0xF {
-                    let op = Op::CALC(
+                    check(Op::CALC(
                         ALU::from(alu),
                         Reg::from(rd),
                         Reg::from(rs1),
                         Reg::from(rs2),
-                    );
-                    assert_eq!(op, Op::decode(op.encode()));
+                    ));
                 }
             }
         }
     }
-    // CALCI: alu / rd / rs1 / imm を全探索
+    // CALCI: レジスタ・alu 全組合せ × 境界 imm
     for alu in 0u8..=13 {
         for rd in 0u8..=0xF {
             for rs1 in 0u8..=0xF {
-                for imm in 0u16..=0xFFFF {
-                    let op = Op::CALCI(ALU::from(alu), Reg::from(rd), Reg::from(rs1), imm);
-                    assert_eq!(op, Op::decode(op.encode()));
+                for imm in IMMS {
+                    check(Op::CALCI(
+                        ALU::from(alu),
+                        Reg::from(rd),
+                        Reg::from(rs1),
+                        imm,
+                    ));
                 }
             }
         }
     }
-    // LOAD: rd / rs1 / imm を全探索
-    for rd in 0u8..=0xF {
-        for rs1 in 0u8..=0xF {
-            for imm in 0u16..=0xFFFF {
-                let op = Op::LOAD(Reg::from(rd), Reg::from(rs1), imm);
-                assert_eq!(op, Op::decode(op.encode()));
+    // LOAD / STORE: レジスタ全組合せ × 境界 imm
+    for r1 in 0u8..=0xF {
+        for r2 in 0u8..=0xF {
+            for imm in IMMS {
+                check(Op::LOAD(Reg::from(r1), Reg::from(r2), imm));
+                check(Op::STORE(Reg::from(r1), Reg::from(r2), imm));
             }
         }
     }
-    // STORE: rs2 / rs1 / imm を全探索
-    for rs2 in 0u8..=0xF {
-        for rs1 in 0u8..=0xF {
-            for imm in 0u16..=0xFFFF {
-                let op = Op::STORE(Reg::from(rs2), Reg::from(rs1), imm);
-                assert_eq!(op, Op::decode(op.encode()));
-            }
-        }
-    }
-    // CTRL: rd / rs1 / rs2 / imm を全探索
+    // CTRL: レジスタ全組合せ × 境界 imm
     for rd in 0u8..=0xF {
         for rs1 in 0u8..=0xF {
             for rs2 in 0u8..=0xF {
-                for imm in 0u16..=0xFFFF {
-                    let op = Op::CTRL(Reg::from(rd), Reg::from(rs1), Reg::from(rs2), imm);
-                    assert_eq!(op, Op::decode(op.encode()));
+                for imm in IMMS {
+                    check(Op::CTRL(Reg::from(rd), Reg::from(rs1), Reg::from(rs2), imm));
                 }
             }
         }
+    }
+    // imm 全域は代表レジスタで往復させる (imm は 16bit 素通しであることの確認)
+    for imm in 0u16..=0xFFFF {
+        check(Op::CALCI(ALU::ADD, Reg::T0, Reg::T1, imm));
+        check(Op::LOAD(Reg::T0, Reg::T1, imm));
+        check(Op::STORE(Reg::T0, Reg::T1, imm));
+        check(Op::CTRL(Reg::T0, Reg::T1, Reg::T2, imm));
     }
 }
 

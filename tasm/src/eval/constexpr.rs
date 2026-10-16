@@ -24,9 +24,10 @@ impl ConstExpr {
         Ok(match self {
             ConstExpr::Number(_) => NormType::Int,
             ConstExpr::Char(_) => NormType::Int,
+            // 型サイズ = 文字数 (strlen 相当)。メモリ上は bin() が NUL 終端を付けて +1 word。
             ConstExpr::String(s) => NormType::Array(s.len(), Box::new(NormType::Int)),
             ConstExpr::Array(elems) => {
-                let base = match elems.get(0) {
+                let base = match elems.first() {
                     Some(e) => e.typeinfer()?,
                     None => NormType::Void,
                 };
@@ -43,11 +44,13 @@ impl ConstExpr {
     }
 
     /// Serialize a ConstExpr to word (u16) array.
+    /// 文字列は NUL 終端を明示的に付ける (print_str 等が `!= 0` 終端に依存する)。
+    /// このため割付サイズは typeinfer().sizeof() ではなく bin().len() を使うこと。
     pub fn bin(&self) -> Vec<u16> {
         match self {
             ConstExpr::Number(n) => vec![*n as u16],
             ConstExpr::Char(c) => vec![*c as u16],
-            ConstExpr::String(s) => s.chars().map(|c| c as u16).collect(),
+            ConstExpr::String(s) => s.chars().map(|c| c as u16).chain([0]).collect(),
             ConstExpr::Array(a) => a.iter().flat_map(|e| e.bin()).collect(),
             ConstExpr::Struct(f) => f.iter().flat_map(|(_, e)| e.bin()).collect(),
         }

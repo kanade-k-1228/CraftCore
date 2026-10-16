@@ -43,9 +43,9 @@ impl Reg {
     }
 }
 
-impl Into<u16> for Reg {
-    fn into(self) -> u16 {
-        self as u16
+impl From<Reg> for u16 {
+    fn from(reg: Reg) -> u16 {
+        reg as u16
     }
 }
 

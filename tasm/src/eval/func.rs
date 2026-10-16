@@ -1,6 +1,10 @@
 use crate::{
-    error::Error,
-    grammer::{ast, token::Pos},
+    error::{Error, ErrorKind},
+    grammer::{
+        ast,
+        token::Pos,
+        util::{stmt_exprs, walk_expr, walk_stmt},
+    },
 };
 
 use super::{
@@ -29,8 +33,8 @@ impl<'a> Global<'a> {
                 | ast::Def::Const((_, pos), _, _)
                 | ast::Def::Static((_, pos), _, _)
                 | ast::Def::Asm((_, pos), _, _),
-            ) => Err(Error::NotAFunction(pos.clone(), name.to_string())),
-            None => Err(Error::UnknownIdentifier(Pos::default(), name.to_string())),
+            ) => Err(ErrorKind::NotAFunction(name.to_string()).at(pos.clone())),
+            None => Err(ErrorKind::UnknownIdentifier(name.to_string()).at(Pos::default())),
         }
     }
 }
@@ -73,132 +77,39 @@ struct Context<'a> {
     reg_vars: HashMap<String, Reg>,
 }
 
-/// 式が関数呼び出しを含むか (leaf 判定用、保守的に全部分式を走査)。
-fn expr_has_call(e: &ast::Expr) -> bool {
-    match e {
-        ast::Expr::Call(..) => true,
-        ast::Expr::Binary(_, a, b) | ast::Expr::Index(a, b) => expr_has_call(a) || expr_has_call(b),
-        ast::Expr::Unary(_, a)
-        | ast::Expr::Addr(a)
-        | ast::Expr::Deref(a)
-        | ast::Expr::Cast(a, _)
-        | ast::Expr::Member(a, _)
-        | ast::Expr::SizeofExpr(a, _) => expr_has_call(a),
-        ast::Expr::ArrayLit(es, _) => es.iter().any(expr_has_call),
-        ast::Expr::StructLit(fs, _) => fs.iter().any(|(_, e)| expr_has_call(e)),
-        _ => false,
-    }
-}
-
-/// 文 (とその部分式) が関数呼び出しを含むか。
+/// 文 (とその部分式) が関数呼び出しを含むか (leaf 判定用)。
 fn stmt_has_call(s: &ast::Stmt) -> bool {
-    match s {
-        ast::Stmt::Block(_, ss) => ss.iter().any(stmt_has_call),
-        ast::Stmt::Expr(e) => expr_has_call(e),
-        ast::Stmt::Assign(l, r) => expr_has_call(l) || expr_has_call(r),
-        ast::Stmt::Cond(c, t, f) => {
-            expr_has_call(c) || stmt_has_call(t) || f.as_ref().is_some_and(|x| stmt_has_call(x))
-        }
-        ast::Stmt::Loop(c, b) => expr_has_call(c) || stmt_has_call(b),
-        ast::Stmt::Return(e) => e.as_ref().is_some_and(expr_has_call),
-        ast::Stmt::Var(_, _, init) => init.as_ref().is_some_and(expr_has_call),
-        ast::Stmt::Break(..) | ast::Stmt::Continue(..) => false,
-    }
-}
-
-/// 式に含まれる全ての ident 名を集める (address-taken 判定用、保守的)。
-fn collect_idents(e: &ast::Expr, out: &mut HashSet<String>) {
-    match e {
-        ast::Expr::Ident((n, _)) => {
-            out.insert(n.clone());
-        }
-        ast::Expr::Binary(_, a, b) | ast::Expr::Index(a, b) => {
-            collect_idents(a, out);
-            collect_idents(b, out);
-        }
-        ast::Expr::Unary(_, a)
-        | ast::Expr::Addr(a)
-        | ast::Expr::Deref(a)
-        | ast::Expr::Cast(a, _)
-        | ast::Expr::Member(a, _)
-        | ast::Expr::SizeofExpr(a, _) => collect_idents(a, out),
-        ast::Expr::Call(f, args) => {
-            collect_idents(f, out);
-            for a in args {
-                collect_idents(a, out);
-            }
-        }
-        ast::Expr::ArrayLit(es, _) => es.iter().for_each(|x| collect_idents(x, out)),
-        ast::Expr::StructLit(fs, _) => fs.iter().for_each(|(_, x)| collect_idents(x, out)),
-        _ => {}
-    }
-}
-
-/// 式を走査し、Addr(...) の中に現れる ident を address-taken として記録する。
-fn scan_expr_addr(e: &ast::Expr, taken: &mut HashSet<String>) {
-    if let ast::Expr::Addr(inner) = e {
-        collect_idents(inner, taken);
-    }
-    match e {
-        ast::Expr::Binary(_, a, b) | ast::Expr::Index(a, b) => {
-            scan_expr_addr(a, taken);
-            scan_expr_addr(b, taken);
-        }
-        ast::Expr::Unary(_, a)
-        | ast::Expr::Addr(a)
-        | ast::Expr::Deref(a)
-        | ast::Expr::Cast(a, _)
-        | ast::Expr::Member(a, _)
-        | ast::Expr::SizeofExpr(a, _) => scan_expr_addr(a, taken),
-        ast::Expr::Call(f, args) => {
-            scan_expr_addr(f, taken);
-            for a in args {
-                scan_expr_addr(a, taken);
-            }
-        }
-        ast::Expr::ArrayLit(es, _) => es.iter().for_each(|x| scan_expr_addr(x, taken)),
-        ast::Expr::StructLit(fs, _) => fs.iter().for_each(|(_, x)| scan_expr_addr(x, taken)),
-        _ => {}
-    }
+    let mut found = false;
+    stmt_exprs(s, &mut |e| found |= matches!(e, ast::Expr::Call(..)));
+    found
 }
 
 /// 本体を走査して Var 宣言 (name, type) と address-taken 名を集める (レジスタ割付用)。
+/// Addr(...) の中に現れる ident は保守的に全て address-taken とみなす。
 fn scan_stmt_alloc<'a>(
     s: &'a ast::Stmt,
     decls: &mut Vec<(String, &'a ast::Type)>,
     taken: &mut HashSet<String>,
 ) {
-    match s {
-        ast::Stmt::Block(_, ss) => ss.iter().for_each(|x| scan_stmt_alloc(x, decls, taken)),
-        ast::Stmt::Expr(e) => scan_expr_addr(e, taken),
-        ast::Stmt::Assign(l, r) => {
-            scan_expr_addr(l, taken);
-            scan_expr_addr(r, taken);
-        }
-        ast::Stmt::Cond(c, t, f) => {
-            scan_expr_addr(c, taken);
-            scan_stmt_alloc(t, decls, taken);
-            if let Some(e) = f {
-                scan_stmt_alloc(e, decls, taken);
+    walk_stmt(
+        s,
+        &mut |stmt| {
+            if let ast::Stmt::Var(ident, ty, _) = stmt {
+                decls.push((ident.0.clone(), ty));
             }
-        }
-        ast::Stmt::Loop(c, b) => {
-            scan_expr_addr(c, taken);
-            scan_stmt_alloc(b, decls, taken);
-        }
-        ast::Stmt::Return(e) => {
-            if let Some(x) = e {
-                scan_expr_addr(x, taken);
-            }
-        }
-        ast::Stmt::Var(ident, ty, init) => {
-            decls.push((ident.0.clone(), ty));
-            if let Some(x) = init {
-                scan_expr_addr(x, taken);
-            }
-        }
-        ast::Stmt::Break(..) | ast::Stmt::Continue(..) => {}
-    }
+        },
+        &mut |e| {
+            walk_expr(e, &mut |x| {
+                if let ast::Expr::Addr(inner) = x {
+                    walk_expr(inner, &mut |i| {
+                        if let ast::Expr::Ident((n, _)) = i {
+                            taken.insert(n.clone());
+                        }
+                    });
+                }
+            })
+        },
+    );
 }
 
 /// 関数エントリ SP 基準の符号付きフレームオフセットを Imm にエンコード。
@@ -245,12 +156,8 @@ impl<'a> Context<'a> {
             v.push(Op::store(Reg::RA, Reg::SP, Imm::FrameRel(self.ra_off())));
         }
         // 使用する s-reg (caller の値) をフレームへ退避。
-        for k in 0..self.reg_vars.len() {
-            v.push(Op::store(
-                S_REGS[k],
-                Reg::SP,
-                Imm::FrameRel(self.saved_s_off(k)),
-            ));
+        for (k, &sreg) in S_REGS.iter().take(self.reg_vars.len()).enumerate() {
+            v.push(Op::store(sreg, Reg::SP, Imm::FrameRel(self.saved_s_off(k))));
         }
         if self.argc >= 1 {
             v.push(Op::store(Reg::A0, Reg::SP, Imm::FrameRel(-1)));
@@ -269,12 +176,8 @@ impl<'a> Context<'a> {
     fn epilogue_insts(&self) -> Vec<Op<Reg, Imm>> {
         let mut v = Vec::new();
         // 使用した s-reg を caller の値へ復元。
-        for k in 0..self.reg_vars.len() {
-            v.push(Op::load(
-                S_REGS[k],
-                Reg::SP,
-                Imm::FrameRel(self.saved_s_off(k)),
-            ));
+        for (k, &sreg) in S_REGS.iter().take(self.reg_vars.len()).enumerate() {
+            v.push(Op::load(sreg, Reg::SP, Imm::FrameRel(self.saved_s_off(k))));
         }
         if self.nonleaf {
             v.push(Op::load(Reg::RA, Reg::SP, Imm::FrameRel(self.ra_off())));
@@ -334,17 +237,15 @@ impl<'a> Context<'a> {
             let norm_type = self
                 .local
                 .normtype(arg_type)
-                .map_err(|_| Error::TypeCollectionFailed(loc.clone(), name.clone()))?;
+                .map_err(|_| ErrorKind::TypeCollectionFailed(name.clone()).at(loc.clone()))?;
             if norm_type.sizeof() > 1 {
-                return Err(Error::UnsupportedExpression(
-                    loc.clone(),
-                    format!(
-                        "argument `{}` has type of size {} — pass by pointer (*{}) instead",
-                        name,
-                        norm_type.sizeof(),
-                        norm_type.fmt()
-                    ),
-                ));
+                return Err(ErrorKind::UnsupportedExpression(format!(
+                    "argument `{}` has type of size {} — pass by pointer (*{}) instead",
+                    name,
+                    norm_type.sizeof(),
+                    norm_type.fmt()
+                ))
+                .at(loc.clone()));
             }
         }
 
@@ -509,33 +410,29 @@ impl<'a> Context<'a> {
             ast::Stmt::Break((name, _name_pos), pos) => {
                 let id = self
                     .find_scope(name)
-                    .ok_or_else(|| Error::UnknownScope(pos.clone(), name.clone()))?;
+                    .ok_or_else(|| ErrorKind::UnknownScope(name.clone()).at(pos.clone()))?;
                 Ok(vec![Op::jumpr(Imm::ScopeExit(id))])
             }
 
             ast::Stmt::Continue((name, _name_pos), pos) => {
                 let id = self
                     .find_scope(name)
-                    .ok_or_else(|| Error::UnknownScope(pos.clone(), name.clone()))?;
+                    .ok_or_else(|| ErrorKind::UnknownScope(name.clone()).at(pos.clone()))?;
                 Ok(vec![Op::jumpr(Imm::ScopeEntry(id))])
             }
 
             ast::Stmt::Var(ident, ty, init) => {
                 let (name, pos) = ident;
                 let norm_ty = self.local.normtype(ty).map_err(|e| {
-                    Error::TypeCollectionFailed(
-                        pos.clone(),
-                        format!("local variable {}: {}", name, e),
-                    )
+                    ErrorKind::TypeCollectionFailed(format!("local variable {}: {}", name, e))
+                        .at(pos.clone())
                 })?;
                 // レジスタ割付済みのローカルは s-reg に常駐。スタックスロットは取らず、
                 // 型解決のため local テーブルには dummy offset で登録しておく。
                 if let Some(r) = self.reg_vars.get(name.as_str()).copied() {
                     self.local.insert(ident, norm_ty, 0).map_err(|e| {
-                        Error::TypeCollectionFailed(
-                            pos.clone(),
-                            format!("local variable {}: {}", name, e),
-                        )
+                        ErrorKind::TypeCollectionFailed(format!("local variable {}: {}", name, e))
+                            .at(pos.clone())
                     })?;
                     let mut insts: Vec<Op<Reg, Imm>> = Vec::new();
                     if let Some(init_expr) = init {
@@ -559,10 +456,8 @@ impl<'a> Context<'a> {
                 self.local
                     .insert(ident, norm_ty, head_offset)
                     .map_err(|e| {
-                        Error::TypeCollectionFailed(
-                            pos.clone(),
-                            format!("local variable {}: {}", name, e),
-                        )
+                        ErrorKind::TypeCollectionFailed(format!("local variable {}: {}", name, e))
+                            .at(pos.clone())
                     })?;
 
                 let mut insts: Vec<Op<Reg, Imm>> = Vec::new();
@@ -597,23 +492,15 @@ impl<'a> Context<'a> {
         target: Reg,
     ) -> Result<(Vec<Op<Reg, Imm>>, Reg), Error> {
         let (insts, result_reg) = match expr {
-            ast::Expr::NumberLit(n, _) => {
-                let mut insts = Vec::new();
-                insts.push(Op::loadi(target, Imm::Lit(*n as usize)));
-                (insts, target)
-            }
+            ast::Expr::NumberLit(n, _) => (vec![Op::loadi(target, Imm::Lit(*n))], target),
 
-            ast::Expr::CharLit(c, _) => {
-                let mut insts = Vec::new();
-                insts.push(Op::loadi(target, Imm::Lit(*c as usize)));
-                (insts, target)
-            }
+            ast::Expr::CharLit(c, _) => (vec![Op::loadi(target, Imm::Lit(*c as usize))], target),
 
             ast::Expr::StringLit(_s, _) => {
-                return Err(Error::UnsupportedExpression(
-                    expr.pos_or_default(),
+                return Err(ErrorKind::UnsupportedExpression(
                     "string literal as runtime value; use a named const instead".to_string(),
-                ));
+                )
+                .at(expr.pos_or_default()));
             }
 
             ast::Expr::Ident((name, pos)) => {
@@ -655,23 +542,23 @@ impl<'a> Context<'a> {
             }
 
             ast::Expr::Binary(op, lhs, rhs) => {
-                let mut prelude: Vec<Op<Reg, Imm>> = Vec::new();
+                // lhs を a0 で評価 → spill に退避 → rhs を a1 で評価 → a0 を復元。
+                // (rhs の評価が a0 を壊すため、必ずフレーム経由で受け渡す。)
+                let mut insts: Vec<Op<Reg, Imm>> = Vec::new();
                 let (lhs_insts, lhs_inner_reg) = self.compile_expr(lhs, Reg::A0)?;
-                prelude.extend(lhs_insts);
+                insts.extend(lhs_insts);
                 if lhs_inner_reg != Reg::A0 {
-                    prelude.push(Op::mov(Reg::A0, lhs_inner_reg));
+                    insts.push(Op::mov(Reg::A0, lhs_inner_reg));
                 }
                 let spill = self.alloc_spill_slot();
-                prelude.push(Op::store(Reg::A0, Reg::SP, sp_off(spill)));
+                insts.push(Op::store(Reg::A0, Reg::SP, sp_off(spill)));
                 let (rhs_insts, rhs_inner_reg) = self.compile_expr(rhs, Reg::A1)?;
-                prelude.extend(rhs_insts);
+                insts.extend(rhs_insts);
                 if rhs_inner_reg != Reg::A1 {
-                    prelude.push(Op::mov(Reg::A1, rhs_inner_reg));
+                    insts.push(Op::mov(Reg::A1, rhs_inner_reg));
                 }
-                prelude.push(Op::load(Reg::A0, Reg::SP, sp_off(spill)));
+                insts.push(Op::load(Reg::A0, Reg::SP, sp_off(spill)));
                 self.free_spill_slot();
-                let lhs_insts = prelude;
-                let rhs_insts: Vec<Op<Reg, Imm>> = Vec::new();
                 let lhs_reg = Reg::A0;
                 let rhs_reg = Reg::A1;
 
@@ -784,7 +671,7 @@ impl<'a> Context<'a> {
                     }
                 };
 
-                (chain!(lhs_insts, rhs_insts, op_insts).collect(), target)
+                (chain!(insts, op_insts).collect(), target)
             }
 
             ast::Expr::Unary(op, operand) => {
@@ -834,13 +721,16 @@ impl<'a> Context<'a> {
             ast::Expr::Call(func_expr, args) => self.compile_call(expr, func_expr, args, target)?,
 
             ast::Expr::SizeofType(typ, _) => {
-                let mut insts = Vec::new();
                 let norm_type = self.local.normtype(typ).map_err(|_| {
-                    Error::TypeCollectionFailed(Pos::default(), "sizeof".to_string())
+                    ErrorKind::TypeCollectionFailed("sizeof".to_string()).at(Pos::default())
                 })?;
-                let size = norm_type.sizeof() as u16;
-                insts.push(Op::loadi(target, Imm::Lit(size as usize)));
-                (insts, target)
+                let size = norm_type.sizeof();
+                (vec![Op::loadi(target, Imm::Lit(size))], target)
+            }
+
+            ast::Expr::SizeofExpr(inner, _) => {
+                let size = self.local.typeinfer(inner)?.sizeof();
+                (vec![Op::loadi(target, Imm::Lit(size))], target)
             }
 
             ast::Expr::Cast(inner, _) => {
@@ -848,10 +738,12 @@ impl<'a> Context<'a> {
                 (insts, reg)
             }
 
-            _ => {
-                let mut insts = Vec::new();
-                insts.push(Op::loadi(target, Imm::Lit(0)));
-                (insts, target)
+            // 実行時値としての配列/構造体リテラルは未サポート (黙って 0 にしない)。
+            ast::Expr::ArrayLit(_, pos) | ast::Expr::StructLit(_, pos) => {
+                return Err(ErrorKind::UnsupportedExpression(
+                    "array/struct literal as runtime value; use a named const instead".to_string(),
+                )
+                .at(pos.clone()));
             }
         };
 
@@ -875,27 +767,27 @@ impl<'a> Context<'a> {
     ) -> Result<(Vec<Op<Reg, Imm>>, Reg), Error> {
         let (ret_size, arg_sizes) = self.local.callee_signature(func_expr, args)?;
         if args.len() != arg_sizes.len() {
-            return Err(Error::UnsupportedExpression(
-                expr.pos_or_default(),
-                format!(
-                    "argument count mismatch: callee expects {}, given {}",
-                    arg_sizes.len(),
-                    args.len()
-                ),
-            ));
+            return Err(ErrorKind::UnsupportedExpression(format!(
+                "argument count mismatch: callee expects {}, given {}",
+                arg_sizes.len(),
+                args.len()
+            ))
+            .at(expr.pos_or_default()));
         }
         if ret_size > 1 {
-            return Err(Error::UnsupportedExpression(
-                expr.pos_or_default(),
-                format!("multi-word return value (size {}) not supported", ret_size),
-            ));
+            return Err(ErrorKind::UnsupportedExpression(format!(
+                "multi-word return value (size {}) not supported",
+                ret_size
+            ))
+            .at(expr.pos_or_default()));
         }
         for (i, &sz) in arg_sizes.iter().enumerate() {
             if sz > 1 {
-                return Err(Error::UnsupportedExpression(
-                    args[i].pos_or_default(),
-                    format!("multi-word argument (size {}) not supported", sz),
-                ));
+                return Err(ErrorKind::UnsupportedExpression(format!(
+                    "multi-word argument (size {}) not supported",
+                    sz
+                ))
+                .at(args[i].pos_or_default()));
             }
         }
 
@@ -1001,10 +893,11 @@ impl<'a> Context<'a> {
             ast::Expr::Ident((name, pos)) => {
                 // s-reg 常駐変数はアドレスを取れない (割付時に address-taken を除外済み)。
                 if self.reg_vars.contains_key(name.as_str()) {
-                    return Err(Error::NotAddressable(
-                        expr.pos_or_default(),
-                        format!("register-allocated variable `{}`", name),
-                    ));
+                    return Err(ErrorKind::NotAddressable(format!(
+                        "register-allocated variable `{}`",
+                        name
+                    ))
+                    .at(expr.pos_or_default()));
                 }
                 let mut insts = Vec::new();
                 if let Some(offset) = self.local.offset(name) {
@@ -1030,7 +923,7 @@ impl<'a> Context<'a> {
                 let base_ty = self.local.typeinfer(base)?;
                 let field_offset = base_ty
                     .get_field_offset(field)
-                    .ok_or_else(|| Error::NoSuchField(field_pos.clone(), field.clone()))?;
+                    .ok_or_else(|| ErrorKind::NoSuchField(field.clone()).at(field_pos.clone()))?;
                 if field_offset != 0 {
                     insts.push(Op::addi(target, target, Imm::Lit(field_offset)));
                 }
@@ -1053,7 +946,7 @@ impl<'a> Context<'a> {
                         }
                         (v, elem_size)
                     }
-                    _ => return Err(Error::NotIndexable(base.pos_or_default())),
+                    _ => return Err(ErrorKind::NotIndexable.at(base.pos_or_default())),
                 };
 
                 let idx_target = if target == Reg::A0 { Reg::A1 } else { Reg::A0 };
@@ -1079,10 +972,7 @@ impl<'a> Context<'a> {
                 Ok(insts)
             }
 
-            _ => Err(Error::NotAddressable(
-                expr.pos_or_default(),
-                format!("{:?}", expr),
-            )),
+            _ => Err(ErrorKind::NotAddressable(format!("{:?}", expr)).at(expr.pos_or_default())),
         }
     }
 
@@ -1142,10 +1032,7 @@ impl<'a> Context<'a> {
                 Ok(insts)
             }
 
-            _ => Err(Error::InvalidLValue(
-                lvalue.pos_or_default(),
-                format!("{:?}", lvalue),
-            )),
+            _ => Err(ErrorKind::InvalidLValue(format!("{:?}", lvalue)).at(lvalue.pos_or_default())),
         }
     }
 }

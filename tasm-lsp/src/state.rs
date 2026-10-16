@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
+use crate::analysis::Snapshot;
 use crate::convert::normalize_path;
 
 #[derive(Debug, Default, Clone)]
@@ -42,6 +44,11 @@ pub struct ServerState {
     pub config: Config,
     /// ファイルごとに前回 publish した診断の有無 (クリア用)
     pub published: HashSet<PathBuf>,
+    /// docs / config の世代。変わるたびに snapshot キャッシュが無効になる。
+    pub revision: u64,
+    /// (revision, target) → 解析済み Snapshot (直近 1 件)。
+    /// 同一 target への連続リクエスト (definition/hover/診断) で再パースを避ける。
+    pub snapshot_cache: Option<(u64, PathBuf, Rc<Snapshot>)>,
 }
 
 impl ServerState {
@@ -53,7 +60,14 @@ impl ServerState {
                 root,
             },
             published: HashSet::new(),
+            revision: 0,
+            snapshot_cache: None,
         }
+    }
+
+    /// docs / config の変更を通知する (snapshot キャッシュの無効化)。
+    pub fn bump_revision(&mut self) {
+        self.revision += 1;
     }
 
     /// docs にあればそれを、なければディスクから読む

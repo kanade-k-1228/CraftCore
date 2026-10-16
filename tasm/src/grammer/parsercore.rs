@@ -1,5 +1,5 @@
 use super::token::{Pos, Token, TokenKind};
-use crate::error::Error;
+use crate::error::{Error, ErrorKind};
 use std::iter::Peekable;
 
 pub struct Parser<I: Iterator<Item = Token>> {
@@ -33,7 +33,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     self.tokens.next();
                 }
                 TokenKind::Error(lexeme) => {
-                    let err = Error::InvalidToken(token.pos.clone(), lexeme.clone());
+                    let err = ErrorKind::InvalidToken(lexeme.clone()).at(token.pos.clone());
                     self.tokens.next();
                     self.errors.push(err);
                 }
@@ -49,6 +49,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     /// Next : Consume next token and return it
+    #[allow(clippy::should_implement_trait)] // Iterator にすると skip() を挟めない
     pub fn next(&mut self) -> Option<Token> {
         self.skip();
         self.tokens.next()
@@ -57,12 +58,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     /// Peek and check next token is match with condition
     pub fn check_if<F: Fn(&Token) -> bool>(&mut self, cond: F) -> bool {
         self.skip();
-        if let Some(token) = self.tokens.peek() {
-            if cond(token) {
-                return true;
-            }
-        }
-        return false;
+        self.tokens.peek().is_some_and(cond)
     }
 
     /// Consume if next token is match with condition
@@ -89,10 +85,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 self.tokens.next();
                 Ok(token)
             } else {
-                Err(Error::UnexpectedToken(token.pos.clone(), token.clone()))
+                Err(ErrorKind::UnexpectedToken(token.clone()).at(token.pos.clone()))
             }
         } else {
-            Err(Error::UnexpectedEOF(Pos::default()))
+            Err(ErrorKind::UnexpectedEOF.at(Pos::default()))
         }
     }
 }

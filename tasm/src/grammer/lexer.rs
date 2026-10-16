@@ -90,7 +90,7 @@ impl<'a> LineLexer<'a> {
                 if ch0 == '/' && ch1 == '/' {
                     self.consume(); // consume '/'
                     self.consume(); // consume '/'
-                    while let Some(_) = self.iter.next_if(|(_, c)| c.is_whitespace()) {}
+                    while self.iter.next_if(|(_, c)| c.is_whitespace()).is_some() {}
                     let comment = self.iter.by_ref().map(|(_, ch)| ch).collect::<String>();
                     self.push(&mut tokens, TokenKind::Comment(comment), pos);
                     break;
@@ -256,71 +256,34 @@ impl<'a> LineLexer<'a> {
         let (_, ch0) = self.consume().unwrap();
         if ch0 == '0' {
             if let Some(&(_, ch1)) = self.iter.peek() {
-                if ch1 == 'x' || ch1 == 'X' {
+                let radix = match ch1 {
+                    'x' | 'X' => Some(16),
+                    'o' | 'O' => Some(8),
+                    'b' | 'B' => Some(2),
+                    _ => None,
+                };
+                if let Some(radix) = radix {
                     self.consume();
-                    return self.parse_number_hex(ch0, ch1);
-                }
-                if ch1 == 'o' || ch1 == 'O' {
-                    self.consume();
-                    return self.parse_number_oct(ch0, ch1);
-                }
-                if ch1 == 'b' || ch1 == 'B' {
-                    self.consume();
-                    return self.parse_number_bin(ch0, ch1);
+                    return self.parse_number_radix(vec![ch0, ch1], 2, radix);
                 }
             }
         }
-        return self.parse_number_dec(ch0);
+        self.parse_number_radix(vec![ch0], 0, 10)
     }
 
-    fn parse_number_hex(&mut self, ch0: char, ch1: char) -> TokenKind {
-        let mut lexeme = vec![ch0, ch1];
+    /// prefix (基数指定込みの先頭 skip 文字) に続く数値リテラルを radix 進数で解釈する。
+    fn parse_number_radix(&mut self, prefix: Vec<char>, skip: usize, radix: u32) -> TokenKind {
+        let mut lexeme = prefix;
         while let Some((_, ch)) = self
             .iter
-            .next_if(|(_, ch)| matches!(ch, '_' | '0'..='9' | 'a'..='f' | 'A'..='F' ))
+            .next_if(|(_, ch)| *ch == '_' || ch.is_digit(radix))
         {
             lexeme.push(ch);
         }
         let lexeme = lexeme.into_iter().collect::<String>();
-        match usize::from_str_radix(&lexeme[2..].replace("_", ""), 16) {
-            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
-            Err(_) => TokenKind::Error(lexeme.to_string()),
-        }
-    }
-
-    fn parse_number_oct(&mut self, ch0: char, ch1: char) -> TokenKind {
-        let mut lexeme = vec![ch0, ch1];
-        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '_' | '0'..='7')) {
-            lexeme.push(ch);
-        }
-        let lexeme = lexeme.into_iter().collect::<String>();
-        match usize::from_str_radix(&lexeme[2..].replace("_", ""), 8) {
-            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
-            Err(_) => TokenKind::Error(lexeme.to_string()),
-        }
-    }
-
-    fn parse_number_bin(&mut self, ch0: char, ch1: char) -> TokenKind {
-        let mut lexeme = vec![ch0, ch1];
-        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '_' | '0' | '1')) {
-            lexeme.push(ch);
-        }
-        let lexeme = lexeme.into_iter().collect::<String>();
-        match usize::from_str_radix(&lexeme[2..].replace("_", ""), 2) {
-            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
-            Err(_) => TokenKind::Error(lexeme.to_string()),
-        }
-    }
-
-    fn parse_number_dec(&mut self, ch: char) -> TokenKind {
-        let mut lexeme = vec![ch];
-        while let Some((_, ch)) = self.iter.next_if(|(_, ch)| matches!(ch, '_' | '0'..='9')) {
-            lexeme.push(ch);
-        }
-        let lexeme = lexeme.into_iter().collect::<String>();
-        match usize::from_str_radix(&lexeme.replace("_", ""), 10) {
-            Ok(num) => TokenKind::Number(lexeme.to_string(), num),
-            Err(_) => TokenKind::Error(lexeme.to_string()),
+        match usize::from_str_radix(&lexeme[skip..].replace('_', ""), radix) {
+            Ok(num) => TokenKind::Number(lexeme, num),
+            Err(_) => TokenKind::Error(lexeme),
         }
     }
 }
@@ -364,6 +327,28 @@ fn single_char_token(ch: char) -> Option<TokenKind> {
         '}' => Some(TokenKind::RCurly),
         '<' => Some(TokenKind::LAngle),
         '>' => Some(TokenKind::RAngle),
+        _ => None,
+    }
+}
+
+fn keyword(s: &str) -> Option<TokenKind> {
+    match s {
+        "fn" => Some(TokenKind::KwFunc),
+        "var" => Some(TokenKind::KwVar),
+        "type" => Some(TokenKind::KwType),
+        "const" => Some(TokenKind::KwConst),
+        "static" => Some(TokenKind::KwStatic),
+        "if" => Some(TokenKind::KwIf),
+        "else" => Some(TokenKind::KwElse),
+        "while" => Some(TokenKind::KwWhile),
+        "asm" => Some(TokenKind::KwAsm),
+        "break" => Some(TokenKind::KwBreak),
+        "continue" => Some(TokenKind::KwContinue),
+        "int" => Some(TokenKind::KwInt),
+        "void" => Some(TokenKind::KwVoid),
+        "return" => Some(TokenKind::KwReturn),
+        "as" => Some(TokenKind::KwAs),
+        "sizeof" => Some(TokenKind::KwSizeof),
         _ => None,
     }
 }
@@ -429,26 +414,14 @@ mod tests {
         let toks = spans(r#""a\n""#);
         assert_eq!(toks[0], (TokenKind::Text("a\n".into()), 1, 1, 6));
     }
-}
 
-fn keyword(s: &str) -> Option<TokenKind> {
-    match s {
-        "fn" => Some(TokenKind::KwFunc),
-        "var" => Some(TokenKind::KwVar),
-        "type" => Some(TokenKind::KwType),
-        "const" => Some(TokenKind::KwConst),
-        "static" => Some(TokenKind::KwStatic),
-        "if" => Some(TokenKind::KwIf),
-        "else" => Some(TokenKind::KwElse),
-        "while" => Some(TokenKind::KwWhile),
-        "asm" => Some(TokenKind::KwAsm),
-        "break" => Some(TokenKind::KwBreak),
-        "continue" => Some(TokenKind::KwContinue),
-        "int" => Some(TokenKind::KwInt),
-        "void" => Some(TokenKind::KwVoid),
-        "return" => Some(TokenKind::KwReturn),
-        "as" => Some(TokenKind::KwAs),
-        "sizeof" => Some(TokenKind::KwSizeof),
-        _ => None,
+    #[test]
+    fn number_radix() {
+        let toks = spans("255 0xFF 0o377 0b1111_1111 0x");
+        assert!(matches!(&toks[0].0, TokenKind::Number(_, 255)));
+        assert!(matches!(&toks[1].0, TokenKind::Number(_, 255)));
+        assert!(matches!(&toks[2].0, TokenKind::Number(_, 255)));
+        assert!(matches!(&toks[3].0, TokenKind::Number(_, 255)));
+        assert!(matches!(&toks[4].0, TokenKind::Error(_)));
     }
 }

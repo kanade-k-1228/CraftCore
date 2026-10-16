@@ -47,9 +47,9 @@ impl ALU {
             Self::LTS => boo!((a as i16) < (b as i16)),
             Self::SR => a >> 1,
             Self::SRS => (a as i16 >> 1) as u16,
-            Self::SRR => a >> 1 | a << 15,
+            Self::SRR => a.rotate_right(1),
             Self::SL => a << 1,
-            Self::SLR => a << 1 | a >> 15,
+            Self::SLR => a.rotate_left(1),
         }
     }
 }
